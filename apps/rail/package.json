@@ -1,0 +1,10 @@
+{
+  "name": "@soopdoop/rail",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "echo 'Phase 1 step 3: wire prototype.html to Convex (see README)'",
+    "typecheck": "echo skip"
+  }
+}

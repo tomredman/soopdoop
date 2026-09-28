@@ -1,0 +1,220 @@
+<title>soopdoop Build Plan</title>
+<style>
+  :root { color-scheme: dark; --bg:#0b0d12; --panel:#10141a; --line:#242a33; --text:#d5dbe3; --muted:#8b95a5; --dim:#5a6372; --green:#4ade80; --blue:#60a5fa; --purple:#a78bfa; --amber:#fbbf24; --mono:"JetBrains Mono",ui-monospace,Menlo,monospace; --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; }
+  html,body { background:var(--bg); color:var(--text); }
+  body { font:15px/1.55 var(--sans); padding-block:40px 80px; padding-inline:16px; }
+  .wrap { max-width:880px; margin:0 auto; display:grid; gap:36px; }
+  h1 { font:700 30px/1.15 var(--mono); margin:0 0 6px; letter-spacing:-0.02em; }
+  h1 span { color:var(--purple); }
+  h2 { font:700 20px/1.2 var(--mono); margin:0 0 14px; padding-top:8px; border-top:1px solid var(--line); padding-top:22px; }
+  h3 { font:600 15px var(--mono); margin:22px 0 8px; color:var(--text); }
+  p, li { color:var(--text); }
+  .lede { color:var(--muted); font-size:16px; max-width:70ch; }
+  .tag { font:500 11px var(--mono); color:var(--amber); text-transform:uppercase; letter-spacing:.08em; }
+  ul, ol { margin:0; padding-left:22px; display:grid; gap:6px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:9px 10px; border-top:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font:500 12px var(--mono); text-transform:uppercase; letter-spacing:.06em; border-top:0; }
+  .scroll { overflow-x:auto; }
+  code { font:13px var(--mono); background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:1px 5px; }
+  pre { font:13px/1.5 var(--mono); background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px; overflow-x:auto; margin:0; }
+  .box { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
+  .box.decision { border-color:var(--purple); }
+  .box.risk { border-color:var(--amber); }
+  .box h3 { margin-top:0; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .k { color:var(--muted); }
+  .g { color:var(--green); } .b { color:var(--blue); } .pu { color:var(--purple); } .a { color:var(--amber); }
+  .phase { display:grid; grid-template-columns:120px 1fr; gap:14px; padding:14px 0; border-top:1px solid var(--line); }
+  .phase .n { font:700 13px var(--mono); color:var(--purple); }
+  .phase .n small { display:block; color:var(--dim); font-weight:400; margin-top:4px; }
+  .phase h3 { margin:0 0 6px; }
+  .small { font-size:13px; color:var(--muted); }
+  @media (max-width:640px) { .grid2 { grid-template-columns:1fr; } .phase { grid-template-columns:1fr; } }
+</style>
+<div class="wrap">
+  <header>
+    <span class="tag">Build plan · 28 Sep 2026 · draft for Mr. Tom</span>
+    <h1>soop<span>doop</span></h1>
+    <p class="lede">A multiplayer layer on top of Superset. This plan is based on reading Superset's source (github.com/superset-sh/superset, commit ee5233e, 28 Sep 2026), not on the docs site, which is blocked from this machine.</p>
+  </header>
+
+  <section>
+    <h2>1. What Superset already gives us</h2>
+    <p>Most of the spec's "architecture sketch" assumed we would have to build the plumbing. We do not. Superset already has:</p>
+    <div class="scroll"><table>
+      <tr><th>Spec feature</th><th>Superset primitive that already exists</th><th>What it means for us</th></tr>
+      <tr><td>Presence (working / idle)</td><td>Agent lifecycle hooks in every supported harness (<code>superset-hooks</code>): start, stop, waiting for input. <code>packages/shared/src/agent-status.ts</code>, <code>packages/host-service/src/terminal-agents/</code>.</td><td>Status per agent per workspace exists on each hacker's machine. We read it; we do not invent it.</td></tr>
+      <tr><td>Subset (a hacker's session and agents)</td><td>Host → workspaces → terminals → <code>TerminalAgentBinding</code> (agent id, session id, status, <b>transcript path</b>, subagents).</td><td>The Operator's raw material (the transcript on disk) is already tracked per agent.</td></tr>
+      <tr><td>Jack in: watch, comment, co-drive</td><td><b>Remote Access</b> via the Superset Relay. A host owner grants teammates access (Settings → Hosts → Add member). Members then open that host's workspaces, see terminals, send prompts. MCP: <code>terminals_read</code>, <code>terminals_send</code>.</td><td>Jack in is a deep link into Superset plus a host grant. We do not build a terminal viewer.</td></tr>
+      <tr><td>Agents drive Superset</td><td>MCP server at <code>api.superset.sh/mcp</code>, TypeScript SDK, CLI, plugin system (skills + MCP servers), headless hosts with API keys.</td><td>The Operator ships as a Superset plugin (skill + our MCP server). Any harness can load it.</td></tr>
+      <tr><td>Handles, profiles, badges</td><td><code>handles</code>, <code>public_profiles</code>, <code>profile_awards</code> tables. Opt-in.</td><td>A hacker's identity can be their Superset handle.</td></tr>
+      <tr><td>Token tracker</td><td>Opt-in leaderboard: tokens per user per day per provider per model per host (<code>leaderboard_daily</code>). The Usage page reads local session logs (<code>~/.claude/projects/*.jsonl</code>) and prices them.</td><td>"Where companies are built" can be built from the same local logs, summed per company. Nobody has to trust a self-report.</td></tr>
+      <tr><td>Pages with comments</td><td>Agents publish HTML pages; teammates pin comments; a watching agent republishes.</td><td>Drops (shared shelf) are Superset Pages. Nothing to build.</td></tr>
+      <tr><td>Realtime</td><td>One Durable Object per org fans out nudges (<code>apps/realtime</code>); relay Durable Objects hold host presence.</td><td>Org-scoped only. Crews that span orgs need our own realtime.</td></tr>
+    </table></div>
+    <p class="small">Sources: the repo README, <code>apps/docs/content/docs/*.mdx</code>, <code>packages/db/src/schema/*.ts</code>, <code>packages/mcp/src/tools/</code>, <code>plans/20260510-teams-model.md</code>, <code>plans/20260811-relay2-do-presence.md</code>, <code>plans/20260818-org-plugin-governance.md</code>.</p>
+
+    <h3>What Superset does not have (this is the product)</h3>
+    <ul>
+      <li><b>Friends and crews across organizations.</b> Superset's teams are inside one org and are "not an access-control mechanism". Host grants are per org.</li>
+      <li><b>Knocks and eyes.</b> No expiring attention requests. Notifications are "your agent finished".</li>
+      <li><b>The Operator.</b> Nothing reads another person's agent context and answers a question. Agents never talk to each other at all.</li>
+      <li><b>The tree.</b> No structure above a team, no cross-crew routing, no heads-ups (collisions, duplicate work).</li>
+      <li><b>Play.</b> The leaderboard is tokens and cost. There is no assist, props, XP, or crew goal.</li>
+      <li><b>Company tracker.</b> The leaderboard is per person. Nothing sums by company and shows only companies.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. The licence sets the shape</h2>
+    <div class="box risk">
+      <h3 class="a">Elastic License 2.0</h3>
+      <p>We may copy, modify and distribute Superset. We may <b>not</b> "provide the software to third parties as a hosted or managed service" that gives access to a substantial set of its features. So:</p>
+      <ul>
+        <li>Our backend must be our own code. It may call Superset's API on the hacker's behalf. It may not be a hosted copy of Superset's API.</li>
+        <li>A modified desktop app is allowed if we mark it as modified and keep the licence notices. It must not remove licence-key features (Pro).</li>
+        <li>Everything we push into a hacker's machine (daemon, hooks, plugin, skill) is our code, running next to Superset. No licence problem.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Decision: how the layer attaches to Superset</h2>
+    <div class="grid2">
+      <div class="box"><h3>A · Fork the desktop app</h3><p class="small">Add the rail inside Superset's window. Full control of the UI. Cost: we own a 10,000-file Electron monorepo that moves ~70 commits a day. Every rebase is ours. Users must install our build instead of Superset's.</p></div>
+      <div class="box decision"><h3 class="pu">B · Companion (recommended)</h3><p class="small">Our own daemon, backend, plugin and rail. The rail is a small always-on-top window beside Superset (Electron or Tauri), and the same UI also opens as a Superset Page inside a workspace pane. Jack in deep-links into the user's real Superset. Zero fork. Ships against any Superset version.</p></div>
+      <div class="box"><h3>C · Upstream only</h3><p class="small">Contribute crews, knocks and the Operator to Superset itself. Right long-term home for presence and knocks, wrong for a product we want to own and for cross-org crews. Do this later, for the hooks we need.</p></div>
+    </div>
+    <p style="margin-top:14px"><b>Recommendation: B now, with two upstream PRs later</b> (a documented local event feed from the host service, and a "friend host" grant that crosses orgs). B is the only option that does not put a fork between us and every Superset release.</p>
+  </section>
+
+  <section>
+    <h2>4. Architecture</h2>
+<pre>hacker's machine                              our cloud                             other hackers
+┌──────────────────────────────┐              ┌──────────────────────────────┐
+│ Superset (unchanged)         │              │ Convex backend               │
+│  host-service · hooks        │              │  hackers · crews · tree      │
+│  transcripts on disk (.jsonl)│              │  presence · knocks · eyes    │
+├──────────────────────────────┤   wss/https  │  relays · assists · props    │   subscriptions
+│ subset daemon  (our code)    │ ───────────▶ │  XP · badges · boards        │ ◀──────────────▶  rails
+│  · our hooks in each harness │ ◀─────────── │  company token tracker       │
+│  · presence + agent list     │  read-on-    │  scheduled expiry (knocks)   │
+│  · transcript read on demand │  demand      ├──────────────────────────────┤
+│  · local token log summary   │              │ Operator service (our code)  │
+├──────────────────────────────┤              │  hosted Claude agent         │
+│ soopdoop plugin (skill) │   MCP        │  routing summaries per agent │
+│  → our MCP server            │ ───────────▶ │  reads transcript via daemon │
+├──────────────────────────────┤              │  shortens · forgets          │
+│ rail  (our app / a Page)     │              └──────────────────────────────┘
+│  presence · knock · eyes     │
+│  ask the Operator · boards   │
+│  jack in → superset:// link  │
+└──────────────────────────────┘</pre>
+
+    <h3>Components</h3>
+    <div class="scroll"><table>
+      <tr><th>Component</th><th>What it is</th><th>Why this way</th></tr>
+      <tr><td><b>subset daemon</b><br><span class="small">Bun, one binary</span></td><td>Runs on each hacker's machine. Installs <i>our</i> lifecycle hooks into the harnesses Superset supports (Claude Code first). Hooks give session start, prompt submit, turn stop, session end, and the transcript path. Keeps presence: which agents, which workspace, working / idle. Serves transcript reads to the Operator on request (never streams them). Sums tokens by model from local session logs once an hour.</td><td>Hooks are a public harness contract; the Superset host-service tRPC is internal and may change. The daemon works even when Superset is closed, and needs no Superset fork.</td></tr>
+      <tr><td><b>backend</b><br><span class="small">Convex</span></td><td>Hackers, friends, crews (cap 8), tree nodes, presence, knocks (30 s) and eyes (5 min) with scheduled expiry, the relay log, assists, props, XP, badges, boards, company tracker, focus mode and ping settings.</td><td>Presence, subscriptions and scheduled functions are Convex's strengths. The team already runs Convex in production. Our own code, so ELv2 is not a concern.</td></tr>
+      <tr><td><b>Operator service</b><br><span class="small">Node worker + Claude API</span></td><td>One coordinator per crew (and per tree node). Keeps a short routing summary per agent, updated from turn-stop events. On a question: picks the agent, asks that hacker's daemon for a bounded slice of the transcript (last N turns + files touched), answers in one line, logs the relay, drops the context.</td><td>The spec's "reads, shortens, forgets" is a stateless call with a summary index. Prompt caching keeps a 40k-token read cheap.</td></tr>
+      <tr><td><b>plugin</b><br><span class="small">Superset plugin: skill + MCP</span></td><td>A <code>SKILL.md</code> that teaches any agent when to ask the Operator, and an MCP server with <code>ask_operator</code>, <code>knock</code>, <code>request_eyes</code>, <code>crew_status</code>. Installed through Superset's plugin catalog or <code>npx skills add</code>.</td><td>This is how Superset wants third-party agent tooling delivered. Works for all 20 harnesses at once.</td></tr>
+      <tr><td><b>rail</b><br><span class="small">web UI; Electron shell</span></td><td>The prototype we already have, wired to Convex. Ships two ways: a slim always-on-top window docked beside Superset, and the same page published as a Superset Page so it can live in a workspace pane.</td><td>No fork, and the rail can be inside the Superset window on day one via Pages.</td></tr>
+      <tr><td><b>jack in</b></td><td>Watch / comment / co-drive = Superset Remote Access. Our backend calls the Superset API (with the owner's key) to grant the visitor host access for that session, then deep-links the visitor into that workspace. Co-drive prompts go through Superset's own terminal send, labelled with the visitor's handle.</td><td>Superset already streams remote terminals and enforces host membership. We add the request, the approval, the label and the timer.</td></tr>
+    </table></div>
+
+    <h3>Data model (Convex)</h3>
+    <div class="scroll"><table>
+      <tr><th>Table</th><th>Key fields</th></tr>
+      <tr><td>hackers</td><td>handle, supersetUserId, supersetOrgId (company), focusUntil, quietHours, pingLimits, rank, xp, streak</td></tr>
+      <tr><td>friendships</td><td>a, b, status (requested / accepted), inviteToken (7 days, one use)</td></tr>
+      <tr><td>crews</td><td>name, leaderId, supersetOrgId, seats (≤ 8), operatorId, monthlyCap, treeNodeId</td></tr>
+      <tr><td>treeNodes</td><td>level, parentId, childIds (2), operatorId, summary (work only)</td></tr>
+      <tr><td>subsets</td><td>hackerId, hostId, agents[]: { agentId, workspace, status g/b, transcriptRef, lastTurnAt }, updatedAt</td></tr>
+      <tr><td>routingSummaries</td><td>agentRef, crewId, text (≤ 600 chars), editableByOwner, updatedAt</td></tr>
+      <tr><td>knocks / eyes</td><td>from, to, item (file / link / session / page), expiresAt, outcome (opened / not-now / expired), scheduled expiry</td></tr>
+      <tr><td>relays</td><td>askerRef, crewPath[], answeringAgentRef, question, answer, tokensRead, tokensSent, waitedForTurn, markedUseful</td></tr>
+      <tr><td>assists / props / badges / xpEvents</td><td>who, why, at</td></tr>
+      <tr><td>companyTokens</td><td>orgId, day, model, tokens (from daemon rollups; opt-in per company)</td></tr>
+      <tr><td>jackIns</td><td>visitor, owner, workspaceRef, level (watch / comment / co-drive), approvedAt, endedAt</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>5. Phases</h2>
+    <p class="small">Each phase ends with something a hacker can use. Order follows the spec's build order, adjusted for what Superset already provides.</p>
+
+    <div class="phase"><div class="n">Phase 0<small>3 days</small></div><div><h3>Decide, spike, scaffold</h3>
+      <ul>
+        <li>New repository <code>soopdoop</code> (not inside vibes). Bun workspace: <code>apps/rail</code>, <code>apps/daemon</code>, <code>packages/convex</code>, <code>packages/operator</code>, <code>packages/plugin</code>.</li>
+        <li><b>Spike 1:</b> our hooks in Claude Code report start / stop / transcript path while Superset's own hooks keep working (both can coexist; Superset's hooks are no-ops outside its terminals, ours are not).</li>
+        <li><b>Spike 2:</b> a Superset Page can host our rail and stay live (WebSocket to Convex from inside the Page pane).</li>
+        <li><b>Spike 3:</b> the Superset API can grant host access programmatically (the MCP has <code>hosts_list</code> and <code>organization_members_list</code>; host member grants may be desktop-only today). If not, jack in v1 is "open Superset → Settings → Hosts" with our button beside it.</li>
+        <li>Move the spec and prototype into the repo as <code>docs/spec.md</code> and <code>apps/rail/prototype</code>.</li>
+      </ul></div></div>
+
+    <div class="phase"><div class="n">Phase 1<small>2 weeks</small></div><div><h3>The knock (vertical slice)</h3>
+      <ul>
+        <li>Sign in with Superset (OAuth via api.superset.sh) → hacker + handle.</li>
+        <li>Daemon: presence from hooks → Convex. Rail shows friends with LEDs and agent counts, with the "show only what I allow" settings.</li>
+        <li>Knock with a link or a Superset Page; 30 s expiry by scheduled function; "not now" / "they're looking". One open knock per pair.</li>
+        <li>Friends by handle and by invite link. Focus mode.</li>
+        <li>Rail as a docked window and as a Superset Page.</li>
+      </ul>
+      <p class="small">Done when two people on two machines see each other's LEDs change within 2 s of an agent starting, and a knock expires on its own.</p></div></div>
+
+    <div class="phase"><div class="n">Phase 2<small>3 weeks</small></div><div><h3>Crews and the Operator</h3>
+      <ul>
+        <li>Crews of 8 inside one Superset org. Crew leader = first inviter. Shared set view: every member's agents.</li>
+        <li>Daemon: on each turn stop, send the Operator a routing summary delta (agent, workspace, files touched, one line). The owner can see and edit it.</li>
+        <li>Operator service: <code>ask</code> → route → availability (idle: read now; working: read last finished turn, or wait if the question is about the change in flight; ∅: say so) → bounded transcript read via the daemon → one-line answer → relay log with the two token numbers → "+1 assist".</li>
+        <li>Plugin: <code>ask_operator</code> MCP tool and the skill that tells an agent to try the Operator before a codebase search.</li>
+        <li>Cost sharing: even split across active members, monthly cap, leader can pay all.</li>
+      </ul>
+      <p class="small">Done when an agent in one workspace gets a correct one-line answer from a crewmate's agent context without either human touching anything, and the relay appears in both hackers' logs.</p></div></div>
+
+    <div class="phase"><div class="n">Phase 3<small>2 weeks</small></div><div><h3>Eyes and jack in</h3>
+      <ul>
+        <li>Second set of eyes: 5-minute banner, one "later", join opens the sender's workspace in Superset.</li>
+        <li>Jack in levels. Watch and comment use Superset Remote Access plus a host grant scoped to the session; co-drive needs the owner's approval each session and sends prompts through Superset's terminal API with the visitor's handle prepended. Purple border while anyone co-drives.</li>
+        <li>Drops = a Superset Page pinned to the crew shelf.</li>
+      </ul></div></div>
+
+    <div class="phase"><div class="n">Phase 4<small>2 weeks</small></div><div><h3>Play</h3>
+      <ul>
+        <li>XP (assist &gt; eyes &gt; ship &gt; props &gt; ask), ranks n00b → legend, the eight badges, the wire, props on ships.</li>
+        <li>Ships from GitHub (merged PRs, non-generated files) through Superset's GitHub connection or the hacker's own token.</li>
+        <li>Boards inside a crew: assists, eyes, ships, props. No token board.</li>
+      </ul></div></div>
+
+    <div class="phase"><div class="n">Phase 5<small>3 weeks</small></div><div><h3>The tree and the tracker</h3>
+      <ul>
+        <li>DUPER nodes: pair crews (suggested from overlapping repos, confirmed by leaders), one Operator per node holding two child summaries (work only, no people), relay up and down, heads-ups for collisions and duplicates, crew-only topics.</li>
+        <li>"Where companies are built": daemon token rollups by model → company sums. Companies opt in. Expand a company to see models. No crews, no people.</li>
+      </ul></div></div>
+  </section>
+
+  <section>
+    <h2>6. Risks and open questions</h2>
+    <ul>
+      <li><b>Cross-org jack in.</b> Superset host grants are inside one org. Friends in different companies get presence, knocks and the Operator in v1, but not jack in, until an upstream change or a relay of our own.</li>
+      <li><b>Transcript privacy.</b> The daemon only ever sends a transcript slice to the Operator for an agent the owner marked open, and only for the duration of one answer. Private agents never leave the machine. This must be visible in the UI and in the logs from day one.</li>
+      <li><b>Operator cost.</b> A read of a 40k-token transcript per question. Prompt caching and a per-crew monthly cap keep it bounded; the tracker shows every hacker their share.</li>
+      <li><b>Superset changes fast.</b> We depend only on public surfaces: harness hooks, the MCP/SDK, Pages, Remote Access. The SDK is marked alpha. The daemon must never import Superset internals.</li>
+      <li><b>Token rollups are self-reported by the daemon.</b> Same as Superset's own leaderboard. The tracker labels itself "reported by members".</li>
+      <li><b>Name.</b> "soopdoop" contains Superset's trademark. Check with them before launch; the product name may need to change (the tree names DUPER and SUPERDUPERDUPERSET are internal).</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>7. First build, this session</h2>
+    <p>If the plan is approved, the first thing built is the Phase 1 slice, in this order:</p>
+    <ol>
+      <li>Scaffold the repo and the Convex schema for hackers, friendships, subsets, knocks.</li>
+      <li>The daemon with Claude Code hooks → presence in Convex (one machine first).</li>
+      <li>The rail (from the prototype) reading live presence and sending a knock, with scheduled expiry.</li>
+      <li>Sign-in with Superset and handles.</li>
+    </ol>
+    <p>Spikes 1–3 run in parallel with step 1; their results can change Phase 3 but not Phase 1.</p>
+  </section>
+</div>
