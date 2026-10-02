@@ -1,20 +1,24 @@
-// ABOUTME: Keeps the rail and the daemon running in the background as macOS LaunchAgents: they start at login and restart if they exit.
-// ABOUTME: The service list and plist text are pure functions (tested); the launchctl, lsof and open calls are thin wrappers.
+// ABOUTME: macOS LaunchAgents: the rail and the daemon run always (start at login, restart if they exit); the updater runs
+// ABOUTME: every 6 hours. The service list and plist text are pure functions (tested); launchctl, lsof and open are thin wrappers.
 import { homedir } from "node:os";
 import path from "node:path";
 
 export const RAIL_PORT = 47312;
 export const DAEMON_PORT = 47311;
 export const RAIL_URL = `http://127.0.0.1:${RAIL_PORT}/`;
+export const UPDATER_LABEL = "com.soopdoop.updater";
+export const UPDATE_EVERY_SECONDS = 6 * 60 * 60;
 
 export interface ServiceSpec {
-  name: "rail" | "daemon";
+  name: "rail" | "daemon" | "updater";
   label: string;
   program: string[];
   workingDirectory: string;
   env: Record<string, string>;
   log: string;
-  port: number;
+  // Servers listen on a port and are kept alive. A periodic job has no port and runs every `everySeconds`.
+  port?: number;
+  everySeconds?: number;
 }
 
 // root: the soopdoop checkout. bun: an absolute path, because launchd does not read your shell's PATH.
@@ -45,6 +49,16 @@ export function serviceSpecs(root: string, bun: string, home: string, soopdoopHo
       log: path.join(logs, "daemon.log"),
       port: DAEMON_PORT,
     },
+    {
+      // Checks for a new release at login and every 6 hours; installs it unless auto-update is off.
+      name: "updater",
+      label: UPDATER_LABEL,
+      program: [bun, path.join(root, "apps", "daemon", "src", "cli.ts"), "update", "--auto"],
+      workingDirectory: root,
+      env,
+      log: path.join(logs, "update.log"),
+      everySeconds: UPDATE_EVERY_SECONDS,
+    },
   ];
 }
 
@@ -52,12 +66,16 @@ function xml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-// RunAtLoad starts it at login; KeepAlive restarts it whenever it exits; ThrottleInterval spaces out restarts.
+// RunAtLoad starts it at login. A server gets KeepAlive (restart whenever it exits; ThrottleInterval spaces restarts out);
+// a periodic job gets StartInterval instead.
 export function plist(spec: ServiceSpec): string {
   const args = spec.program.map(function (a) { return `    <string>${xml(a)}</string>`; }).join("\n");
   const env = Object.entries(spec.env)
     .map(function ([k, v]) { return `    <key>${xml(k)}</key>\n    <string>${xml(v)}</string>`; })
     .join("\n");
+  const schedule = spec.everySeconds === undefined
+    ? "  <key>KeepAlive</key>\n  <true/>\n  <key>ThrottleInterval</key>\n  <integer>10</integer>"
+    : `  <key>StartInterval</key>\n  <integer>${spec.everySeconds}</integer>`;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -76,10 +94,7 @@ ${env}
   </dict>
   <key>RunAtLoad</key>
   <true/>
-  <key>KeepAlive</key>
-  <true/>
-  <key>ThrottleInterval</key>
-  <integer>10</integer>
+${schedule}
   <key>StandardOutPath</key>
   <string>${xml(spec.log)}</string>
   <key>StandardErrorPath</key>
@@ -117,6 +132,17 @@ export async function load(spec: ServiceSpec): Promise<void> {
   await unload(spec.label);
   const res = await run(["launchctl", "bootstrap", domain(), plistPath(spec.label)]);
   if (res.code !== 0) throw new Error(`launchctl could not start ${spec.label}: ${res.out.trim()}`);
+}
+
+// Writes the plist without loading it: used for the updater while it is the one running.
+export async function writePlist(spec: ServiceSpec): Promise<void> {
+  await Bun.write(plistPath(spec.label), plist(spec));
+}
+
+// Starts a loaded job now; does nothing if it is already running. The rail uses it for "Update now".
+export async function startNow(label: string): Promise<void> {
+  const res = await run(["launchctl", "kickstart", `${domain()}/${label}`]);
+  if (res.code !== 0) throw new Error(`launchctl could not start ${label}: ${res.out.trim()}`);
 }
 
 export async function restart(label: string): Promise<void> {

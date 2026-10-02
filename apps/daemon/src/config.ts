@@ -1,5 +1,5 @@
-// ABOUTME: The daemon's pairing file (~/.soopdoop/config.json): where it lives, and how to read and write it safely.
-// ABOUTME: Shared by the daemon and the rail's local server, which writes it when the rail pairs this machine.
+// ABOUTME: The files in ~/.soopdoop: the pairing (config.json) and settings (settings.json), and how to read and write them.
+// ABOUTME: Shared by the daemon, the CLI and the rail's local server, which writes the pairing when the rail pairs this machine.
 import { chmod, mkdir, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -54,4 +54,28 @@ export async function configStamp(file: string = configPath()): Promise<number> 
   } catch {
     return 0;
   }
+}
+
+// Preferences, apart from the pairing so pairing again never resets them.
+export interface Settings {
+  // On unless turned off: the updater job installs new releases by itself.
+  autoUpdate: boolean;
+}
+
+export function settingsPath(home: string = soopdoopHome()): string {
+  return path.join(home, "settings.json");
+}
+
+export async function readSettings(file: string = settingsPath()): Promise<Settings> {
+  try {
+    const raw: unknown = await Bun.file(file).json();
+    return { autoUpdate: !(isRecord(raw) && raw.autoUpdate === false) };
+  } catch {
+    return { autoUpdate: true };
+  }
+}
+
+export async function writeSettings(settings: Settings, file: string = settingsPath()): Promise<void> {
+  await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  await Bun.write(file, JSON.stringify(settings, null, 2) + "\n");
 }

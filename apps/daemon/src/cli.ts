@@ -1,18 +1,22 @@
 #!/usr/bin/env bun
-// ABOUTME: The soopdoop CLI: one-command setup, the background services, hooks, and the daemon itself (`serve`, `hook`).
+// ABOUTME: The soopdoop CLI: one-command setup, updates, the background services, hooks, and the daemon itself (`serve`, `hook`).
 // ABOUTME: `serve` listens on localhost for hook posts, keeps the subset, and reports it to Convex once this machine is paired.
 import { lstat, readlink, stat, symlink, unlink as removeFile } from "node:fs/promises";
 import { hostname, homedir } from "node:os";
 import path from "node:path";
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
-import { configPath, configStamp, readConfig, soopdoopHome, writeConfig, type Config } from "./config";
+import { configPath, configStamp, readConfig, readSettings, soopdoopHome, writeConfig, writeSettings, type Config } from "./config";
 import { forwardHook } from "./hook";
 import { claudeSettingsPath, guardedHook, installClaudeHooks, prefixedHook, uninstallClaudeHooks } from "./hooks";
 import {
-  answers, DAEMON_PORT, isLoaded, load, openInBrowser, plistPath, portOwner, RAIL_URL, restart, serviceSpecs, unload, waitFor,
+  answers, DAEMON_PORT, isLoaded, load, openInBrowser, plistPath, portOwner, RAIL_URL, restart, serviceSpecs, unload, waitFor, writePlist,
 } from "./service";
 import { apply, parseHookEvent, sweep, toReport, type Subset } from "./state";
+import {
+  applyUpdate, checkForUpdate, currentVersion, defaultSteps, installDir, isInstall, isNewer, parseVersion, readUpdateState,
+  releasePage, tagFor, takeUpdateRequest,
+} from "./update";
 
 // SOOPDOOP_PORT exists so tests and a second daemon never take the real port.
 const PORT = Number(process.env.SOOPDOOP_PORT ?? String(DAEMON_PORT));
@@ -165,50 +169,64 @@ async function setup(args: string[]): Promise<void> {
   if (inviteAt !== -1 && (invite === undefined || !/^[a-f0-9]{32}$/.test(invite))) {
     throw new Error("--invite needs the code from the invite message, 32 letters and digits.");
   }
+  // For updates, which run the new version's setup: --quiet prints nothing, and --keep-updater leaves the updater job
+  // loaded because it is the process doing the update. Every version's setup must keep accepting these flags.
+  const quiet = args.includes("--quiet");
+  const keepUpdater = args.includes("--keep-updater");
+  function say(line: string): void {
+    if (!quiet) console.log(line);
+  }
   const home = soopdoopHome();
-  console.log(`soopdoop setup · ${tilde(ROOT)}\n`);
+  say(`soopdoop setup · v${await currentVersion(ROOT)} · ${tilde(ROOT)}\n`);
 
   if (!bunIsNewEnough(Bun.version)) {
     throw new Error(`soopdoop needs Bun ${MIN_BUN.join(".")} or newer; this is ${Bun.version}. Run \`bun upgrade\`, then this again.`);
   }
-  console.log(`· Bun ${Bun.version}`);
+  say(`· Bun ${Bun.version}`);
 
   // Hooks: how Claude Code tells the daemon which sessions are running.
   if (await isDirectory(path.dirname(claudeSettingsPath()))) {
     const backup = await backUpClaudeSettings();
     await installClaudeHooks(guardedHook(process.execPath, HOOK_FILE));
-    console.log(`· Claude Code hooks added to ${tilde(claudeSettingsPath())}${backup === null ? "" : ` (your old file: ${tilde(backup)})`}`);
+    say(`· Claude Code hooks added to ${tilde(claudeSettingsPath())}${backup === null ? "" : ` (your old file: ${tilde(backup)})`}`);
   } else {
-    console.log("· Claude Code not found (no ~/.claude). Your agents will not show until you install it and run setup again.");
+    say("· Claude Code not found (no ~/.claude). Your agents will not show until you install it and run setup again.");
   }
 
   const link = await linkCommand();
-  if (link !== null) console.log(`· \`soopdoop\` command: ${tilde(link)}`);
+  if (link !== null) say(`· \`soopdoop\` command: ${tilde(link)}`);
 
   if (process.platform !== "darwin") {
-    console.log(`\nBackground services are macOS-only for now. Run these two, each in its own terminal:\n` +
-      `  bun ${ROOT}/apps/daemon/src/cli.ts serve\n  bun ${ROOT}/apps/rail/serve.ts\nThen open ${RAIL_URL}`);
+    say(`\nBackground services are macOS-only for now. Run these two, each in its own terminal:\n` +
+      `  bun ${ROOT}/apps/daemon/src/cli.ts serve\n  bun ${ROOT}/apps/rail/serve.ts\nThen open ${RAIL_URL}. Update with \`soopdoop update\`.`);
     return;
   }
 
   // Background services. Stop ours first, so a port still taken afterwards belongs to something else.
-  const specs = serviceSpecs(ROOT, process.execPath, home, process.env.SOOPDOOP_HOME);
+  const all = serviceSpecs(ROOT, process.execPath, home, process.env.SOOPDOOP_HOME);
+  const specs = all.filter(function (s) { return !(keepUpdater && s.name === "updater"); });
   for (const spec of specs) await unload(spec.label);
   for (const spec of specs) {
-    const freed = await waitFor(async function () { return (await portOwner(spec.port)) === null; }, 5_000);
+    const port = spec.port;
+    if (port === undefined) continue;
+    const freed = await waitFor(async function () { return (await portOwner(port)) === null; }, 5_000);
     if (!freed) {
-      const owner = await portOwner(spec.port);
-      throw new Error(`Port ${spec.port} is taken by pid ${owner?.pid ?? "?"} (${owner?.command ?? "unknown"}). ` +
+      const owner = await portOwner(port);
+      throw new Error(`Port ${port} is taken by pid ${owner?.pid ?? "?"} (${owner?.command ?? "unknown"}). ` +
         `If that is an older soopdoop you started by hand, stop it with \`kill ${owner?.pid ?? "<pid>"}\`, then run setup again.`);
     }
   }
   for (const spec of specs) await load(spec);
+  // The updater is the one running this: write its plist now, it is read on the next load.
+  for (const spec of all) if (keepUpdater && spec.name === "updater") await writePlist(spec);
   const railUp = await waitFor(function () { return answers(`${RAIL_URL}config.json`); }, 30_000);
   const daemonUp = await waitFor(function () { return answers(`http://127.0.0.1:${DAEMON_PORT}/status`); }, 10_000);
   if (!railUp || !daemonUp) {
     throw new Error(`The ${railUp ? "daemon" : "rail"} did not start. Its log: ${tilde(path.join(home, "logs", railUp ? "daemon.log" : "rail.log"))}`);
   }
-  console.log("· The rail and the daemon run in the background, and start again when you log in.");
+  say("· The rail and the daemon run in the background and start again when you log in.");
+  say(`· New releases install themselves within 6 hours${(await readSettings()).autoUpdate ? "" : " (auto-update is off here)"}. \`soopdoop auto-update off\` stops that.`);
+  if (quiet) return;
 
   const url = invite === undefined ? RAIL_URL : `${RAIL_URL}?invite=${invite}`;
   const opened = !args.includes("--no-open");
@@ -230,12 +248,29 @@ async function setup(args: string[]): Promise<void> {
   console.log(`\nLater: \`soopdoop status\`, \`soopdoop logs\`, \`soopdoop update\`, \`soopdoop uninstall\`.`);
 }
 
+function ago(ms: number): string {
+  const minutes = Math.round((Date.now() - ms) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 48 ? `${hours} h ago` : `${Math.round(hours / 24)} days ago`;
+}
+
 async function status(): Promise<void> {
   const home = soopdoopHome();
-  const git = Bun.spawnSync(["git", "-C", ROOT, "log", "-1", "--format=%h %s"], { stdout: "pipe", stderr: "pipe" });
-  console.log(`soopdoop · ${tilde(ROOT)} · ${git.stdout.toString().trim() || "not a git checkout"}`);
+  const version = await currentVersion(ROOT);
+  const settings = await readSettings();
+  const state = await readUpdateState();
+  console.log(`soopdoop v${version} · ${tilde(ROOT)} · ${(await isInstall(ROOT)) ? "install" : "development checkout"}`);
+  const latest = state.latest === undefined ? "not checked yet" : isNewer(state.latest, version) ? `${state.latest} is out` : "up to date";
+  const checked = state.checkedAt === undefined ? "" : ` (checked ${ago(state.checkedAt)})`;
+  console.log(`updates ${settings.autoUpdate ? "install themselves" : "auto-update off"} · ${latest}${checked}${state.error === undefined ? "" : ` · last problem: ${state.error}`}`);
   for (const spec of serviceSpecs(ROOT, process.execPath, home)) {
     const loaded = process.platform === "darwin" ? await isLoaded(spec.label) : false;
+    if (spec.port === undefined) {
+      console.log(`${spec.name.padEnd(7)} ${loaded ? "every 6 hours, and at login" : "not scheduled"} · log ${tilde(spec.log)}`);
+      continue;
+    }
     const up = await answers(spec.name === "rail" ? `${RAIL_URL}config.json` : `http://127.0.0.1:${spec.port}/status`);
     const where = spec.name === "rail" ? RAIL_URL : `127.0.0.1:${spec.port}`;
     console.log(`${spec.name.padEnd(7)} ${up ? "running" : "not answering"} · ${where} · ${loaded ? "background service" : "no background service"} · log ${tilde(spec.log)}`);
@@ -247,24 +282,49 @@ async function status(): Promise<void> {
     console.log(`paired  config unreadable: ${e instanceof Error ? e.message : String(e)}`);
   }
   console.log(`paired  ${config === null ? `no · sign in at ${RAIL_URL}` : `yes · ${config.convexUrl}`}`);
-  const settings = Bun.file(claudeSettingsPath());
-  const ours = (await settings.exists()) && (await settings.text()).includes(HOOK_FILE);
+  const claude = Bun.file(claudeSettingsPath());
+  const ours = (await claude.exists()) && (await claude.text()).includes(HOOK_FILE);
   console.log(`hooks   ${ours ? "installed" : "not installed for this checkout"} · ${tilde(claudeSettingsPath())}`);
 }
 
-async function update(): Promise<void> {
-  const pull = Bun.spawnSync(["git", "-C", ROOT, "pull", "--ff-only"], { stdout: "inherit", stderr: "inherit" });
-  if (pull.exitCode !== 0) {
-    throw new Error(`git pull failed in ${tilde(ROOT)}. If its branch is gone from GitHub, run \`git -C ${tilde(ROOT)} switch main\`, then update again.`);
+// `soopdoop update` installs the newest release; `--to vX.Y.Z` moves to that release (also back);
+// `--auto` is the updater job: it installs only when auto-update is on or the rail asked.
+async function update(args: string[]): Promise<void> {
+  const auto = args.includes("--auto");
+  const toAt = args.indexOf("--to");
+  const to = toAt === -1 ? undefined : args[toAt + 1];
+  function log(line: string): void {
+    console.log(auto ? `${new Date().toISOString()} ${line}` : line);
   }
-  const install = Bun.spawnSync([process.execPath, "install"], { cwd: ROOT, stdout: "inherit", stderr: "inherit" });
-  if (install.exitCode !== 0) throw new Error("bun install failed.");
-  if (process.platform === "darwin") {
-    for (const spec of serviceSpecs(ROOT, process.execPath, soopdoopHome())) {
-      if (await isLoaded(spec.label)) await restart(spec.label);
+  if (!(await isInstall(ROOT))) {
+    throw new Error(`${tilde(ROOT)} is a development checkout on a branch; update it with git. ` +
+      `\`soopdoop update\` is for installs (${tilde(installDir())}).`);
+  }
+  let target: string;
+  if (to !== undefined) {
+    const v = parseVersion(to);
+    if (v === null) throw new Error(`--to needs a release like v0.1.0, not ${to}.`);
+    target = tagFor(v);
+  } else {
+    const check = await checkForUpdate(ROOT);
+    const requested = auto ? await takeUpdateRequest() : false;
+    if (check.latest === null) {
+      log("No releases yet.");
+      return;
     }
+    if (!check.newer) {
+      log(`Up to date: v${check.current}.`);
+      return;
+    }
+    if (auto && !requested && !(await readSettings()).autoUpdate) {
+      log(`${check.latest} is out. Auto-update is off; run \`soopdoop update\` to install it.`);
+      return;
+    }
+    target = check.latest;
   }
-  console.log("Updated and restarted.");
+  log(`Updating to ${target}…`);
+  const done = await applyUpdate(ROOT, target, defaultSteps(auto));
+  log(`Updated v${done.from} → ${done.to}. What's new: ${releasePage(done.to)}`);
 }
 
 async function uninstall(): Promise<void> {
@@ -275,7 +335,7 @@ async function uninstall(): Promise<void> {
       await unload(spec.label);
       await removeFile(plistPath(spec.label)).catch(function () { /* already gone */ });
     }
-    console.log("· Stopped the background rail and daemon.");
+    console.log("· Stopped the background rail, daemon and updater.");
   }
   const link = path.join(path.dirname(process.execPath), "soopdoop");
   try {
@@ -288,15 +348,16 @@ async function uninstall(): Promise<void> {
 
 async function logs(): Promise<void> {
   const home = soopdoopHome();
-  const files = ["rail.log", "daemon.log"].map(function (f) { return path.join(home, "logs", f); });
+  const files = ["rail.log", "daemon.log", "update.log"].map(function (f) { return path.join(home, "logs", f); });
   await Bun.spawn(["tail", "-n", "40", "-F", ...files], { stdout: "inherit", stderr: "inherit" }).exited;
 }
 
 const HELP = `soopdoop setup [--invite <code>] [--no-open]   install, run in the background, open the rail
-soopdoop status                                 what is running, paired, hooked
+soopdoop status | version                       what is running, paired, hooked, which version
 soopdoop open | logs                            open the rail · follow the logs
-soopdoop start | stop | restart                 the background rail and daemon
-soopdoop update                                 git pull, bun install, restart
+soopdoop update [--to <version>]                install the newest release (or move to one, also back)
+soopdoop auto-update [on|off]                   whether new releases install themselves (on by default)
+soopdoop start | stop | restart                 the background services
 soopdoop uninstall                              remove hooks and background services
 soopdoop pair <convex-url> <token>              pair by hand (the rail does this for you)
 soopdoop install-hooks | uninstall-hooks | serve | hook <event>`;
@@ -309,6 +370,10 @@ try {
       break;
     case "status":
       await status();
+      break;
+    case "version":
+    case "--version":
+      console.log(`v${await currentVersion(ROOT)}`);
       break;
     case "open":
       await openInBrowser(RAIL_URL);
@@ -323,11 +388,25 @@ try {
       for (const spec of serviceSpecs(ROOT, process.execPath, soopdoopHome())) await unload(spec.label);
       break;
     case "restart":
-      for (const spec of serviceSpecs(ROOT, process.execPath, soopdoopHome())) await restart(spec.label);
+      for (const spec of serviceSpecs(ROOT, process.execPath, soopdoopHome())) {
+        if (spec.port !== undefined) await restart(spec.label);
+      }
       break;
     case "update":
-      await update();
+      await update(rest);
       break;
+    case "auto-update": {
+      const value = rest[0];
+      if (value !== "on" && value !== "off") {
+        console.log(`Auto-update is ${(await readSettings()).autoUpdate ? "on" : "off"}. Change it with: soopdoop auto-update on|off`);
+        break;
+      }
+      await writeSettings({ autoUpdate: value === "on" });
+      console.log(value === "on"
+        ? "Auto-update on: new releases install themselves within 6 hours."
+        : "Auto-update off. The rail says when a release is out; `soopdoop update` installs it.");
+      break;
+    }
     case "uninstall":
       await uninstall();
       break;
