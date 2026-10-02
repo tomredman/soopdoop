@@ -26,6 +26,25 @@ export interface HookEvent {
 
 export type Subset = Map<string, AgentRecord>;
 
+export function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null && !Array.isArray(x);
+}
+
+// Reads a hook payload off the wire. Only the event name and session id are required; the rest is optional.
+// Returns null for anything that is not a usable event, so a stray POST can never poison the subset.
+export function parseHookEvent(raw: unknown): HookEvent | null {
+  if (!isRecord(raw)) return null;
+  const event = raw.hook_event_name;
+  const sessionId = raw.session_id;
+  if (typeof event !== "string" || event === "") return null;
+  if (typeof sessionId !== "string" || sessionId === "") return null;
+  const ev: HookEvent = { hook_event_name: event, session_id: sessionId };
+  if (typeof raw.cwd === "string") ev.cwd = raw.cwd;
+  if (typeof raw.transcript_path === "string") ev.transcript_path = raw.transcript_path;
+  if (typeof raw.message === "string") ev.message = raw.message;
+  return ev;
+}
+
 function nameFromCwd(cwd: string | undefined): string {
   if (cwd === undefined || cwd === "") return "agent";
   const parts = cwd.split("/").filter(Boolean);

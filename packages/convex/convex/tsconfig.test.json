@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["bun-types"]
+  },
+  "include": ["./**/*.test.ts", "./testing.helpers.ts"],
+  "exclude": ["./_generated"]
+}

@@ -4,7 +4,16 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "echo 'Phase 1 step 3: wire prototype.html to Convex (see README)'",
-    "typecheck": "echo skip"
+    "dev": "bun run serve.ts",
+    "build": "bun build ./index.html --outdir dist --minify",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@soopdoop/convex": "workspace:*",
+    "convex": "^1.30.0"
+  },
+  "devDependencies": {
+    "bun-types": "^1.2.0",
+    "typescript": "^5.6.0"
   }
 }

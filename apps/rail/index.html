@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>soopdoop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="./src/rail.css">
+</head>
+<body>
+<div class="rail" id="app">
+  <header class="titlebar">
+    <span class="logo">soop<span>doop</span></span>
+    <span class="grow"></span>
+    <span class="who" id="who" hidden></span>
+    <button class="btn tiny" type="button" id="focusBtn" hidden aria-haspopup="true" aria-controls="focusMenu">focus</button>
+    <button class="btn tiny" type="button" id="settingsBtn" hidden aria-expanded="false" aria-controls="settings" aria-label="Settings">⚙</button>
+  </header>
+  <div class="focusmenu" id="focusMenu" hidden>
+    <span class="note">Hide from the rail and block knocks for</span>
+    <button class="btn tiny" type="button" data-min="25">25m</button>
+    <button class="btn tiny" type="button" data-min="50">50m</button>
+    <button class="btn tiny" type="button" data-min="90">90m</button>
+    <button class="btn tiny" type="button" data-min="off">off</button>
+  </div>
+  <p class="note flash" id="flash" role="status" hidden></p>
+
+  <section id="screen-boot" class="screen"><p class="note">connecting…</p></section>
+
+  <section id="screen-error" class="screen" hidden><p class="err" id="errorText"></p></section>
+
+  <section id="screen-signin" class="screen">
+    <p class="lede">Your Superset, with your crew in it.</p>
+    <button class="btn primary" type="button" id="signin">Sign in with Superset</button>
+    <p class="err" id="signinNote" hidden></p>
+    <p class="note">soopdoop asks Superset who you are. It never sees your password.</p>
+  </section>
+
+  <section id="screen-handle" class="screen" hidden>
+    <form id="handleForm" class="stackform">
+      <label for="handleInput">Pick a handle</label>
+      <input id="handleInput" autocomplete="off" spellcheck="false" placeholder="e.g. tom" maxlength="39" required>
+      <p class="note">2 to 39 characters: lowercase letters, digits, single hyphens. Friends find you by it.</p>
+      <button class="btn primary" type="submit">Claim it</button>
+      <p class="err" id="handleError" hidden></p>
+    </form>
+  </section>
+
+  <section id="screen-rail" class="screen" hidden>
+    <div class="stack" id="stack"></div>
+    <div class="pending" id="pending" hidden></div>
+
+    <section id="settings" class="settings" hidden>
+      <h3 class="sec">Friends can see</h3>
+      <label class="check"><input type="checkbox" id="shareAgentNames"> agent names</label>
+      <label class="check"><input type="checkbox" id="shareWorkspaceNames"> workspace names</label>
+      <p class="note">Friends always see whether you are online and how many agents run. Private agents are never shown.</p>
+
+      <h3 class="sec">Add a friend</h3>
+      <form id="addFriend" class="row"><input id="addHandle" placeholder="their handle" autocomplete="off" spellcheck="false" required><button class="btn" type="submit">Ask</button></form>
+      <button class="btn" type="button" id="inviteBtn">Make an invite link</button>
+      <p class="note mono wrap" id="inviteOut" hidden></p>
+
+      <h3 class="sec">This machine</h3>
+      <form id="pairForm" class="row"><input id="machineName" placeholder="machine name" autocomplete="off" required><button class="btn" type="submit">Pair the daemon</button></form>
+      <pre class="mono wrap" id="pairOut" hidden></pre>
+
+      <button class="btn" type="button" id="signout">Sign out</button>
+    </section>
+
+    <h3 class="sec">Your subset</h3>
+    <div id="mine" class="list"></div>
+
+    <h3 class="sec">Friends <span class="count" id="friendCount"></span></h3>
+    <div id="pendingRequests" class="list"></div>
+    <div id="roster" class="list"></div>
+
+    <h3 class="sec" id="sentHead" hidden>You knocked</h3>
+    <div id="sent" class="list"></div>
+
+    <div class="legend"><span><i class="led g"></i>working</span><span><i class="led b"></i>idle</span><span><i class="led x"></i>off</span></div>
+  </section>
+
+  <div class="composer" id="composer" hidden>
+    <form id="knockForm" class="stackform">
+      <div class="row wrap-row"><b id="knockTo"></b><span class="note">sees this for</span>
+        <select id="knockLife"><option value="10000">10 s</option><option value="30000" selected>30 s</option><option value="120000">2 min</option></select>
+      </div>
+      <div class="row">
+        <select id="knockKind"><option value="link">link</option><option value="page">page</option><option value="file">file</option><option value="session">session</option></select>
+        <input id="knockTitle" placeholder="What is it? e.g. the coupon fix" maxlength="120" required>
+      </div>
+      <input id="knockUrl" placeholder="https://… (optional)" type="url">
+      <input id="knockNote" placeholder="One line, optional" maxlength="140">
+      <div class="row"><button class="btn primary" type="submit">Knock</button><button class="btn" type="button" id="knockCancel">Cancel</button></div>
+      <p class="err" id="knockError" hidden></p>
+    </form>
+  </div>
+</div>
+<script type="module" src="./src/main.ts"></script>
+</body>
+</html>
