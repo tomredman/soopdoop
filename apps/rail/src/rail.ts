@@ -7,6 +7,8 @@ import { profilePageUrl } from "@soopdoop/convex/convex/lib/supersetProfile";
 import { byId, el, input, replaceChildren, ring, select } from "./dom";
 import { cleanError, countdown, initials, minutesLeft, ringOffset } from "./format";
 import { inviteMessage, takeInvite } from "./invite";
+import { postLocal, readLocal, type Local } from "./local-api";
+import { mountUpdates } from "./updates";
 
 type Me = NonNullable<FunctionReturnType<typeof api.hackers.me>>;
 type Friend = FunctionReturnType<typeof api.friends.list>[number];
@@ -46,7 +48,10 @@ export function mountRail(client: ConvexClient, current: Me, options: RailOption
   wireSettings(client, options);
   wireComposer(client);
   void redeemSavedInvite(client);
-  void connectThisMachine(client);
+  void readLocal().then(function (local) {
+    void connectThisMachine(client, local);
+    if (local !== null) mountUpdates(local, flash);
+  });
   setInterval(renderMe, 30_000);
   setInterval(renderSent, 1_000);
 }
@@ -311,7 +316,9 @@ function wireSettings(client: ConvexClient, options: RailOptions): void {
       flash("Unlinked. Friends no longer see your Superset profile.");
     }).catch(fail);
   });
-  byId("connectBtn").addEventListener("click", function () { void connectThisMachine(client); });
+  byId("connectBtn").addEventListener("click", function () {
+    void readLocal().then(function (local) { void connectThisMachine(client, local); });
+  });
   byId("signout").addEventListener("click", options.onSignOut);
 }
 
@@ -367,29 +374,11 @@ async function redeemSavedInvite(client: ConvexClient): Promise<void> {
   }
 }
 
-function isRecord(x: unknown): x is Record<string, unknown> {
-  return typeof x === "object" && x !== null && !Array.isArray(x);
-}
-
-// What this machine's rail server says about pairing. Null when the page is not served by a soopdoop rail server.
-async function readLocal(): Promise<{ machine: string; paired: boolean } | null> {
-  try {
-    const res = await fetch("/local", { cache: "no-store" });
-    if (!res.ok) return null;
-    const raw: unknown = await res.json();
-    if (!isRecord(raw) || typeof raw.machine !== "string" || typeof raw.paired !== "boolean") return null;
-    return { machine: raw.machine, paired: raw.paired };
-  } catch {
-    return null;
-  }
-}
-
 // Pairs this machine with no terminal step: Convex mints a daemon token, this machine's rail server writes it
 // where the daemon reads it, and the daemon starts reporting within a second. Runs once per page load.
-async function connectThisMachine(client: ConvexClient): Promise<void> {
+async function connectThisMachine(client: ConvexClient, local: Local | null): Promise<void> {
   const note = byId("machineNow");
   const button = byId("connectBtn");
-  const local = await readLocal();
   if (local === null) {
     note.textContent = "Not served by soopdoop on this machine. Run `soopdoop setup` here to connect it.";
     button.hidden = true;
@@ -404,12 +393,9 @@ async function connectThisMachine(client: ConvexClient): Promise<void> {
   note.textContent = `${local.machine} · connecting…`;
   try {
     const token = await client.mutation(api.subsets.pairDaemon, { machineName: local.machine });
-    const res = await fetch("/local/pair", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token }) });
+    const res = await postLocal("/local/pair", { token });
     // 409: another tab paired it first. Connected either way.
-    if (!res.ok && res.status !== 409) {
-      const body: unknown = await res.json().catch(function () { return null; });
-      throw new Error(isRecord(body) && typeof body.error === "string" ? body.error : `the rail server answered ${res.status}`);
-    }
+    if (!res.ok && res.status !== 409) throw new Error(res.error ?? "pairing failed");
     note.textContent = connected;
     button.hidden = true;
     flash(`${local.machine} is connected. Claude Code sessions show up here on their next prompt or tool call.`);

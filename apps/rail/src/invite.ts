@@ -1,6 +1,6 @@
 // ABOUTME: Invites in the rail: the message an inviter sends, and keeping an invite code through the Superset sign-in.
 // ABOUTME: Sign-in leaves the page and comes back to a URL without ?invite=, so the code waits in storage until redeemed.
-import { INSTALL_DIR, RAIL_ORIGIN, REPO_URL } from "./config";
+import { INSTALL_SCRIPT_URL, RAIL_ORIGIN } from "./config";
 
 const KEY = "soopdoop.invite";
 // friends.createInvite makes a UUID without hyphens.
@@ -27,13 +27,13 @@ export function takeInvite(storage: Storage): string | null {
   return code;
 }
 
-// One line installs soopdoop and opens the invite (or just opens it, when soopdoop is already there).
-// The plain link is for someone who already runs soopdoop.
+// One line installs the newest release and opens the invite (when soopdoop is already there, it updates it and opens
+// the invite). The plain link is for someone who already runs soopdoop.
 export function inviteMessage(code: string, from: string): string {
   return [
     `@${from} invited you to soopdoop. Paste this into Terminal:`,
     "",
-    `[ -d ${INSTALL_DIR} ] || git clone ${REPO_URL} ${INSTALL_DIR}; ${INSTALL_DIR}/bin/soopdoop setup --invite ${code}`,
+    `curl -fsSL ${INSTALL_SCRIPT_URL} | bash -s -- --invite ${code}`,
     "",
     `Already running soopdoop? Open ${RAIL_ORIGIN}/?invite=${code}`,
     "The invite works once, for 7 days.",

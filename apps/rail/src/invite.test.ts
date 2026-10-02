@@ -33,9 +33,7 @@ describe("invites", function () {
   test("the message installs soopdoop and opens the invite in one line", function () {
     const lines = inviteMessage(CODE, "tom").split("\n");
     expect(lines[0]).toBe("@tom invited you to soopdoop. Paste this into Terminal:");
-    expect(lines).toContain(
-      `[ -d ~/.soopdoop/app ] || git clone https://github.com/tomredman/soopdoop.git ~/.soopdoop/app; ~/.soopdoop/app/bin/soopdoop setup --invite ${CODE}`,
-    );
+    expect(lines).toContain(`curl -fsSL https://raw.githubusercontent.com/tomredman/soopdoop/main/install.sh | bash -s -- --invite ${CODE}`);
     expect(lines).toContain(`Already running soopdoop? Open http://127.0.0.1:47312/?invite=${CODE}`);
   });
 });

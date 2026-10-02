@@ -121,6 +121,10 @@ h3.sec .count { color: var(--dim); font-weight: 400; }
 .legend { display: flex; gap: 10px; font: 10px var(--mono); color: var(--dim); padding: 8px 6px 0; border-top: 1px solid var(--line); margin-top: auto; }
 .legend span { display: inline-flex; gap: 4px; align-items: center; }
 .legend .led { width: 6px; height: 6px; }
+.legend .ver { color: var(--dim); text-decoration: none; }
+.legend .ver:hover { color: var(--muted); }
+.update-note { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 6px 8px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel-2); font: 11.5px var(--mono); color: var(--text); }
+.update-note a { color: var(--text); text-decoration: underline; text-decoration-color: var(--dim); }
 
 /* Forms */
 input, select { font: 12.5px var(--mono); color: var(--text); background: var(--ground); border: 1px solid var(--line-2); border-radius: 6px; padding: 7px 9px; min-width: 0; }

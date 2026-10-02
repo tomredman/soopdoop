@@ -26,7 +26,7 @@ Most people never run it by hand: `bin/soopdoop setup` runs `serve.ts` as a back
 bun run rail            # http://127.0.0.1:47312/, hot reload (stop the service first: bin/soopdoop stop)
 ```
 
-`serve.ts` serves the page through Bun's bundler, answers `/config.json` with the Convex URL (from `CONVEX_URL`, else `packages/convex/.env.local`, else the shared dev deployment in `src/config.ts`), forwards the sign-in token exchange (`/oauth/token`, below), and pairs this machine (`/local`, below). `bun run build` writes a static copy to `dist/`; it can show the rail but cannot finish a sign-in or pair a machine, because nothing answers `/oauth/token` or `/local` there.
+`serve.ts` serves the page through Bun's bundler, answers `/config.json` with the Convex URL (from `CONVEX_URL`, else `packages/convex/.env.local` for a development checkout, else the production deployment in `src/config.ts`), forwards the sign-in token exchange (`/oauth/token`, below), and answers `/local` (pairing, version and updates, below). `bun run build` writes a static copy to `dist/`; it can show the rail but cannot finish a sign-in or pair a machine, because nothing answers `/oauth/token` or `/local` there.
 
 Use `127.0.0.1`, not `localhost`: the Superset OAuth client is registered for `http://127.0.0.1:47312/` and the page redirects a localhost tab there.
 
@@ -40,11 +40,15 @@ If Convex refuses the token, the rail signs out and shows Convex's reason on the
 
 ## Pairing this machine
 
-After sign-in the page asks its own server `GET /local` whether this machine is paired. If not, it asks Convex for a daemon token (`subsets.pairDaemon`, named after the machine, e.g. `mbp16`) and posts it to `POST /local/pair`. The server writes `~/.soopdoop/config.json` (mode 600) with its own Convex URL, and the daemon starts reporting within a second. `src/local.ts` takes the pairing only from the rail's own origin, answers `/local` only to the rail's own Host, and does not replace a working pairing unless asked.
+After sign-in the page asks its own server `GET /local` whether this machine is paired with the deployment this rail uses. If not, it asks Convex for a daemon token (`subsets.pairDaemon`, named after the machine, e.g. `mbp16`) and posts it to `POST /local/pair`. The server writes `~/.soopdoop/config.json` (mode 600) with its own Convex URL, and the daemon starts reporting within a second. `src/local.ts` takes the pairing only from the rail's own origin, answers `/local` only to the rail's own Host, and does not replace a working pairing with the same deployment unless asked. A pairing with another deployment (a machine that moved from dev to production) is replaced.
+
+## Version and updates
+
+`GET /local` also says which version runs, the newest release the updater has seen, whether auto-update is on, and whether an update is running or failed (`src/updates.ts` shows it). The version sits at the bottom right and links to its release notes. When a newer release is out, a note says so; "Update now" posts to `POST /local/update`, which asks the background updater (`com.soopdoop.updater`) to install it now. The updater restarts the rail, and the page reloads when the version changes. ⚙ → This machine has the auto-update switch (`POST /local/settings`).
 
 ## Invites
 
-An invite link carries `?invite=<code>`. Sign-in leaves the page for Superset and comes back without the query string, so `src/invite.ts` keeps the code in `localStorage` until the invitee has a handle, then redeems it once. "Invite someone new" copies a message whose one line clones the code, runs `setup --invite <code>`, and so opens this page with the code.
+An invite link carries `?invite=<code>`. Sign-in leaves the page for Superset and comes back without the query string, so `src/invite.ts` keeps the code in `localStorage` until the invitee has a handle, then redeems it once. "Invite someone new" copies a message whose one line runs the installer with `--invite <code>`, which installs the newest release and opens this page with the code.
 
 ## Superset profiles
 

@@ -1,5 +1,5 @@
 // ABOUTME: Fixed facts the rail needs: the Superset OAuth client it registered, its own origin, how to find Convex,
-// ABOUTME: and where invitees get the code. The client id is public (PKCE, no secret), bound to http://127.0.0.1:47312/.
+// ABOUTME: and where installs and releases live. The client id is public (PKCE, no secret), bound to http://127.0.0.1:47312/.
 
 export const SUPERSET_ISSUER = "https://api.superset.sh";
 export const SUPERSET_CLIENT_ID = "gWmZSWArIkMusxcjDPhyXqKfhSiDBced";
@@ -8,12 +8,12 @@ export const RAIL_ORIGIN = `http://127.0.0.1:${RAIL_PORT}`;
 export const REDIRECT_URI = `${RAIL_ORIGIN}/`;
 export const SCOPES = "openid profile email offline_access";
 
-// The shared dev deployment everyone in the trial uses (Convex team vibes, project soopdoop). Not a secret: it only
-// names the backend, and every public function behind it checks a Superset sign-in or a daemon token.
-export const DEFAULT_CONVEX_URL = "https://nautical-dalmatian-541.convex.cloud";
-// Where an invitee gets the code (a private repository: they need read access), and where setup puts it.
-export const REPO_URL = "https://github.com/tomredman/soopdoop.git";
-export const INSTALL_DIR = "~/.soopdoop/app";
+// The production deployment every install uses (Convex team vibes, project soopdoop). Only `bun run release` deploys
+// to it. Not a secret: it only names the backend, and every public function checks a Superset sign-in or a daemon token.
+export const DEFAULT_CONVEX_URL = "https://fleet-skunk-723.convex.cloud";
+// The installer puts the newest release in ~/.soopdoop/app and runs its setup.
+export const INSTALL_SCRIPT_URL = "https://raw.githubusercontent.com/tomredman/soopdoop/main/install.sh";
+export const RELEASES_URL = "https://github.com/tomredman/soopdoop/releases";
 
 const URL_KEY = "soopdoop.convexUrl";
 

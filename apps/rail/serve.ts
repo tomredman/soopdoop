@@ -1,9 +1,10 @@
 // ABOUTME: The rail's local server on 127.0.0.1:47312: serves index.html through Bun's bundler, answers /config.json,
-// ABOUTME: forwards the OAuth token exchange the page cannot make itself, and lets the page pair this machine (/local).
+// ABOUTME: forwards the OAuth token exchange the page cannot make itself, and answers /local: pairing, version, updates.
 import path from "node:path";
+import { currentVersion } from "@soopdoop/daemon/src/update";
 import index from "./index.html";
 import { DEFAULT_CONVEX_URL } from "./src/config";
-import { localInfo, pairHere } from "./src/local";
+import { localInfo, pairHere, settingsHere, updateHere, type LocalServer } from "./src/local";
 import { exchange } from "./src/token-proxy";
 
 const PORT = Number(process.env.RAIL_PORT ?? "47312");
@@ -27,6 +28,13 @@ async function convexUrl(): Promise<string> {
 }
 
 const url = await convexUrl();
+const server: LocalServer = {
+  railOrigin: ORIGIN,
+  convexUrl: url,
+  version: await currentVersion(path.join(import.meta.dir, "..", "..")),
+  // Only setup's background services come with the updater job that "Update now" starts.
+  canUpdate: SERVICE && process.platform === "darwin",
+};
 
 Bun.serve({
   hostname: "127.0.0.1",
@@ -45,12 +53,22 @@ Bun.serve({
     },
     "/local": {
       GET: function (req) {
-        return localInfo(req, ORIGIN);
+        return localInfo(req, server);
       },
     },
     "/local/pair": {
       POST: function (req) {
-        return pairHere(req, ORIGIN, url);
+        return pairHere(req, server);
+      },
+    },
+    "/local/update": {
+      POST: function (req) {
+        return updateHere(req, server);
+      },
+    },
+    "/local/settings": {
+      POST: function (req) {
+        return settingsHere(req, server);
       },
     },
   },
@@ -59,4 +77,4 @@ Bun.serve({
   },
 });
 
-console.log(`rail on ${ORIGIN}/ · convex ${url}${SERVICE ? " · service" : ""}`);
+console.log(`rail v${server.version} on ${ORIGIN}/ · convex ${url}${SERVICE ? " · service" : ""}`);

@@ -41,7 +41,7 @@
   <section id="screen-handle" class="screen" hidden>
     <form id="handleForm" class="stackform">
       <label for="handleInput">Pick a handle</label>
-      <input id="handleInput" autocomplete="off" spellcheck="false" placeholder="your Superset handle, e.g. jimmyvibes" maxlength="39" required>
+      <input id="handleInput" autocomplete="off" spellcheck="false" placeholder="your Superset handle, e.g. ada-lovelace" maxlength="39" required>
       <p class="note">2 to 39 characters: lowercase letters, digits, single hyphens. Friends find you by it. Use your Superset handle and soopdoop links your public Superset profile too.</p>
       <button class="btn primary" type="submit">Claim it</button>
       <p class="err" id="handleError" hidden></p>
@@ -49,6 +49,11 @@
   </section>
 
   <section id="screen-rail" class="screen" hidden>
+    <div class="update-note" id="updateNote" role="status" hidden>
+      <span id="updateText"></span>
+      <button class="btn tiny" type="button" id="updateBtn" hidden>Update now</button>
+      <a id="updateLink" target="_blank" rel="noopener noreferrer" hidden>What's new</a>
+    </div>
     <div class="stack" id="stack"></div>
     <div class="pending" id="pending" hidden></div>
 
@@ -73,6 +78,7 @@
       <h3 class="sec">This machine</h3>
       <p class="note" id="machineNow">checking…</p>
       <button class="btn" type="button" id="connectBtn" hidden>Connect this machine</button>
+      <label class="check"><input type="checkbox" id="autoUpdate" checked> install new releases automatically</label>
 
       <button class="btn" type="button" id="signout">Sign out</button>
     </section>
@@ -87,7 +93,7 @@
     <h3 class="sec" id="sentHead" hidden>You knocked</h3>
     <div id="sent" class="list"></div>
 
-    <div class="legend"><span><i class="led g"></i>working</span><span><i class="led b"></i>idle</span><span><i class="led x"></i>off</span></div>
+    <div class="legend"><span><i class="led g"></i>working</span><span><i class="led b"></i>idle</span><span><i class="led x"></i>off</span><span class="grow"></span><a class="ver" id="version" target="_blank" rel="noopener noreferrer"></a></div>
   </section>
 
   <div class="composer" id="composer" hidden>
