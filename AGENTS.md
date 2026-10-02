@@ -21,7 +21,15 @@ soopdoop is a multiplayer layer on top of Superset. Read `README.md`, then `docs
 - `convex/_generated/` is committed, so a fresh clone builds without Convex access. Commit it again after `npx convex dev` or `npx convex codegen` changes it.
 - Start every new source file with two `// ABOUTME:` lines.
 - Function declarations, not arrow constants, for top-level functions. `??` not `||`. No `as` outside tests. No non-null `!`.
-- Commits: `type(scope): subject`.
+- Commits: `type(scope): subject`. Release notes are built from these subjects, so write them for hackers.
+
+## Releases
+
+Installs run tagged releases, not `main`, and update themselves within 6 hours. Read `RELEASING.md` before changing the backend, the updater, setup, or any path a LaunchAgent or Claude Code's settings point at. In short:
+
+- Backend changes stay compatible with the previous release: add, do not rename or remove in the same release.
+- Only `bun run release` deploys to the production Convex deployment. `npx convex dev` targets your dev deployment.
+- Every version's `setup` keeps accepting `--no-open`, `--quiet` and `--keep-updater`.
 
 ## Verification
 

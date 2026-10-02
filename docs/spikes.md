@@ -32,6 +32,14 @@ Checked: the parser against a live page by hand (all four achievements and seven
 
 Not built: background services on Linux and Windows. Setup prints the two commands to run by hand there.
 
+## Releases and updates (2 Oct 2026)
+
+Installs are git checkouts of a release tag in `~/.soopdoop/app`; `install.sh` picks the newest `vX.Y.Z` tag. The updater LaunchAgent (`com.soopdoop.updater`, at login and every 6 hours) reads the tags with `git ls-remote` (no GitHub API, no rate limit), and an update is: check out the tag, `bun install`, then run the new version's own `setup --no-open --quiet --keep-updater`, so hooks and LaunchAgents match the new code. Any failure checks the previous commit out again, installs and sets it up, and records why in `~/.soopdoop/update.json`. A lock file keeps it to one update at a time. The updater cannot reload its own LaunchAgent while it runs; setup rewrites its plist and launchd reads it at the next load.
+
+Production Convex deployment `fleet-skunk-723` holds released backends; personal dev deployments hold work in progress. The rail treats a pairing with another deployment as unpaired and pairs again, which is how existing machines moved from dev to production.
+
+Checked in tests with real git against a local bare repository: picking the newest release, moving to it, undoing a failed setup, refusing local changes, the lock and stale-lock cleanup. Generated plists pass `plutil -lint`.
+
 ## Spike 1: our hooks beside Superset's (29 Sep 2026)
 
 The installer adds one `soopdoop hook <event>` command per Claude Code event and leaves every other hook alone; reinstalling does not duplicate; uninstalling removes only ours. This is unit-tested (`apps/daemon/src/hooks.test.ts`), including the absolute-path form the installer now writes by default (`<bun> <cli.ts> hook <event>`), so the hook works without anything on PATH.
