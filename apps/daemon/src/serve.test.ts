@@ -52,6 +52,15 @@ describe("soopdoop serve", function () {
     expect(hook.status).toBe(200);
     expect((await status())?.agents).toHaveLength(1);
 
+    // A web page posting to the daemon carries an Origin; it is refused and changes nothing.
+    const fromPage = await fetch(`http://127.0.0.1:${PORT}/hook`, {
+      method: "POST",
+      headers: { origin: "https://evil.example", "content-type": "text/plain" },
+      body: JSON.stringify({ hook_event_name: "SessionStart", session_id: "fake", cwd: "/r/fake" }),
+    });
+    expect(fromPage.status).toBe(403);
+    expect((await status())?.agents).toHaveLength(1);
+
     // What the rail's /local/pair does. Nothing listens at this Convex URL; reports fail quietly into the log.
     await writeConfig({ convexUrl: "http://127.0.0.1:9", token: "sd_test", privateDirs: [] }, path.join(home, "config.json"));
     const after = await eventually(status, function (s) { return s?.paired === true; });

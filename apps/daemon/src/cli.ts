@@ -91,6 +91,9 @@ async function serve(): Promise<void> {
     async fetch(req) {
       const url = new URL(req.url);
       if (req.method === "POST" && url.pathname === "/hook") {
+        // Hooks come from hook.ts, never from a web page. Browsers always send Origin on a POST, so refusing those
+        // keeps any site from adding made-up sessions to this hacker's presence.
+        if (req.headers.get("origin") !== null) return new Response("forbidden", { status: 403 });
         const raw: unknown = await req.json().catch(function () { return null; });
         const ev = parseHookEvent(raw);
         if (ev === null) return new Response("bad hook payload", { status: 400 });
