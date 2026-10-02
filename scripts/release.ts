@@ -90,6 +90,9 @@ async function main(args: string[]): Promise<void> {
   await run(["bun", "test"], ROOT, true);
   await run(["bun", "run", "typecheck"], ROOT, true);
   await run(["bun", "run", "lint"], ROOT, true);
+  // Every install builds the app from this tag, so it has to compile here first.
+  step("Building the Mac app");
+  await run(["xcrun", "swift", "build", "-c", "release", "--package-path", path.join(ROOT, "apps", "hud")], ROOT, true);
   step("Checking that convex/_generated is current");
   await run(["npx", "convex", "codegen"], CONVEX_DIR);
   if ((await run(["git", "status", "--porcelain", "--", "packages/convex/convex/_generated"])) !== "") {
