@@ -50,6 +50,17 @@ export const report = mutation({
         updatedAt: now,
       });
     }
+    // Routing summaries live only as long as their agent is open on this machine.
+    const keep = new Set(args.agents.flatMap(function (a) { return a.open ? [a.agentId] : []; }));
+    const summaries = await ctx.db
+      .query("routingSummaries")
+      .withIndex("by_hacker_agent", function (q) {
+        return q.eq("hackerId", hacker._id);
+      })
+      .collect();
+    for (const s of summaries) {
+      if (s.machineName === daemon.machineName && !keep.has(s.agentId)) await ctx.db.delete("routingSummaries", s._id);
+    }
     return null;
   },
 });

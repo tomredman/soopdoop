@@ -17,6 +17,7 @@ export const me = query({
       shareWorkspaceNames: v.boolean(),
       shareAgentNames: v.boolean(),
       focusUntil: v.optional(v.number()),
+      hideFromBoards: v.boolean(),
       superset: v.optional(supersetCardView),
     }),
   ),
@@ -30,6 +31,7 @@ export const me = query({
       shareWorkspaceNames: hacker.shareWorkspaceNames,
       shareAgentNames: hacker.shareAgentNames,
       focusUntil: hacker.focusUntil,
+      hideFromBoards: hacker.hideFromBoards === true,
       superset: await supersetCard(ctx, hacker._id),
     };
   },
@@ -87,6 +89,17 @@ export const setFocus = mutation({
     await ctx.db.patch("hackers", hacker._id, {
       focusUntil: args.minutes === null ? undefined : Date.now() + args.minutes * 60_000,
     });
+    return null;
+  },
+});
+
+// Off the crew board for everyone else; the hacker still sees their own row.
+export const setHideFromBoards = mutation({
+  args: { hide: v.boolean() },
+  returns: v.null(),
+  handler: async function (ctx, args) {
+    const hacker = await requireHacker(ctx);
+    await ctx.db.patch("hackers", hacker._id, { hideFromBoards: args.hide });
     return null;
   },
 });

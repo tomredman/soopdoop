@@ -14,6 +14,9 @@ const modules = {
   "./friends.ts": function () {
     return import("./friends");
   },
+  "./http.ts": function () {
+    return import("./http");
+  },
   "./hackers.ts": function () {
     return import("./hackers");
   },
@@ -26,8 +29,20 @@ const modules = {
   "./lib/auth.ts": function () {
     return import("./lib/auth");
   },
+  "./lib/claude.ts": function () {
+    return import("./lib/claude");
+  },
   "./lib/supersetProfile.ts": function () {
     return import("./lib/supersetProfile");
+  },
+  "./operator.ts": function () {
+    return import("./operator");
+  },
+  "./play.ts": function () {
+    return import("./play");
+  },
+  "./routing.ts": function () {
+    return import("./routing");
   },
   "./schema.ts": function () {
     return import("./schema");

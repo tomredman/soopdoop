@@ -1,5 +1,5 @@
-// ABOUTME: The soopdoop data model. Phase 1 tables: hackers, friendships, subsets (presence), knocks, supersetProfiles.
-// ABOUTME: Later phases add crews, treeNodes, routingSummaries, relays, eyes, jackIns, play and companyTokens.
+// ABOUTME: The soopdoop data model: hackers, friendships, subsets (presence), knocks, supersetProfiles, and the Operator's
+// ABOUTME: routingSummaries and relays. Later phases add crews, treeNodes, eyes, jackIns and companyTokens.
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
@@ -15,6 +15,18 @@ export const agentState = v.object({
   open: v.boolean(), // false = private: never listed to others, never read by the Operator
   lastTurnAt: v.number(),
 });
+
+// Where a question to the Operator stands. routing: picking the agent; reading: waiting for its owner's daemon;
+// then answered, not-found (the agent did not know), nobody (no agent to ask), timeout or error.
+export const relayStatus = v.union(
+  v.literal("routing"),
+  v.literal("reading"),
+  v.literal("answered"),
+  v.literal("not-found"),
+  v.literal("nobody"),
+  v.literal("timeout"),
+  v.literal("error"),
+);
 
 // What soopdoop keeps from a hacker's public Superset leaderboard profile (lib/supersetProfile.ts reads it).
 // No token counts, cost or rank: AGENTS.md keeps token counts off personal and crew boards.
@@ -35,6 +47,8 @@ export default defineSchema({
     shareWorkspaceNames: v.boolean(),
     shareAgentNames: v.boolean(),
     focusUntil: v.optional(v.number()),
+    // Off the crew board for everyone but themselves.
+    hideFromBoards: v.optional(v.boolean()),
     // A per-sender knock limit is Phase 1.5; quiet hours Phase 3.
     createdAt: v.number(),
   })
@@ -83,6 +97,36 @@ export default defineSchema({
   })
     .index("by_hacker", ["hackerId"])
     .index("by_handle", ["handle"]),
+
+  // One line per open agent, from its owner's daemon after each turn: what it works on, the files it touched.
+  // The Operator routes questions with these. Owners can read their own. Dropped when the agent ends.
+  routingSummaries: defineTable({
+    hackerId: v.id("hackers"),
+    machineName: v.string(),
+    agentId: v.string(),
+    summary: v.string(),
+    updatedAt: v.number(),
+  }).index("by_hacker_agent", ["hackerId", "agentId"]),
+
+  // One question to the Operator and what came of it. Keeps the question and the short answer, never what was read.
+  relays: defineTable({
+    askerHackerId: v.id("hackers"),
+    question: v.string(),
+    status: relayStatus,
+    targetHackerId: v.optional(v.id("hackers")),
+    targetMachine: v.optional(v.string()),
+    targetAgentId: v.optional(v.string()),
+    // Only when the owner shares agent names.
+    targetAgentName: v.optional(v.string()),
+    answer: v.optional(v.string()),
+    note: v.optional(v.string()),
+    tokensRead: v.optional(v.number()),
+    tokensSent: v.optional(v.number()),
+    createdAt: v.number(),
+    finishedAt: v.optional(v.number()),
+  })
+    .index("by_asker", ["askerHackerId"])
+    .index("by_target_status", ["targetHackerId", "status"]),
 
   knocks: defineTable({
     fromHackerId: v.id("hackers"),

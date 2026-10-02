@@ -28,4 +28,10 @@ export default defineConfig([
       // no-collect-in-query stays off: every .collect() here reads one hacker's friends, machines, or open knocks.
     },
   },
+  {
+    // Tests set the deployment's environment variables (OPERATOR_FAKE) to drive the code under test; functions read the
+    // typed env object, as no-process-env asks.
+    files: ["convex/**/*.test.ts"],
+    rules: { "@convex-dev/no-process-env": "off" },
+  },
 ]);

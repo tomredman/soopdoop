@@ -9,7 +9,7 @@ import { supersetCard, supersetCardView } from "./superset";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-async function acceptedFriendIds(ctx: QueryCtx, me: Id<"hackers">): Promise<Id<"hackers">[]> {
+export async function acceptedFriendIds(ctx: QueryCtx, me: Id<"hackers">): Promise<Id<"hackers">[]> {
   const asA = await ctx.db
     .query("friendships")
     .withIndex("by_a_b", function (q) {
