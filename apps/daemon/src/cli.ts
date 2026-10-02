@@ -273,17 +273,18 @@ async function setup(args: string[]): Promise<void> {
     else say(`· Could not add the ask_operator tool: ${mcp}`);
   }
 
-  if (invite !== undefined) await Bun.write(invitePath(), invite + "\n");
-
   if (process.platform !== "darwin") {
     say(`\nBackground services are macOS-only for now. Run these two, each in its own terminal:\n` +
-      `  bun ${ROOT}/apps/daemon/src/cli.ts serve\n  bun ${ROOT}/apps/rail/serve.ts\nThen open ${RAIL_URL}. Update with \`soopdoop update\`.`);
+      `  bun ${ROOT}/apps/daemon/src/cli.ts serve\n  bun ${ROOT}/apps/rail/serve.ts\n` +
+      `Then open ${invite === undefined ? RAIL_URL : `${RAIL_URL}?invite=${invite}`}. Update with \`soopdoop update\`.`);
     return;
   }
 
   say("· Building the soopdoop app (the first time takes a minute)…");
   const app = await buildApp(ROOT, await currentVersion(ROOT));
   say(app.ok ? `· The app: ${tilde(app.path)}` : `· No app this time: ${app.why}`);
+  // The app's agent redeems the invite after its sign-in. Without the app, the web rail gets it in its URL instead.
+  if (invite !== undefined && app.ok) await Bun.write(invitePath(), invite + "\n");
 
   // Background services. Stop ours first, so a port still taken afterwards belongs to something else.
   const all = serviceSpecs(ROOT, process.execPath, home, process.env.SOOPDOOP_HOME);
@@ -459,13 +460,13 @@ async function logs(): Promise<void> {
   await Bun.spawn(["tail", "-n", "40", "-F", ...files], { stdout: "inherit", stderr: "inherit" }).exited;
 }
 
-const HELP = `soopdoop setup [--invite <code>] [--no-open]   install, run in the background, open the rail
+const HELP = `soopdoop setup [--invite <code>] [--no-open]   install, build the app, run in the background
 soopdoop status | version                       what is running, paired, hooked, which version
-soopdoop open | logs                            open the rail · follow the logs
+soopdoop open | logs                            show the HUD (the web rail if there is no app) · follow the logs
 soopdoop update [--to <version>]                install the newest release (or move to one, also back)
 soopdoop auto-update [on|off]                   whether new releases install themselves (on by default)
 soopdoop start | stop | restart                 the background services
-soopdoop uninstall                              remove hooks and background services
+soopdoop uninstall                              remove the hooks, the background services, the app and the ask_operator tool
 soopdoop pair <convex-url> <token>              pair by hand (the rail does this for you)
 soopdoop install-hooks | uninstall-hooks | serve | hook <event>`;
 
