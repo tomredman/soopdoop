@@ -1,8 +1,11 @@
 # rail
 
-The soopdoop rail: a thin window beside Superset that shows your subset, your friends' LEDs, and knocks.
+Two things run from here, both served by `serve.ts` on `127.0.0.1:47312`:
 
-`prototype.html` is the approved clickable design (example data, every phase). The app in `index.html` + `src/` is the Phase 1 slice of it, wired to Convex:
+- **The agent** for the soopdoop Mac app (`apps/hud`): it signs in with Superset, follows Convex, and does what the app asks. The app shows what the agent sends and holds nothing itself. See "The agent", below.
+- **The web rail**: the same crew in a browser page. It is what you get on a Mac without Xcode's command line tools, and on Linux or Windows.
+
+`prototype.html` is the approved clickable design (example data, every phase). The web rail in `index.html` + `src/` is the Phase 1 slice of it, wired to Convex:
 
 | In the rail | Convex |
 | --- | --- |
@@ -54,9 +57,22 @@ An invite link carries `?invite=<code>`. Sign-in leaves the page for Superset an
 
 Friends' rows show the name and tier from their linked public Superset profile, with achievements and models folded under "on Superset". The backend reads `https://superset.sh/md/user/<handle>` (see `packages/convex/convex/superset.ts`) and keeps no token counts, cost or rank.
 
+## The agent
+
+`src/agent.ts`, for the Mac app. It keeps the app's state and sends all of it to every connected app on each change, over a WebSocket at `/app`.
+
+- **Sign-in:** `src/session.ts` runs OAuth 2.1 with PKCE in this process, with a loopback redirect on `http://127.0.0.1:47313/` (Superset ignores the port of a loopback redirect, so the client registered for 47312 works; see `docs/spikes.md`). The tokens live in `~/.soopdoop/session.json` (mode 600) and are refreshed before they run out.
+- **Live data:** `hackers.me`, `play.board`, `friends.list`, `friends.pending`, `knocks.incoming`, `knocks.sent`, `subsets.mine`, `routing.mine` and `operator.log`, and `/local`'s answer about this machine.
+- **Actions** (`{id, action, args}` in, `{type: "result", id, ok, value | error}` out): `signIn`, `signOut`, `claimHandle`, `knock`, `decideKnock`, `setFocus`, `updateSharing`, `addFriend`, `acceptFriend`, `invite`, `linkSuperset`, `unlinkSuperset`, `ask`, `setHideFromBoards`, `setAutoUpdate`, `updateNow`, `openRail`.
+- **After sign-in** it pairs this machine the same way the web rail does, and redeems an invite that `soopdoop setup --invite` left in `~/.soopdoop/invite`.
+- **Who may connect:** `/app` needs `Authorization: Bearer <token>` with the token from `~/.soopdoop/app-token` (mode 600, made by `src/app-api.ts`), and refuses any request that has a browser `Origin`, so no web page can use it.
+- **The contract:** the app decodes `AppState` leniently. Add fields; never rename or remove one, and keep every action name working, because an installed app can be older than its agent.
+
+`src/app-backend.test.ts` tests the sign-in, the socket's checks and the actions.
+
 ## How it ships
 
-Only as its own window for now. Superset Pages block WebSockets and fetch (see `docs/spikes.md`), so a Page cannot hold a live rail.
+As the Mac app and its agent, with the web rail as the fallback. Superset Pages block WebSockets and fetch (see `docs/spikes.md`), so a Page cannot hold a live rail.
 
 ## Code
 

@@ -14,7 +14,7 @@ bun run release patch             # or minor, or major
 The script stops at the first problem. In order, it:
 
 1. Checks that HEAD is `origin/main` and nothing is uncommitted.
-2. Runs `bun test`, `bun run typecheck`, `bun run lint`, and checks that `convex/_generated` is committed and current.
+2. Runs `bun test`, `bun run typecheck`, `bun run lint`, builds the Mac app (`apps/hud`, because every install builds it from the tag), and checks that `convex/_generated` is committed and current.
 3. Deploys the backend to production (`npx convex deploy`). This comes before the tag, so no install ever runs a tag whose functions are missing.
 4. Bumps the version in the root `package.json`, adds the notes to `CHANGELOG.md` (from the commit subjects since the last tag, grouped by `feat`, `fix`, `docs` and the rest), commits `chore(release): vX.Y.Z`, tags it, and pushes both.
 5. Publishes the GitHub release with the notes and the install line.
@@ -26,7 +26,9 @@ Pick the bump by what changed for hackers: `patch` for fixes, `minor` for new th
 - **The backend stays compatible with the previous release.** Installs take up to 6 hours to update, and a hacker can turn auto-update off. Add functions, arguments (optional) and fields; do not rename or remove them in the same release. Remove them a release later.
 - **Only the release script deploys to production.** `npx convex dev` deploys to your own dev deployment.
 - **Every version's `setup` keeps accepting `--no-open`, `--quiet` and `--keep-updater`.** The updater of the old version runs the new version's setup with them.
-- **Paths that other programs hold stay put:** `apps/daemon/src/hook.ts` (Claude Code's settings point at it), `apps/daemon/src/cli.ts` and `apps/rail/serve.ts` (the LaunchAgents point at them). If one has to move, keep a file at the old path that forwards to the new one for at least one release.
+- **Paths that other programs hold stay put:** `apps/daemon/src/hook.ts` (Claude Code's settings point at it), `apps/daemon/src/mcp.ts` (Claude Code's MCP config points at it; the updater cannot register it again, because it has no `claude` command), `apps/daemon/src/cli.ts` and `apps/rail/serve.ts` (the LaunchAgents point at them), and the app at `~/Applications/soopdoop.app/Contents/MacOS/Soopdoop` (the `com.soopdoop.hud` LaunchAgent points at it). If one has to move, keep a file at the old path that forwards to the new one for at least one release.
+- **The app and its agent can be different versions.** Setup rebuilds the app on every update, but a build can fail (no Xcode tools, an old Swift), and then the old app keeps running against the new agent. So the state the agent sends (`AppState` in `apps/rail/src/agent.ts`) only gains fields: never rename or remove one, and keep accepting every action name the app sends. The app decodes leniently: a missing field takes its default and an unknown one is ignored.
+- **Setup works without the app.** If the app does not build, setup says why, skips the `com.soopdoop.hud` LaunchAgent, and carries on; it must not fail the update.
 
 ## When a release is bad
 

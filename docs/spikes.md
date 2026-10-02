@@ -40,6 +40,32 @@ Production Convex deployment `fleet-skunk-723` holds released backends; personal
 
 Checked in tests with real git against a local bare repository: picking the newest release, moving to it, undoing a failed setup, refusing local changes, the lock and stale-lock cleanup. Generated plists pass `plutil -lint`.
 
+## The Mac app (2 Oct 2026)
+
+Mr. Tom asked for an app instead of a web page left open in the background: a menu bar app with a HUD that shows while Superset is in front, a look the hacker can change (material, opacity), and the crew, the board, knocks and the Operator in it.
+
+It is native Swift (SwiftUI and AppKit) in `apps/hud`: a floating `NSPanel` that does not activate the app, with an `NSVisualEffectView` behind the content, shown and hidden on `NSWorkspace` app-activation notices. Superset's bundle id is `com.superset.desktop` (checked with `lsappinfo` on Mr. Tom's Mac while Superset was in front).
+
+`setup` builds it on each Mac from the release's source (`xcrun swift build -c release`), wraps it in a bundle with `LSUIElement` (no Dock icon) and signs it ad hoc. No binary is downloaded, so there is no notarization step and no Gatekeeper prompt. The cost is that each Mac needs Xcode's command line tools; without them setup says so and opens the web rail instead. The release script builds the app before it tags, so a tag that does not compile is never published.
+
+The app holds no tokens and talks to no server but this Mac's agent. The rail's server (`apps/rail/serve.ts`) runs the agent (`src/agent.ts`): it holds the Superset sign-in (`~/.soopdoop/session.json`, mode 600) and the Convex subscriptions, and pushes the state to the app over `ws://127.0.0.1:47312/app`. That socket needs the token in `~/.soopdoop/app-token` (mode 600) and refuses any request that carries a browser `Origin`, so a web page cannot use it.
+
+The app signs in with a loopback flow (RFC 8252) on `127.0.0.1:47313`, so it never collides with the web rail's own sign-in on 47312. Checked against Superset's live authorize endpoint, without signing in: the registered `http://127.0.0.1:47312/` and the app's `http://127.0.0.1:47313/` both go on to Superset's sign-in page, while `http://127.0.0.1:47313/other` and `https://example.com/` come back as `invalid_redirect`. So Superset ignores the port of a loopback redirect and still checks the host and the path.
+
+Checked: debug and release builds; `Soopdoop --snapshot` drew the three screens (signed out, pick a handle, a full HUD with sample data) and they were looked at; a bundle built by `buildApp` passes `codesign --verify`; the agent's sign-in pieces, `/app` socket and actions are tested (`apps/rail/src/app-backend.test.ts`).
+
+## The Operator (2 Oct 2026)
+
+A question comes from the `ask_operator` tool (`operator.ask`, with the daemon's token) or from the HUD (`operator.askAsHacker`). The backend stores it (500 characters at most, 6 a minute per hacker) and schedules `route`, which lists the asker's friends' live, open agents with their routing summaries and asks Claude (Opus 5.5, low effort) to pick one or none. The target's daemon follows `operator.readsFor`, which tells it only a relay id and an agent id. The daemon reads the tail of that agent's transcript, cuts a slice of at most 60,000 characters of conversation, logs the read (`~/.soopdoop/logs/reads.log`, sizes only), and posts the slice once to `POST /operator/answer` on the deployment's `.convex.site`. That HTTP action asks Claude (medium effort) for the answer and stores only the answer and the token counts; the slice is never written. A relay that is not finished in 90 seconds expires through a scheduled function. The Claude calls use server-side fallbacks (`fallbacks: "default"`), so an overloaded model falls back to another instead of failing the question.
+
+A routing summary is built on the owner's machine after each turn: `workspace@branch · "first prompt" · files: …`, at most 600 characters, only for open agents. It is deleted when the agent closes or turns private.
+
+`OPERATOR_FAKE=1` on a dev deployment swaps Claude for a stand-in that routes by shared words and answers with the best-matching `assistant:` line, so the whole path can be tested without an API key.
+
+Checked end to end on the dev deployment with the stand-in: two test hackers who are friends, each with a paired daemon. The second ran a real `serve` with a Claude Code session reported through the real hook and a transcript on disk. A real `ask_operator` call over the MCP server's stdio, as the first hacker, came back in about 2 seconds with the answer from the second hacker's agent, and the second daemon's `reads.log` recorded the read (244 characters). `bun test` covers the backend side (`operator.test.ts`), the transcript slicing and the MCP server.
+
+Not checked: answers from the real Claude API (no key was set on any deployment while building), routing among many agents, and the Operator on production.
+
 ## Spike 1: our hooks beside Superset's (29 Sep 2026)
 
 The installer adds one `soopdoop hook <event>` command per Claude Code event and leaves every other hook alone; reinstalling does not duplicate; uninstalling removes only ours. This is unit-tested (`apps/daemon/src/hooks.test.ts`), including the absolute-path form the installer now writes by default (`<bun> <cli.ts> hook <event>`), so the hook works without anything on PATH.
@@ -54,7 +80,7 @@ The hook now runs `apps/daemon/src/hook.ts` instead of the full CLI: about 0.07 
 
 Result: no. Superset's own Pages guide (the `page` skill installed with Superset) says pages run under `default-src 'none'`: `fetch`, XHR, EventSource and WebSockets are all blocked, and scripts must be inline. A live rail needs a WebSocket to Convex, so a Page cannot host it. A Page could show a static snapshot, which is useless for presence.
 
-Consequence: the rail ships as its own window. Dev: `bun run rail` at `http://127.0.0.1:47312/`. Later: a slim always-on-top window (Electron or Tauri) around the same page.
+Consequence: the rail ships as its own window. Dev: `bun run rail` at `http://127.0.0.1:47312/`. Since 2 Oct 2026 that window is a native Mac app (see The Mac app, above), not a web page.
 
 Not checked by publishing a page; taken from the policy text.
 
