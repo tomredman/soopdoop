@@ -8,11 +8,14 @@
  * @module
  */
 
+import type * as crons from "../crons.js";
 import type * as friends from "../friends.js";
 import type * as hackers from "../hackers.js";
 import type * as knocks from "../knocks.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_supersetProfile from "../lib/supersetProfile.js";
 import type * as subsets from "../subsets.js";
+import type * as superset from "../superset.js";
 
 import type {
   ApiFromModules,
@@ -21,11 +24,14 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  crons: typeof crons;
   friends: typeof friends;
   hackers: typeof hackers;
   knocks: typeof knocks;
   "lib/auth": typeof lib_auth;
+  "lib/supersetProfile": typeof lib_supersetProfile;
   subsets: typeof subsets;
+  superset: typeof superset;
 }>;
 
 /**

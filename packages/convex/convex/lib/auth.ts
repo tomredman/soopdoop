@@ -23,7 +23,7 @@ export async function requireIdentity(ctx: { auth: Auth }): Promise<UserIdentity
   return identity;
 }
 
-async function hackerFor(ctx: QueryCtx | MutationCtx, supersetUserId: string): Promise<Doc<"hackers"> | null> {
+export async function hackerFor(ctx: QueryCtx | MutationCtx, supersetUserId: string): Promise<Doc<"hackers"> | null> {
   return await ctx.db
     .query("hackers")
     .withIndex("by_supersetUserId", function (q) {

@@ -1,4 +1,4 @@
-// ABOUTME: The soopdoop data model. Phase 1 tables: hackers, friendships, subsets (presence), knocks.
+// ABOUTME: The soopdoop data model. Phase 1 tables: hackers, friendships, subsets (presence), knocks, supersetProfiles.
 // ABOUTME: Later phases add crews, treeNodes, routingSummaries, relays, eyes, jackIns, play and companyTokens.
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
@@ -15,6 +15,16 @@ export const agentState = v.object({
   open: v.boolean(), // false = private: never listed to others, never read by the Operator
   lastTurnAt: v.number(),
 });
+
+// What soopdoop keeps from a hacker's public Superset leaderboard profile (lib/supersetProfile.ts reads it).
+// No token counts, cost or rank: AGENTS.md keeps token counts off personal and crew boards.
+export const supersetProfileFields = {
+  handle: v.string(),
+  name: v.optional(v.string()),
+  tier: v.optional(v.string()),
+  achievements: v.array(v.object({ slug: v.string(), level: v.optional(v.number()), of: v.optional(v.number()) })),
+  models: v.array(v.string()), // most tokens first, names only
+};
 
 export default defineSchema({
   hackers: defineTable({
@@ -64,6 +74,15 @@ export default defineSchema({
     agents: v.array(agentState),
     updatedAt: v.number(),
   }).index("by_hacker_machine", ["hackerId", "machineName"]),
+
+  // One row per hacker who linked their Superset profile. Refreshed every 6 hours; dropped when the owner unpublishes it.
+  supersetProfiles: defineTable({
+    hackerId: v.id("hackers"),
+    ...supersetProfileFields,
+    fetchedAt: v.number(),
+  })
+    .index("by_hacker", ["hackerId"])
+    .index("by_handle", ["handle"]),
 
   knocks: defineTable({
     fromHackerId: v.id("hackers"),

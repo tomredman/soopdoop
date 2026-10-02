@@ -5,6 +5,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { requireHacker } from "./lib/auth";
+import { supersetCard, supersetCardView } from "./superset";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -38,6 +39,8 @@ const presenceView = v.object({
   led: v.union(v.literal("g"), v.literal("b"), v.literal("x")),
   inFocus: v.boolean(),
   agentCount: v.number(),
+  // Only present when the owner linked their public Superset profile.
+  superset: v.optional(supersetCardView),
   // Only present when the owner shares them.
   agents: v.optional(
     v.array(
@@ -50,7 +53,7 @@ const presenceView = v.object({
   ),
 });
 
-function presenceFor(hacker: Doc<"hackers">, subsets: Doc<"subsets">[], now: number) {
+function presenceFor(hacker: Doc<"hackers">, subsets: Doc<"subsets">[], now: number, superset: Awaited<ReturnType<typeof supersetCard>>) {
   const inFocus = hacker.focusUntil !== undefined && hacker.focusUntil > now;
   // A subset is live if the daemon reported within the last 90 s.
   const live = subsets.filter(function (s) {
@@ -71,6 +74,7 @@ function presenceFor(hacker: Doc<"hackers">, subsets: Doc<"subsets">[], now: num
     led,
     inFocus,
     agentCount: inFocus ? 0 : agents.length,
+    superset,
     agents:
       inFocus || !hacker.shareAgentNames
         ? undefined
@@ -101,7 +105,7 @@ export const list = query({
           return q.eq("hackerId", id);
         })
         .collect();
-      out.push(presenceFor(hacker, subsets, now));
+      out.push(presenceFor(hacker, subsets, now, await supersetCard(ctx, id)));
     }
     out.sort(function (p, q) {
       return p.handle.localeCompare(q.handle);

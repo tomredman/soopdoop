@@ -20,14 +20,23 @@ const modules = {
   "./knocks.ts": function () {
     return import("./knocks");
   },
+  "./crons.ts": function () {
+    return import("./crons");
+  },
   "./lib/auth.ts": function () {
     return import("./lib/auth");
+  },
+  "./lib/supersetProfile.ts": function () {
+    return import("./lib/supersetProfile");
   },
   "./schema.ts": function () {
     return import("./schema");
   },
   "./subsets.ts": function () {
     return import("./subsets");
+  },
+  "./superset.ts": function () {
+    return import("./superset");
   },
 };
 

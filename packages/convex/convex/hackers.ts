@@ -3,6 +3,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { checkHacker, requireHacker, requireIdentity } from "./lib/auth";
+import { supersetCard, supersetCardView } from "./superset";
 
 const HANDLE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
@@ -16,6 +17,7 @@ export const me = query({
       shareWorkspaceNames: v.boolean(),
       shareAgentNames: v.boolean(),
       focusUntil: v.optional(v.number()),
+      superset: v.optional(supersetCardView),
     }),
   ),
   handler: async function (ctx) {
@@ -28,6 +30,7 @@ export const me = query({
       shareWorkspaceNames: hacker.shareWorkspaceNames,
       shareAgentNames: hacker.shareAgentNames,
       focusUntil: hacker.focusUntil,
+      superset: await supersetCard(ctx, hacker._id),
     };
   },
 });
