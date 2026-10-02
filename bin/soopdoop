@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# ABOUTME: The soopdoop command. Finds Bun (installs it on first setup if it is missing), then runs the CLI in apps/daemon.
+# ABOUTME: `bin/soopdoop setup` is the one command a new hacker runs. See "Try it" in README.md.
+set -euo pipefail
+
+# Setup links this file into Bun's bin folder, so follow links back to the checkout.
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+done
+ROOT="$(cd -P "$(dirname "$src")/.." && pwd)"
+
+find_bun() {
+  if command -v bun >/dev/null 2>&1; then command -v bun; return 0; fi
+  if [ -x "$HOME/.bun/bin/bun" ]; then echo "$HOME/.bun/bin/bun"; return 0; fi
+  return 1
+}
+
+if ! BUN="$(find_bun)"; then
+  if [ "${1:-}" != "setup" ]; then
+    echo "soopdoop needs Bun. Run: $ROOT/bin/soopdoop setup" >&2
+    exit 1
+  fi
+  echo "soopdoop runs on Bun (https://bun.sh). Installing Bun with its official installer..."
+  curl -fsSL https://bun.sh/install | bash
+  BUN="$HOME/.bun/bin/bun"
+fi
+
+# Packages: always on setup, otherwise only when they are missing. `update` installs after it pulls.
+if [ "${1:-}" = "setup" ] || [ ! -d "$ROOT/node_modules" ]; then
+  echo "Installing packages..."
+  (cd "$ROOT" && "$BUN" install)
+fi
+
+exec "$BUN" "$ROOT/apps/daemon/src/cli.ts" "$@"
