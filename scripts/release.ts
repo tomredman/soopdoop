@@ -129,7 +129,9 @@ async function main(args: string[]): Promise<void> {
   await Bun.write(pkgFile, withVersion(pkgText, to));
   await Bun.write(changelogFile, withEntry(changelog, tag, date, notes));
   await run(["git", "add", "package.json", "CHANGELOG.md"]);
-  await run(["git", "commit", "--quiet", "-m", `chore(release): ${tag}`]);
+  // RELEASE_TRAILERS adds lines such as Co-Authored-By to the release commit, for whoever (or whatever) cuts it.
+  const trailers = (process.env.RELEASE_TRAILERS ?? "").trim();
+  await run(["git", "commit", "--quiet", "-m", trailers === "" ? `chore(release): ${tag}` : `chore(release): ${tag}\n\n${trailers}`]);
   await run(["git", "tag", "--annotate", tag, "--message", `soopdoop ${tag}\n\n${notes}`]);
   await run(["git", "push", "--quiet", "origin", "HEAD:main"]);
   await run(["git", "push", "--quiet", "origin", tag]);

@@ -19,7 +19,7 @@ The script stops at the first problem. In order, it:
 4. Bumps the version in the root `package.json`, adds the notes to `CHANGELOG.md` (from the commit subjects since the last tag, grouped by `feat`, `fix`, `docs` and the rest), commits `chore(release): vX.Y.Z`, tags it, and pushes both.
 5. Publishes the GitHub release with the notes and the install line.
 
-Pick the bump by what changed for hackers: `patch` for fixes, `minor` for new things, `major` for anything that needs them to act.
+Pick the bump by what changed for hackers: `patch` for fixes, `minor` for new things, `major` for anything that needs them to act. `RELEASE_TRAILERS="Co-Authored-By: …"` adds trailer lines to the release commit.
 
 ## Rules that keep updates safe
 
