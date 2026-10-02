@@ -18,6 +18,7 @@ soopdoop is a multiplayer layer on top of Superset. Read `README.md`, then `docs
 - Bun workspace. TypeScript strict. `bun test` for tests, colocated as `thing.test.ts`.
 - Convex backend in `packages/convex/convex/`. Read `packages/convex/convex/_generated/ai/guidelines.md` when it exists (run `npx convex codegen`). Public functions are session-authenticated: each one starts with a `require*` or `check*` call from `lib/auth.ts`. The rail and the daemon never call `internal*` functions.
 - `bun run lint` runs the Convex ESLint plugin (https://docs.convex.dev/eslint) on `packages/convex/convex/`: the recommended rules with type information, plus `require-access-control` and `import-wrong-runtime`. Fix what it finds. Silence a finding only with a comment that says why.
+- `convex/_generated/` is committed, so a fresh clone builds without Convex access. Commit it again after `npx convex dev` or `npx convex codegen` changes it.
 - Start every new source file with two `// ABOUTME:` lines.
 - Function declarations, not arrow constants, for top-level functions. `??` not `||`. No `as` outside tests. No non-null `!`.
 - Commits: `type(scope): subject`.
