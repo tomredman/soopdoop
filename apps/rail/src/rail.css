@@ -30,6 +30,7 @@ body { font: 13px/1.5 var(--sans); }
 .wrap { white-space: pre-wrap; word-break: break-all; user-select: all; }
 .err { font: 12px/1.5 var(--mono); color: var(--amber); margin: 0; }
 .lede { margin: 0; color: var(--muted); font-size: 14px; }
+.invite-note { color: var(--text); }
 .flash { color: var(--text); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 6px; padding: 6px 8px; animation: fadein .3s var(--ease); }
 @keyframes fadein { from { opacity: 0; transform: translateY(3px); } }
 
@@ -78,6 +79,19 @@ h3.sec .count { color: var(--dim); font-weight: 400; }
 .agent { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 8px; align-items: center; font: 11.5px var(--mono); color: var(--muted); padding: 3px 6px; }
 .agent b { color: var(--text); font-weight: 500; }
 .agent .led { width: 6px; height: 6px; }
+.nm .real { font-weight: 400; color: var(--muted); }
+/* A friend's Superset profile: folded by default, neutral colours (LED colours carry meaning; purple is for relays). */
+.ss { margin: 0 0 4px 40px; font: 11px var(--mono); color: var(--muted); }
+.ss summary { cursor: pointer; color: var(--dim); list-style: none; width: max-content; }
+.ss summary::-webkit-details-marker { display: none; }
+.ss summary::before { content: "▸ "; }
+.ss[open] summary::before { content: "▾ "; }
+.ss summary:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.ss-body { display: grid; gap: 4px; margin-top: 2px; padding: 2px 0 2px 10px; border-left: 1px solid var(--line); }
+.ss .k { color: var(--dim); }
+.ss a { color: var(--text); text-decoration: underline; text-decoration-color: var(--dim); width: max-content; }
+.badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.badge { border: 1px solid var(--line-2); border-radius: 999px; padding: 0 6px; color: var(--text); font-size: 10.5px; }
 .request { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 8px; border: 1px dashed var(--line-2); border-radius: 6px; font: 12px var(--mono); }
 
 /* Knock card and the pending chip */
@@ -120,7 +134,7 @@ input::placeholder { color: var(--dim); }
 .check input { width: auto; flex: none; }
 .settings { display: grid; gap: 8px; padding: 8px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel-2); }
 .settings h3.sec { margin: 4px 0 0; }
-.settings pre { margin: 0; font-size: 11px; background: var(--ground); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+.settings pre { margin: 0; font-size: 11px; line-height: 1.5; background: var(--ground); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
 .composer { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px; background: var(--panel-2); border-top: 1px solid var(--line-2); box-shadow: 0 -12px 40px rgba(0,0,0,0.5); max-width: 440px; margin: 0 auto; }
 
 @media (prefers-reduced-motion: reduce) {

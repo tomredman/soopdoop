@@ -32,6 +32,7 @@
 
   <section id="screen-signin" class="screen">
     <p class="lede">Your Superset, with your crew in it.</p>
+    <p class="note invite-note" id="inviteNote" hidden>You have an invite waiting. Sign in with Superset to accept it.</p>
     <button class="btn primary" type="button" id="signin">Sign in with Superset</button>
     <p class="err" id="signinNote" hidden></p>
     <p class="note">soopdoop asks Superset who you are. It never sees your password.</p>
@@ -40,8 +41,8 @@
   <section id="screen-handle" class="screen" hidden>
     <form id="handleForm" class="stackform">
       <label for="handleInput">Pick a handle</label>
-      <input id="handleInput" autocomplete="off" spellcheck="false" placeholder="e.g. tom" maxlength="39" required>
-      <p class="note">2 to 39 characters: lowercase letters, digits, single hyphens. Friends find you by it.</p>
+      <input id="handleInput" autocomplete="off" spellcheck="false" placeholder="your Superset handle, e.g. jimmyvibes" maxlength="39" required>
+      <p class="note">2 to 39 characters: lowercase letters, digits, single hyphens. Friends find you by it. Use your Superset handle and soopdoop links your public Superset profile too.</p>
       <button class="btn primary" type="submit">Claim it</button>
       <p class="err" id="handleError" hidden></p>
     </form>
@@ -59,12 +60,19 @@
 
       <h3 class="sec">Add a friend</h3>
       <form id="addFriend" class="row"><input id="addHandle" placeholder="their handle" autocomplete="off" spellcheck="false" required><button class="btn" type="submit">Ask</button></form>
-      <button class="btn" type="button" id="inviteBtn">Make an invite link</button>
-      <p class="note mono wrap" id="inviteOut" hidden></p>
+      <button class="btn" type="button" id="inviteBtn">Invite someone new</button>
+      <p class="note">Copies a message with one line to paste into Terminal. It installs soopdoop and makes you friends. One invite per person.</p>
+      <pre class="mono wrap" id="inviteOut" hidden></pre>
+
+      <h3 class="sec">Superset profile</h3>
+      <p class="note" id="supersetNow"></p>
+      <form id="supersetForm" class="row"><input id="supersetHandle" placeholder="your Superset handle" autocomplete="off" spellcheck="false" required><button class="btn" type="submit">Link</button></form>
+      <button class="btn tiny" type="button" id="supersetUnlink" hidden>Unlink</button>
+      <p class="note">Friends see your public Superset name, tier, achievements and the models you use. Never token counts or cost.</p>
 
       <h3 class="sec">This machine</h3>
-      <form id="pairForm" class="row"><input id="machineName" placeholder="machine name" autocomplete="off" required><button class="btn" type="submit">Pair the daemon</button></form>
-      <pre class="mono wrap" id="pairOut" hidden></pre>
+      <p class="note" id="machineNow">checking…</p>
+      <button class="btn" type="button" id="connectBtn" hidden>Connect this machine</button>
 
       <button class="btn" type="button" id="signout">Sign out</button>
     </section>

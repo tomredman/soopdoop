@@ -1,11 +1,12 @@
-// ABOUTME: Boots the rail: loads config, finishes a Superset sign-in if one is coming back, connects to Convex,
-// ABOUTME: then shows the sign-in screen, the handle screen, or the rail itself.
+// ABOUTME: Boots the rail: keeps any invite code, loads config, finishes a Superset sign-in if one is coming back,
+// ABOUTME: connects to Convex, then shows the sign-in screen, the handle screen, or the rail itself.
 import { ConvexClient } from "convex/browser";
 import { api } from "@soopdoop/convex/convex/_generated/api";
 import { RAIL_ORIGIN, loadConfig } from "./config";
 import { railLogger } from "./convex-logger";
 import { byId, input } from "./dom";
 import { cleanError } from "./format";
+import { hasInvite, stashInvite } from "./invite";
 import { mountRail } from "./rail";
 import { beginSignIn, completeSignIn, currentSession, fetchIdToken, signOut } from "./superset-auth";
 
@@ -33,6 +34,9 @@ async function boot(): Promise<void> {
     location.replace(RAIL_ORIGIN + location.pathname + location.search);
     return;
   }
+  // An invite link's code must outlive the trip to Superset and back, which drops the query string.
+  const withoutInvite = stashInvite(location.href, localStorage);
+  if (withoutInvite !== null) history.replaceState(null, "", withoutInvite);
   showScreen("boot");
   const config = await loadConfig();
   byId("signin").addEventListener("click", function () { void beginSignIn(); });
@@ -40,6 +44,7 @@ async function boot(): Promise<void> {
   const finished = await completeSignIn();
   if (finished instanceof Error) signInNote(finished.message);
   if (currentSession() === null) {
+    byId("inviteNote").hidden = !hasInvite(localStorage);
     showScreen("signin");
     return;
   }
@@ -76,7 +81,7 @@ async function boot(): Promise<void> {
         return;
       }
       showScreen("rail");
-      mountRail(client, current, { convexUrl: config.convexUrl, onSignOut: leave });
+      mountRail(client, current, { onSignOut: leave });
     }, function (e) { showError(cleanError(e)); });
   });
 
@@ -84,7 +89,11 @@ async function boot(): Promise<void> {
     event.preventDefault();
     const err = byId("handleError");
     err.hidden = true;
-    client.mutation(api.hackers.claimHandle, { handle: input("handleInput").value.trim().replace(/^@/, "") }).catch(function (e: unknown) {
+    const handle = input("handleInput").value.trim().replace(/^@/, "");
+    client.mutation(api.hackers.claimHandle, { handle }).then(function () {
+      // Superset handles have the same shape. If this one is theirs (same name on the profile), link it; else stay quiet.
+      client.action(api.superset.linkProfile, { handle, auto: true }).catch(function () { /* not theirs, or not public */ });
+    }).catch(function (e: unknown) {
       err.textContent = cleanError(e);
       err.hidden = false;
     });

@@ -1,11 +1,12 @@
-// ABOUTME: The rail itself: your subset, the friends roster, the incoming knock card, sent knocks, focus, settings.
-// ABOUTME: Everything reads from Convex subscriptions and writes through public mutations; nothing expires on the client.
+// ABOUTME: The rail itself: your subset, the friends roster, the incoming knock card, sent knocks, focus, settings,
+// ABOUTME: pairing this machine and redeeming a waiting invite. Reads Convex subscriptions; nothing expires on the client.
 import type { ConvexClient } from "convex/browser";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "@soopdoop/convex/convex/_generated/api";
-import { RAIL_ORIGIN } from "./config";
+import { profilePageUrl } from "@soopdoop/convex/convex/lib/supersetProfile";
 import { byId, el, input, replaceChildren, ring, select } from "./dom";
 import { cleanError, countdown, initials, minutesLeft, ringOffset } from "./format";
+import { inviteMessage, takeInvite } from "./invite";
 
 type Me = NonNullable<FunctionReturnType<typeof api.hackers.me>>;
 type Friend = FunctionReturnType<typeof api.friends.list>[number];
@@ -14,9 +15,9 @@ type Machine = FunctionReturnType<typeof api.subsets.mine>[number];
 type Incoming = FunctionReturnType<typeof api.knocks.incoming>;
 type SentKnock = FunctionReturnType<typeof api.knocks.sent>[number];
 type KnockKind = "link" | "file" | "session" | "page";
+type SupersetCard = NonNullable<Friend["superset"]>;
 
 export interface RailOptions {
-  convexUrl: string;
   onSignOut: () => void;
 }
 
@@ -44,7 +45,8 @@ export function mountRail(client: ConvexClient, current: Me, options: RailOption
   wireFocus(client);
   wireSettings(client, options);
   wireComposer(client);
-  void redeemInviteFromUrl(client);
+  void redeemSavedInvite(client);
+  void connectThisMachine(client);
   setInterval(renderMe, 30_000);
   setInterval(renderSent, 1_000);
 }
@@ -80,6 +82,12 @@ function renderMe(): void {
   byId("settingsBtn").hidden = false;
   input("shareAgentNames").checked = me.shareAgentNames;
   input("shareWorkspaceNames").checked = me.shareWorkspaceNames;
+  const s = me.superset;
+  byId("supersetNow").textContent = s === undefined
+    ? "Not linked."
+    : `Linked: superset.sh/${s.handle}${s.name === undefined ? "" : ` (${s.name})`}${s.tier === undefined ? "" : ` · ${s.tier}`}`;
+  byId("supersetForm").hidden = s !== undefined;
+  byId("supersetUnlink").hidden = s === undefined;
 }
 
 function renderMine(machines: Machine[]): void {
@@ -125,12 +133,16 @@ function friendRow(f: Friend): HTMLElement {
     : f.led === "x" ? "offline"
     : f.agentCount === 0 ? "∅ empty subset"
     : `${f.agentCount} agent${f.agentCount === 1 ? "" : "s"}`;
+  const s = f.superset;
   const canKnock = f.led !== "x" && !f.inFocus;
   const knockBtn = el("button", { class: "btn tiny", type: "button", disabled: !canKnock, title: canKnock ? `Knock on @${f.handle}` : "Not reachable right now" }, "knock");
   knockBtn.addEventListener("click", function () { openComposer(f.handle); });
   const row = el("div", { class: "person" },
     el("span", { class: "av" }, initials(f.handle), el("span", { class: `led ${f.led}` })),
-    el("span", { class: "ell" }, el("div", { class: "nm ell" }, "@" + f.handle), el("div", { class: `st ell${f.agentCount === 0 && f.led !== "x" && !f.inFocus ? " zero" : ""}` }, state)),
+    el("span", { class: "ell" },
+      el("div", { class: "nm ell" }, "@" + f.handle, s?.name === undefined ? null : el("span", { class: "real" }, " " + s.name)),
+      el("div", { class: `st ell${f.agentCount === 0 && f.led !== "x" && !f.inFocus ? " zero" : ""}` }, state, s?.tier === undefined ? "" : ` · ${s.tier}`),
+    ),
     knockBtn,
   );
   const agents = f.agents === undefined || f.agents.length === 0 ? null : el("div", { class: "agents" }, ...f.agents.map(function (a) {
@@ -139,7 +151,23 @@ function friendRow(f: Friend): HTMLElement {
       el("span", { class: "ell" }, el("b", {}, a.name), a.workspace === undefined || a.workspace === a.name ? "" : ` · ${a.workspace}`),
     );
   }));
-  return el("div", {}, row, agents);
+  return el("div", {}, row, s === undefined ? null : supersetDetails(s), agents);
+}
+
+// A friend's public Superset profile, folded away until asked for: the rail stays quiet by default.
+function supersetDetails(s: SupersetCard): HTMLElement {
+  const badges = s.achievements.map(function (a) {
+    const label = a.level === undefined ? a.slug : `${a.slug} ${a.level}/${a.of ?? a.level}`;
+    return el("span", { class: "badge" }, label);
+  });
+  return el("details", { class: "ss" },
+    el("summary", {}, "on Superset"),
+    el("div", { class: "ss-body" },
+      s.models.length === 0 ? null : el("div", { class: "ell" }, el("span", { class: "k" }, "models "), s.models.join(" · ")),
+      badges.length === 0 ? null : el("div", { class: "badges" }, ...badges),
+      el("a", { href: profilePageUrl(s.handle), target: "_blank", rel: "noopener noreferrer" }, `superset.sh/${s.handle}`),
+    ),
+  );
 }
 
 function renderPendingRequests(client: ConvexClient, rows: PendingRequest[]): void {
@@ -257,23 +285,33 @@ function wireSettings(client: ConvexClient, options: RailOptions): void {
     }).catch(fail);
   });
   byId("inviteBtn").addEventListener("click", function () {
-    client.mutation(api.friends.createInvite, {}).then(function (token) {
-      const link = `${RAIL_ORIGIN}/?invite=${token}`;
+    client.mutation(api.friends.createInvite, {}).then(function (code) {
+      const message = inviteMessage(code, me?.handle ?? "a friend");
       const out = byId("inviteOut");
-      out.textContent = `${link}\nGood for 7 days, one use. They open it in their own rail.`;
+      out.textContent = message;
       out.hidden = false;
-      navigator.clipboard.writeText(link).then(function () { flash("Invite link copied."); }).catch(function () { /* clipboard is optional */ });
+      navigator.clipboard.writeText(message)
+        .then(function () { flash("Invite copied. Send it to one person."); })
+        .catch(function () { flash("Copy the invite below and send it to one person."); });
     }).catch(fail);
   });
-  byId("pairForm").addEventListener("submit", function (event) {
+  byId("supersetForm").addEventListener("submit", function (event) {
     event.preventDefault();
-    const machineName = input("machineName").value.trim();
-    client.mutation(api.subsets.pairDaemon, { machineName }).then(function (token) {
-      const out = byId("pairOut");
-      out.textContent = `soopdoop pair ${options.convexUrl} ${token}\n\nRun this once on “${machineName}”, then \`soopdoop install-hooks\` and \`soopdoop serve\`. The token shows only now.`;
-      out.hidden = false;
+    byId("supersetNow").textContent = "Checking Superset…";
+    client.action(api.superset.linkProfile, { handle: input("supersetHandle").value }).then(function (linked) {
+      input("supersetHandle").value = "";
+      flash(`Linked superset.sh/${linked.handle}. Friends see it on your row.`);
+    }).catch(function (e: unknown) {
+      renderMe();
+      fail(e);
+    });
+  });
+  byId("supersetUnlink").addEventListener("click", function () {
+    client.mutation(api.superset.unlinkProfile, {}).then(function () {
+      flash("Unlinked. Friends no longer see your Superset profile.");
     }).catch(fail);
   });
+  byId("connectBtn").addEventListener("click", function () { void connectThisMachine(client); });
   byId("signout").addEventListener("click", options.onSignOut);
 }
 
@@ -317,17 +355,66 @@ function wireComposer(client: ConvexClient): void {
   });
 }
 
-// An invite link opens the invitee's own rail with ?invite=. Redeem it once they are signed in with a handle.
-async function redeemInviteFromUrl(client: ConvexClient): Promise<void> {
-  const url = new URL(location.href);
-  const token = url.searchParams.get("invite");
+// main.ts kept the code from the invite link through sign-in. Redeem it now that there is a handle.
+async function redeemSavedInvite(client: ConvexClient): Promise<void> {
+  const token = takeInvite(localStorage);
   if (token === null) return;
-  url.searchParams.delete("invite");
-  history.replaceState(null, "", url.toString());
   try {
     const from = await client.mutation(api.friends.redeemInvite, { token });
     flash(`You and @${from} are friends now.`);
   } catch (e) {
     fail(e);
+  }
+}
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null && !Array.isArray(x);
+}
+
+// What this machine's rail server says about pairing. Null when the page is not served by a soopdoop rail server.
+async function readLocal(): Promise<{ machine: string; paired: boolean } | null> {
+  try {
+    const res = await fetch("/local", { cache: "no-store" });
+    if (!res.ok) return null;
+    const raw: unknown = await res.json();
+    if (!isRecord(raw) || typeof raw.machine !== "string" || typeof raw.paired !== "boolean") return null;
+    return { machine: raw.machine, paired: raw.paired };
+  } catch {
+    return null;
+  }
+}
+
+// Pairs this machine with no terminal step: Convex mints a daemon token, this machine's rail server writes it
+// where the daemon reads it, and the daemon starts reporting within a second. Runs once per page load.
+async function connectThisMachine(client: ConvexClient): Promise<void> {
+  const note = byId("machineNow");
+  const button = byId("connectBtn");
+  const local = await readLocal();
+  if (local === null) {
+    note.textContent = "Not served by soopdoop on this machine. Run `soopdoop setup` here to connect it.";
+    button.hidden = true;
+    return;
+  }
+  const connected = `${local.machine} · connected. Claude Code sessions here show under Your subset.`;
+  if (local.paired) {
+    note.textContent = connected;
+    button.hidden = true;
+    return;
+  }
+  note.textContent = `${local.machine} · connecting…`;
+  try {
+    const token = await client.mutation(api.subsets.pairDaemon, { machineName: local.machine });
+    const res = await fetch("/local/pair", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token }) });
+    // 409: another tab paired it first. Connected either way.
+    if (!res.ok && res.status !== 409) {
+      const body: unknown = await res.json().catch(function () { return null; });
+      throw new Error(isRecord(body) && typeof body.error === "string" ? body.error : `the rail server answered ${res.status}`);
+    }
+    note.textContent = connected;
+    button.hidden = true;
+    flash(`${local.machine} is connected. Claude Code sessions show up here on their next prompt or tool call.`);
+  } catch (e) {
+    note.textContent = `${local.machine} · not connected: ${cleanError(e)}`;
+    button.hidden = false;
   }
 }

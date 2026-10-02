@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@soopdoop/convex": "workspace:*",
+    "@soopdoop/daemon": "workspace:*",
     "convex": "^1.30.0"
   },
   "devDependencies": {
