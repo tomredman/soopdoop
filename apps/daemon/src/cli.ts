@@ -4,11 +4,12 @@
 import { lstat, readlink, stat, symlink, unlink as removeFile } from "node:fs/promises";
 import { hostname, homedir } from "node:os";
 import path from "node:path";
-import { ConvexHttpClient } from "convex/browser";
+import { ConvexClient, ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { configPath, configStamp, readConfig, readSettings, soopdoopHome, writeConfig, writeSettings, type Config } from "./config";
 import { forwardHook } from "./hook";
 import { claudeSettingsPath, guardedHook, installClaudeHooks, prefixedHook, uninstallClaudeHooks } from "./hooks";
+import { answerReads, summaryFor, updateRouting } from "./operator";
 import {
   answers, DAEMON_PORT, isLoaded, load, openInBrowser, plistPath, portOwner, RAIL_URL, restart, serviceSpecs, unload, waitFor, writePlist,
 } from "./service";
@@ -27,6 +28,8 @@ const MIN_BUN = [1, 3];
 const ROOT = path.resolve(import.meta.dir, "..", "..", "..");
 // The hook file next to this one, run by this bun. Works from any shell and needs nothing on PATH.
 const HOOK_FILE = path.join(import.meta.dir, "hook.ts");
+// The MCP server Claude Code starts for the ask_operator tool.
+const MCP_FILE = path.join(import.meta.dir, "mcp.ts");
 // The daemon does not import the backend's generated API; it names the one public mutation it calls.
 const reportSubset = makeFunctionReference<"mutation">("subsets:report");
 
@@ -50,8 +53,18 @@ async function serve(): Promise<void> {
   const subset: Subset = new Map();
   let dirty = true;
   let reporting = false;
-  let paired: { config: Config; client: ConvexHttpClient } | null = null;
+  // http reports presence; live follows the Operator's read requests over a WebSocket.
+  let paired: { config: Config; client: ConvexHttpClient; live: ConvexClient; stopReads: () => void } | null = null;
   let stamp = -1;
+  // Open agents that finished a turn since the last report: their routing summaries go out after it.
+  const summariesDue = new Set<string>();
+
+  function unpair(): void {
+    if (paired === null) return;
+    paired.stopReads();
+    void paired.live.close();
+    paired = null;
+  }
 
   // Picks up a new or changed pairing without a restart: the rail writes the file when it pairs this machine.
   async function loadPairing(): Promise<void> {
@@ -60,24 +73,44 @@ async function serve(): Promise<void> {
     stamp = next;
     try {
       const config = await readConfig();
-      paired = config === null ? null : { config, client: new ConvexHttpClient(config.convexUrl) };
+      unpair();
+      if (config !== null) {
+        const live = new ConvexClient(config.convexUrl);
+        paired = { config, client: new ConvexHttpClient(config.convexUrl), live, stopReads: answerReads(live, config.token, config.convexUrl, subset) };
+      }
       if (paired === null) console.log(`Not paired yet. Sign in on the rail (${RAIL_URL}) and it pairs this machine.`);
       else {
         console.log(`Paired. Reporting to ${paired.config.convexUrl}`);
         dirty = true;
       }
     } catch (e) {
-      paired = null;
+      unpair();
       console.error(e instanceof Error ? e.message : String(e));
     }
   }
 
+  // After a report, so the server knows the agent before its summary arrives.
+  async function sendSummaries(now: NonNullable<typeof paired>): Promise<void> {
+    for (const agentId of [...summariesDue]) {
+      summariesDue.delete(agentId);
+      const summary = await summaryFor(subset, agentId);
+      if (summary === null) continue;
+      try {
+        await now.client.mutation(updateRouting, { token: now.config.token, agentId, summary });
+      } catch (e) {
+        console.error("routing summary failed:", e instanceof Error ? e.message : e);
+      }
+    }
+  }
+
   async function report(): Promise<void> {
-    if (paired === null || reporting) return;
+    const now = paired;
+    if (now === null || reporting) return;
     reporting = true;
     try {
-      await paired.client.mutation(reportSubset, { token: paired.config.token, agents: toReport(subset) });
+      await now.client.mutation(reportSubset, { token: now.config.token, agents: toReport(subset) });
       dirty = false;
+      await sendSummaries(now);
     } catch (e) {
       console.error("report failed:", e instanceof Error ? e.message : e);
     } finally {
@@ -98,6 +131,7 @@ async function serve(): Promise<void> {
         const ev = parseHookEvent(raw);
         if (ev === null) return new Response("bad hook payload", { status: 400 });
         if (apply(subset, ev, Date.now(), paired?.config.privateDirs ?? [])) dirty = true;
+        if (ev.hook_event_name === "Stop" && subset.get(ev.session_id)?.open === true) summariesDue.add(ev.session_id);
         return new Response("ok");
       }
       if (url.pathname === "/status") {
@@ -162,6 +196,26 @@ async function railSaysPaired(): Promise<boolean | null> {
   }
 }
 
+// Gives every Claude Code session the ask_operator tool, at user scope. Needs the claude command: a setup run from a
+// terminal does it; the updater has no PATH to claude and skips it, which is fine because the registered path never moves.
+function registerMcp(): "added" | "no-claude" | string {
+  const claude = Bun.which("claude");
+  if (claude === null) return "no-claude";
+  Bun.spawnSync([claude, "mcp", "remove", "--scope", "user", "soopdoop"], { stdout: "pipe", stderr: "pipe" });
+  const add = Bun.spawnSync([claude, "mcp", "add", "--scope", "user", "soopdoop", "--", process.execPath, MCP_FILE], { stdout: "pipe", stderr: "pipe" });
+  return add.exitCode === 0 ? "added" : add.stderr.toString().trim() || `claude mcp add failed (${add.exitCode})`;
+}
+
+async function mcpRegistered(): Promise<boolean> {
+  try {
+    const raw: unknown = await Bun.file(path.join(homedir(), ".claude.json")).json();
+    return typeof raw === "object" && raw !== null && "mcpServers" in raw && typeof raw.mcpServers === "object" &&
+      raw.mcpServers !== null && "soopdoop" in raw.mcpServers;
+  } catch {
+    return false;
+  }
+}
+
 async function isDirectory(p: string): Promise<boolean> {
   try {
     return (await stat(p)).isDirectory();
@@ -210,6 +264,13 @@ async function setup(args: string[]): Promise<void> {
 
   const link = await linkCommand();
   if (link !== null) say(`· \`soopdoop\` command: ${tilde(link)}`);
+
+  if (!keepUpdater) {
+    const mcp = registerMcp();
+    if (mcp === "added") say("· Claude Code sessions get the ask_operator tool (MCP server \"soopdoop\", user scope).");
+    else if (mcp === "no-claude") say("· The claude command is not on PATH, so the ask_operator tool was not added. Run setup again from a terminal where `claude` works.");
+    else say(`· Could not add the ask_operator tool: ${mcp}`);
+  }
 
   if (process.platform !== "darwin") {
     say(`\nBackground services are macOS-only for now. Run these two, each in its own terminal:\n` +
@@ -301,6 +362,7 @@ async function status(): Promise<void> {
   const claude = Bun.file(claudeSettingsPath());
   const ours = (await claude.exists()) && (await claude.text()).includes(HOOK_FILE);
   console.log(`hooks   ${ours ? "installed" : "not installed for this checkout"} · ${tilde(claudeSettingsPath())}`);
+  console.log(`operator ${(await mcpRegistered()) ? "ask_operator tool registered in Claude Code" : "ask_operator tool not registered (run soopdoop setup from a terminal)"}`);
 }
 
 // `soopdoop update` installs the newest release; `--to vX.Y.Z` moves to that release (also back);
@@ -346,6 +408,11 @@ async function update(args: string[]): Promise<void> {
 async function uninstall(): Promise<void> {
   await uninstallClaudeHooks();
   console.log(`· Removed the soopdoop hooks from ${tilde(claudeSettingsPath())}. Other hooks are untouched.`);
+  const claude = Bun.which("claude");
+  if (claude !== null) {
+    Bun.spawnSync([claude, "mcp", "remove", "--scope", "user", "soopdoop"], { stdout: "pipe", stderr: "pipe" });
+    console.log("· Removed the ask_operator tool from Claude Code.");
+  }
   if (process.platform === "darwin") {
     for (const spec of serviceSpecs(ROOT, process.execPath, soopdoopHome())) {
       await unload(spec.label);
