@@ -10,10 +10,12 @@
     "daemon": "bun --cwd apps/daemon dev",
     "rail": "bun --cwd apps/rail dev",
     "test": "bun test",
-    "typecheck": "bun run --filter '*' typecheck",
-    "lint": "bun run --filter '*' lint"
+    "typecheck": "bun run --filter '*' typecheck && tsc -p scripts --noEmit",
+    "lint": "bun run --filter '*' lint",
+    "release": "bun scripts/release.ts"
   },
   "devDependencies": {
+    "bun-types": "^1.2.0",
     "typescript": "^5.6.0"
   }
 }
