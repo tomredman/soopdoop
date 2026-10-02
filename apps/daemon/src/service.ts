@@ -1,5 +1,5 @@
-// ABOUTME: macOS LaunchAgents: the rail and the daemon run always (start at login, restart if they exit); the updater runs
-// ABOUTME: every 6 hours. The service list and plist text are pure functions (tested); launchctl, lsof and open are thin wrappers.
+// ABOUTME: macOS LaunchAgents: the rail and the daemon run always (start at login, restart if they exit), the Mac app starts at
+// ABOUTME: login, the updater runs every 6 hours. Service list and plist text are pure (tested); launchctl and lsof are wrappers.
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -10,7 +10,7 @@ export const UPDATER_LABEL = "com.soopdoop.updater";
 export const UPDATE_EVERY_SECONDS = 6 * 60 * 60;
 
 export interface ServiceSpec {
-  name: "rail" | "daemon" | "updater";
+  name: "rail" | "daemon" | "updater" | "hud";
   label: string;
   program: string[];
   workingDirectory: string;
@@ -19,6 +19,8 @@ export interface ServiceSpec {
   // Servers listen on a port and are kept alive. A periodic job has no port and runs every `everySeconds`.
   port?: number;
   everySeconds?: number;
+  // The Mac app: restarted after a crash, but not after the hacker quits it from the menu bar.
+  restartOnCrashOnly?: boolean;
 }
 
 // root: the soopdoop checkout. bun: an absolute path, because launchd does not read your shell's PATH.
@@ -50,6 +52,15 @@ export function serviceSpecs(root: string, bun: string, home: string, soopdoopHo
       port: DAEMON_PORT,
     },
     {
+      name: "hud",
+      label: "com.soopdoop.hud",
+      program: [path.join(homedir(), "Applications", "soopdoop.app", "Contents", "MacOS", "Soopdoop")],
+      workingDirectory: root,
+      env,
+      log: path.join(logs, "hud.log"),
+      restartOnCrashOnly: true,
+    },
+    {
       // Checks for a new release at login and every 6 hours; installs it unless auto-update is off.
       name: "updater",
       label: UPDATER_LABEL,
@@ -73,9 +84,11 @@ export function plist(spec: ServiceSpec): string {
   const env = Object.entries(spec.env)
     .map(function ([k, v]) { return `    <key>${xml(k)}</key>\n    <string>${xml(v)}</string>`; })
     .join("\n");
-  const schedule = spec.everySeconds === undefined
-    ? "  <key>KeepAlive</key>\n  <true/>\n  <key>ThrottleInterval</key>\n  <integer>10</integer>"
-    : `  <key>StartInterval</key>\n  <integer>${spec.everySeconds}</integer>`;
+  const schedule = spec.everySeconds !== undefined
+    ? `  <key>StartInterval</key>\n  <integer>${spec.everySeconds}</integer>`
+    : spec.restartOnCrashOnly === true
+      ? "  <key>KeepAlive</key>\n  <dict>\n    <key>SuccessfulExit</key>\n    <false/>\n  </dict>\n  <key>ThrottleInterval</key>\n  <integer>10</integer>"
+      : "  <key>KeepAlive</key>\n  <true/>\n  <key>ThrottleInterval</key>\n  <integer>10</integer>";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">

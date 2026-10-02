@@ -6,7 +6,8 @@ import { hostname, homedir } from "node:os";
 import path from "node:path";
 import { ConvexClient, ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
-import { configPath, configStamp, readConfig, readSettings, soopdoopHome, writeConfig, writeSettings, type Config } from "./config";
+import { appBinaryPath, appBundlePath, buildApp, removeApp } from "./app";
+import { configPath, configStamp, invitePath, readConfig, readSettings, soopdoopHome, writeConfig, writeSettings, type Config } from "./config";
 import { forwardHook } from "./hook";
 import { claudeSettingsPath, guardedHook, installClaudeHooks, prefixedHook, uninstallClaudeHooks } from "./hooks";
 import { answerReads, summaryFor, updateRouting } from "./operator";
@@ -272,15 +273,23 @@ async function setup(args: string[]): Promise<void> {
     else say(`· Could not add the ask_operator tool: ${mcp}`);
   }
 
+  if (invite !== undefined) await Bun.write(invitePath(), invite + "\n");
+
   if (process.platform !== "darwin") {
     say(`\nBackground services are macOS-only for now. Run these two, each in its own terminal:\n` +
       `  bun ${ROOT}/apps/daemon/src/cli.ts serve\n  bun ${ROOT}/apps/rail/serve.ts\nThen open ${RAIL_URL}. Update with \`soopdoop update\`.`);
     return;
   }
 
+  say("· Building the soopdoop app (the first time takes a minute)…");
+  const app = await buildApp(ROOT, await currentVersion(ROOT));
+  say(app.ok ? `· The app: ${tilde(app.path)}` : `· No app this time: ${app.why}`);
+
   // Background services. Stop ours first, so a port still taken afterwards belongs to something else.
   const all = serviceSpecs(ROOT, process.execPath, home, process.env.SOOPDOOP_HOME);
-  const specs = all.filter(function (s) { return !(keepUpdater && s.name === "updater"); });
+  const specs = all.filter(function (s) {
+    return !(keepUpdater && s.name === "updater") && (s.name !== "hud" || app.ok);
+  });
   for (const spec of specs) await unload(spec.label);
   for (const spec of specs) {
     const port = spec.port;
@@ -304,6 +313,15 @@ async function setup(args: string[]): Promise<void> {
   say(`· New releases install themselves within 6 hours${(await readSettings()).autoUpdate ? "" : " (auto-update is off here)"}. \`soopdoop auto-update off\` stops that.`);
   if (quiet) return;
 
+  if (app.ok) {
+    console.log(`\nNext: look for the soopdoop HUD on your screen and the icon in your menu bar.\n` +
+      "  1. Sign in with Superset there (your browser opens Superset's page once).\n" +
+      "  2. Pick a handle. If you use your Superset handle, soopdoop links your Superset profile too.\n" +
+      `This Mac pairs itself${invite === undefined ? "." : ", and the invite makes you friends with whoever sent it."}\n` +
+      "The HUD shows while Superset is in front; the menu bar icon shows it any time.");
+    console.log(`\nLater: \`soopdoop status\`, \`soopdoop logs\`, \`soopdoop update\`, \`soopdoop uninstall\`.`);
+    return;
+  }
   const url = invite === undefined ? RAIL_URL : `${RAIL_URL}?invite=${invite}`;
   const opened = !args.includes("--no-open");
   if (opened) await openInBrowser(url);
@@ -339,6 +357,11 @@ async function status(): Promise<void> {
   console.log(`updates ${settings.autoUpdate ? "install themselves" : "auto-update off"} · ${latest}${checked}${state.error === undefined ? "" : ` · last problem: ${state.error}`}`);
   for (const spec of serviceSpecs(ROOT, process.execPath, home)) {
     const loaded = process.platform === "darwin" ? await isLoaded(spec.label) : false;
+    if (spec.name === "hud") {
+      const built = await Bun.file(appBinaryPath()).exists();
+      console.log(`hud     ${built ? (loaded ? "running" : "built, not running") : "not built (needs Xcode's command line tools)"} · ${tilde(appBundlePath())}`);
+      continue;
+    }
     if (spec.port === undefined) {
       console.log(`${spec.name.padEnd(7)} ${loaded ? "every 6 hours, and at login" : "not scheduled"} · log ${tilde(spec.log)}`);
       continue;
@@ -418,7 +441,8 @@ async function uninstall(): Promise<void> {
       await unload(spec.label);
       await removeFile(plistPath(spec.label)).catch(function () { /* already gone */ });
     }
-    console.log("· Stopped the background rail, daemon and updater.");
+    await removeApp();
+    console.log("· Stopped the background rail, daemon, app and updater, and removed ~/Applications/soopdoop.app.");
   }
   const link = path.join(path.dirname(process.execPath), "soopdoop");
   try {
@@ -459,7 +483,9 @@ try {
       console.log(`v${await currentVersion(ROOT)}`);
       break;
     case "open":
-      await openInBrowser(RAIL_URL);
+      // Opening the running app shows the HUD (it handles reopen); without the app, the web rail.
+      if (await Bun.file(appBinaryPath()).exists()) Bun.spawnSync(["open", appBundlePath()]);
+      else await openInBrowser(RAIL_URL);
       break;
     case "logs":
       await logs();
