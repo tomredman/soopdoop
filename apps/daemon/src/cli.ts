@@ -150,6 +150,18 @@ async function linkCommand(): Promise<string | null> {
   }
 }
 
+// The rail knows which deployment it uses; ask it whether this machine is paired with that one. Null when it is not up.
+async function railSaysPaired(): Promise<boolean | null> {
+  try {
+    const res = await fetch(`${RAIL_URL}local`, { signal: AbortSignal.timeout(2_000) });
+    if (!res.ok) return null;
+    const raw: unknown = await res.json();
+    return typeof raw === "object" && raw !== null && "paired" in raw && typeof raw.paired === "boolean" ? raw.paired : null;
+  } catch {
+    return null;
+  }
+}
+
 async function isDirectory(p: string): Promise<boolean> {
   try {
     return (await stat(p)).isDirectory();
@@ -234,12 +246,8 @@ async function setup(args: string[]): Promise<void> {
   const url = invite === undefined ? RAIL_URL : `${RAIL_URL}?invite=${invite}`;
   const opened = !args.includes("--no-open");
   if (opened) await openInBrowser(url);
-  let paired = false;
-  try {
-    paired = (await readConfig()) !== null;
-  } catch {
-    paired = false;
-  }
+  // The pairing must be with the deployment the rail uses; one with another deployment is replaced at sign-in.
+  const paired = (await railSaysPaired()) === true;
   if (paired && invite === undefined) {
     console.log(`\nDone. This Mac was already paired. The rail: ${url}`);
   } else {
@@ -284,7 +292,12 @@ async function status(): Promise<void> {
   } catch (e) {
     console.log(`paired  config unreadable: ${e instanceof Error ? e.message : String(e)}`);
   }
-  console.log(`paired  ${config === null ? `no · sign in at ${RAIL_URL}` : `yes · ${config.convexUrl}`}`);
+  const railPaired = await railSaysPaired();
+  console.log(`paired  ${config === null
+    ? `no · sign in at ${RAIL_URL}`
+    : railPaired === false
+      ? `with ${config.convexUrl}, not the deployment the rail uses · sign in at ${RAIL_URL} and it pairs again`
+      : `yes · ${config.convexUrl}`}`);
   const claude = Bun.file(claudeSettingsPath());
   const ours = (await claude.exists()) && (await claude.text()).includes(HOOK_FILE);
   console.log(`hooks   ${ours ? "installed" : "not installed for this checkout"} · ${tilde(claudeSettingsPath())}`);
