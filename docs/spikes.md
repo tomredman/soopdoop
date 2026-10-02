@@ -14,7 +14,23 @@ Fix: the rail's own server forwards the exchange (`apps/rail/src/token-proxy.ts`
 
 Verified (1 Oct 2026, after the fix): Mr. Tom signed in end to end. Superset's token response carried an ID token, Convex accepted it with `auth.config.ts` as written, and `claimHandle` created hacker `tom` whose `supersetUserId` is Superset's user id (a UUID). The rail then paired machine `mbp16`.
 
-Open question: Superset's docs say a registration "is anonymous until the user claims it via browser consent". If only one user can claim a client, every rail install must register its own client, and Convex must stop pinning `aud` (custom JWT without `applicationID`). Check with a second hacker before inviting anyone.
+Open question (29 Sep): Superset's docs say a registration "is anonymous until the user claims it via browser consent". If only one user can claim a client, every rail install must register its own client, and Convex must stop pinning `aud` (custom JWT without `applicationID`).
+
+Answered from the code (2 Oct 2026), not yet seen live: one client serves every Superset user. Superset's `packages/auth/src/server.ts` uses `@better-auth/oauth-provider` 1.6.22 with `allowDynamicClientRegistration` and `allowUnauthenticatedClientRegistration`. In that version, `/oauth2/authorize` checks that the client exists and is enabled, the redirect URI, scopes and PKCE, then looks for this user's consent (an `oauthConsent` row per client, user and organization). It never compares the client's owner with the signed-in user, and neither does the consent step or the code exchange. The ID token's `aud` is the client id and it carries `name` (with the `profile` scope), so `auth.config.ts` stays as it is. The "claim" in the docs is the per-user consent. The first colleague's sign-in is the live check.
+
+## Superset profiles (2 Oct 2026)
+
+Superset publishes a markdown version of every public leaderboard profile at `https://superset.sh/md/user/<handle>` (Superset's `apps/marketing/src/lib/profile-markdown.ts` renders it; cached for an hour; `404` with a "Not found" page for an unknown handle; handles are lowercased). It has the name, rank, tier, all-time tokens, cost and sessions, how the tier was scored, achievements, milestones, active days, models with tokens and cost, and a token breakdown. The page says it is "published voluntarily by the account holder". soopdoop keeps name, tier, achievements and model names (`packages/convex/convex/lib/supersetProfile.ts`) and drops the rest, because AGENTS.md keeps token counts off personal and crew boards.
+
+There is no public way to learn the handle of a signed-in user: the ID token has `sub`, `name`, `email` and `picture`, and the MCP server has no profile tool. So a hacker links a handle, and the backend checks that the page's name matches the `name` in their Superset sign-in. Superset's handle rule (`^[a-z0-9]+(-[a-z0-9]+)*$`, 2 to 39 characters, its `handles` table) is soopdoop's, so the rail tries the soopdoop handle right after it is picked and links it only on a real name match. The leaderboard also has a tRPC API that Superset's website reads; it is not a published surface, so soopdoop does not use it.
+
+Checked: the parser against a live page by hand (all four achievements and seven models, `unknown` skipped), and in tests against a made-up page in the exact format. Not checked: a refresh run by the cron on the deployment.
+
+## Background services (2 Oct 2026)
+
+`bin/soopdoop setup` runs the rail and the daemon as macOS LaunchAgents (`RunAtLoad`, `KeepAlive`), so they survive closing a terminal, a crash and a restart, and no app can stop them on a timer (the Claude app did that to the rail twice). They run with an absolute path to bun because launchd does not read the shell's PATH. Generated plists pass `plutil -lint`. With `SOOPDOOP_SERVICE=1` the rail runs Bun's production mode: the page and an 88 KB bundle were served, `/local` and `/local/pair` answered as designed over real HTTP. The daemon now starts unpaired and picks up the pairing file within a second (tested by running `serve` for real).
+
+Not built: background services on Linux and Windows. Setup prints the two commands to run by hand there.
 
 ## Spike 1: our hooks beside Superset's (29 Sep 2026)
 

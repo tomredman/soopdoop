@@ -15,15 +15,18 @@ The soopdoop rail: a thin window beside Superset that shows your subset, your fr
 | Knock composer (link / page / file / session, 10 s · 30 s · 2 min) | `knocks.send` |
 | Focus mode | `hackers.setFocus` |
 | Sharing settings | `hackers.updateSharing` |
-| Pair the daemon | `subsets.pairDaemon` |
+| This machine (paired automatically) | `subsets.pairDaemon`, then the local server's `/local/pair` |
+| Superset profile on friends' rows, link and unlink your own | `superset.linkProfile`, `superset.unlinkProfile` |
 
 ## Run
 
+Most people never run it by hand: `bin/soopdoop setup` runs `serve.ts` as a background service (`com.soopdoop.rail`) with `SOOPDOOP_SERVICE=1`, which serves a built page.
+
 ```sh
-bun run rail            # http://127.0.0.1:47312/
+bun run rail            # http://127.0.0.1:47312/, hot reload (stop the service first: bin/soopdoop stop)
 ```
 
-`serve.ts` serves the page through Bun's bundler with hot reload, answers `/config.json` with the Convex URL from `CONVEX_URL` or `packages/convex/.env.local`, and forwards the sign-in token exchange (`/oauth/token`, below). `bun run build` writes a static copy to `dist/`; it can show the rail but cannot finish a sign-in on its own, because nothing answers `/oauth/token` there.
+`serve.ts` serves the page through Bun's bundler, answers `/config.json` with the Convex URL (from `CONVEX_URL`, else `packages/convex/.env.local`, else the shared dev deployment in `src/config.ts`), forwards the sign-in token exchange (`/oauth/token`, below), and pairs this machine (`/local`, below). `bun run build` writes a static copy to `dist/`; it can show the rail but cannot finish a sign-in or pair a machine, because nothing answers `/oauth/token` or `/local` there.
 
 Use `127.0.0.1`, not `localhost`: the Superset OAuth client is registered for `http://127.0.0.1:47312/` and the page redirects a localhost tab there.
 
@@ -34,6 +37,18 @@ Use `127.0.0.1`, not `localhost`: the Superset OAuth client is registered for `h
 Superset's token endpoint sends no CORS headers, so the page cannot call it. The page posts to its own server instead (`src/token-proxy.ts`), which forwards to Superset. The server fixes the client id and redirect, accepts only the two grants the rail uses, only from the rail's own origin, and logs nothing. Tokens go page → this machine → Superset and never touch our cloud.
 
 If Convex refuses the token, the rail signs out and shows Convex's reason on the sign-in screen (`src/convex-logger.ts`).
+
+## Pairing this machine
+
+After sign-in the page asks its own server `GET /local` whether this machine is paired. If not, it asks Convex for a daemon token (`subsets.pairDaemon`, named after the machine, e.g. `mbp16`) and posts it to `POST /local/pair`. The server writes `~/.soopdoop/config.json` (mode 600) with its own Convex URL, and the daemon starts reporting within a second. `src/local.ts` takes the pairing only from the rail's own origin, answers `/local` only to the rail's own Host, and does not replace a working pairing unless asked.
+
+## Invites
+
+An invite link carries `?invite=<code>`. Sign-in leaves the page for Superset and comes back without the query string, so `src/invite.ts` keeps the code in `localStorage` until the invitee has a handle, then redeems it once. "Invite someone new" copies a message whose one line clones the code, runs `setup --invite <code>`, and so opens this page with the code.
+
+## Superset profiles
+
+Friends' rows show the name and tier from their linked public Superset profile, with achievements and models folded under "on Superset". The backend reads `https://superset.sh/md/user/<handle>` (see `packages/convex/convex/superset.ts`) and keeps no token counts, cost or rank.
 
 ## How it ships
 
