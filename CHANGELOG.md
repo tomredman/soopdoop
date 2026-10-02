@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.2.0 · 2026-10-02
+
+### New
+- add friends by handle, see your sent knocks and what the Operator knows (hud)
+- the soopdoop Mac app: menu bar and a HUD over Superset (hud)
+- the native app's backend: sign-in, live state, actions (rail)
+- the Operator's machine side and the ask_operator tool (daemon)
+- the Operator, routing summaries, XP and the crew board (convex)
+
+### Fixes
+- updates add the ask_operator tool when it is missing (cli)
+- help text for the app; an invite waits for the app only if it was built (cli)
+
+### Docs
+- the Mac app, the HUD and the Operator
+- MIT license
+
+### Other
+- build the Mac app before tagging (release)
+
 ## v0.1.1 · 2026-10-02
 
 ### Fixes
