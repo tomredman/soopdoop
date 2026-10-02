@@ -122,7 +122,7 @@ function renderRoster(): void {
   const host = byId("roster");
   byId("friendCount").textContent = friends.length === 0 ? "" : String(friends.length);
   if (friends.length === 0) {
-    replaceChildren(host, el("p", { class: "note" }, "No friends yet. Open ⚙ to add one by handle or make an invite link."));
+    replaceChildren(host, el("p", { class: "note" }, "No friends yet. Open ⚙ to invite someone, or add a friend by handle."));
     return;
   }
   replaceChildren(host, ...friends.map(friendRow));
