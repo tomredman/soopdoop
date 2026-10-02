@@ -9,7 +9,7 @@ import { makeFunctionReference } from "convex/server";
 import { appBinaryPath, appBundlePath, buildApp, removeApp } from "./app";
 import { configPath, configStamp, invitePath, readConfig, readSettings, soopdoopHome, writeConfig, writeSettings, type Config } from "./config";
 import { forwardHook } from "./hook";
-import { claudeSettingsPath, guardedHook, installClaudeHooks, prefixedHook, uninstallClaudeHooks } from "./hooks";
+import { claudeSettingsPath, findClaude, guardedHook, installClaudeHooks, prefixedHook, uninstallClaudeHooks } from "./hooks";
 import { answerReads, summaryFor, updateRouting } from "./operator";
 import {
   answers, DAEMON_PORT, isLoaded, load, openInBrowser, plistPath, portOwner, RAIL_URL, restart, serviceSpecs, unload, waitFor, writePlist,
@@ -197,10 +197,9 @@ async function railSaysPaired(): Promise<boolean | null> {
   }
 }
 
-// Gives every Claude Code session the ask_operator tool, at user scope. Needs the claude command: a setup run from a
-// terminal does it; the updater has no PATH to claude and skips it, which is fine because the registered path never moves.
+// Gives every Claude Code session the ask_operator tool, at user scope, with `claude mcp add`.
 function registerMcp(): "added" | "no-claude" | string {
-  const claude = Bun.which("claude");
+  const claude = findClaude();
   if (claude === null) return "no-claude";
   Bun.spawnSync([claude, "mcp", "remove", "--scope", "user", "soopdoop"], { stdout: "pipe", stderr: "pipe" });
   const add = Bun.spawnSync([claude, "mcp", "add", "--scope", "user", "soopdoop", "--", process.execPath, MCP_FILE], { stdout: "pipe", stderr: "pipe" });
@@ -266,10 +265,12 @@ async function setup(args: string[]): Promise<void> {
   const link = await linkCommand();
   if (link !== null) say(`· \`soopdoop\` command: ${tilde(link)}`);
 
-  if (!keepUpdater) {
+  // By hand it registers again; from the updater only when missing (a Mac that started on a version without the tool).
+  // The registered path never moves, so an existing registration stays right.
+  if (!keepUpdater || !(await mcpRegistered())) {
     const mcp = registerMcp();
     if (mcp === "added") say("· Claude Code sessions get the ask_operator tool (MCP server \"soopdoop\", user scope).");
-    else if (mcp === "no-claude") say("· The claude command is not on PATH, so the ask_operator tool was not added. Run setup again from a terminal where `claude` works.");
+    else if (mcp === "no-claude") say("· The claude command was not found, so the ask_operator tool was not added. Run setup again from a terminal where `claude` works.");
     else say(`· Could not add the ask_operator tool: ${mcp}`);
   }
 
@@ -432,7 +433,7 @@ async function update(args: string[]): Promise<void> {
 async function uninstall(): Promise<void> {
   await uninstallClaudeHooks();
   console.log(`· Removed the soopdoop hooks from ${tilde(claudeSettingsPath())}. Other hooks are untouched.`);
-  const claude = Bun.which("claude");
+  const claude = findClaude();
   if (claude !== null) {
     Bun.spawnSync([claude, "mcp", "remove", "--scope", "user", "soopdoop"], { stdout: "pipe", stderr: "pipe" });
     console.log("· Removed the ask_operator tool from Claude Code.");

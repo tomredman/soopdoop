@@ -65,7 +65,7 @@ Without Xcode's command line tools there is no app: setup opens the web rail in 
 - Adds one soopdoop hook per Claude Code event to `~/.claude/settings.json`, beside Superset's hooks, which stay as they are. The first run saves your old file as `settings.json.before-soopdoop`.
 - Builds the app into `~/Applications/soopdoop.app`. It is built from source on your Mac and signed for this Mac only, so macOS does not treat it as a downloaded app.
 - Four LaunchAgents: `com.soopdoop.rail` (the local agent and the web rail, `http://127.0.0.1:47312/`) and `com.soopdoop.daemon` (127.0.0.1:47311) keep running and start when you log in; `com.soopdoop.hud` starts the app at login and again if it crashes; `com.soopdoop.updater` checks for releases. macOS may show a "Background Items Added" notice.
-- Adds the `soopdoop` MCP server to Claude Code at user scope (`claude mcp add`), which is the `ask_operator` tool. Only a setup run from a terminal can do this, because it needs the `claude` command.
+- Adds the `soopdoop` MCP server to Claude Code at user scope (`claude mcp add`), which is the `ask_operator` tool. Setup looks for `claude` on your PATH and where its installers put it (`~/.local/bin`, `~/.claude/local`, Homebrew). An update adds the tool if it is missing.
 - `~/.soopdoop` holds the code (`app/`), this Mac's pairing (`config.json`), the app's Superset sign-in (`session.json`) and its key to the local agent (`app-token`), all readable only by you; settings; and the logs (`logs/`, including `reads.log`, below).
 - A `soopdoop` command next to `bun`.
 

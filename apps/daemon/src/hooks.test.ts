@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { CLAUDE_EVENTS, guardedHook, parseSettings, prefixedHook, shellQuote, withoutSoopdoopHooks, withSoopdoopHooks } from "./hooks";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { CLAUDE_EVENTS, findClaude, guardedHook, parseSettings, prefixedHook, shellQuote, withoutSoopdoopHooks, withSoopdoopHooks } from "./hooks";
 
 const supersetStop = { hooks: [{ type: "command" as const, command: "superset-hooks stop" }] };
 const guarded = guardedHook("/Users/me/.bun/bin/bun", "/Users/me/soopdoop/apps/daemon/src/hook.ts");
@@ -63,5 +66,21 @@ describe("claude hooks", function () {
     expect(parseSettings({ theme: "dark" }).hooks).toBeUndefined();
     expect(function () { parseSettings({ hooks: { Stop: [{ hooks: [{ type: "prompt", prompt: "hi" }] }] } }); }).toThrow("leaving the file alone");
     expect(function () { parseSettings("nope"); }).toThrow("not a JSON object");
+  });
+});
+
+describe("findClaude", function () {
+  test("prefers PATH, then the installers' places, else nothing", async function () {
+    const home = await mkdtemp(path.join(tmpdir(), "soopdoop-claude-"));
+    try {
+      expect(findClaude(home, "/somewhere/claude", [])).toBe("/somewhere/claude");
+      expect(findClaude(home, null, [])).toBeNull();
+      const local = path.join(home, ".local", "bin", "claude");
+      await mkdir(path.dirname(local), { recursive: true });
+      await writeFile(local, "#!/bin/sh\n");
+      expect(findClaude(home, null, [])).toBe(local);
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
   });
 });

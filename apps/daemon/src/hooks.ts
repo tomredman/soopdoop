@@ -1,5 +1,6 @@
-// ABOUTME: Installs the soopdoop lifecycle hooks into Claude Code's user settings, beside any hooks Superset installed.
-// ABOUTME: Each hook runs hook.ts with the event name, guarded so a missing file or a failure never reaches the harness.
+// ABOUTME: Installs the soopdoop lifecycle hooks into Claude Code's user settings, beside Superset's, and finds the claude
+// ABOUTME: command. Each hook runs hook.ts guarded, so a missing file or a failure never reaches the harness.
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { isRecord } from "./state";
@@ -27,6 +28,13 @@ export type CommandFor = (event: string) => string;
 
 export function claudeSettingsPath(): string {
   return path.join(homedir(), ".claude", "settings.json");
+}
+
+// The claude command: on PATH in a terminal, else where its installers put it. The updater runs with launchd's short PATH.
+export function findClaude(home: string = homedir(), onPath: string | null = Bun.which("claude"), extra: string[] = ["/opt/homebrew/bin/claude", "/usr/local/bin/claude"]): string | null {
+  if (onPath !== null) return onPath;
+  const places = [path.join(home, ".local", "bin", "claude"), path.join(home, ".claude", "local", "claude"), ...extra];
+  return places.find(function (p) { return existsSync(p); }) ?? null;
 }
 
 export function shellQuote(s: string): string {
