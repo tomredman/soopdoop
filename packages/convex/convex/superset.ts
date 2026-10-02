@@ -56,7 +56,7 @@ export const linkProfile = action({
     const identity = await requireIdentity(ctx);
     const handle = normalizeHandle(args.handle);
     if (handle === null) {
-      throw new Error("A Superset handle is 2 to 39 lowercase letters, digits and single hyphens, like jimmyvibes.");
+      throw new Error("A Superset handle is 2 to 39 lowercase letters, digits and single hyphens, like ada-lovelace.");
     }
     const profile = await fetchProfile(handle);
     if (profile === null) {

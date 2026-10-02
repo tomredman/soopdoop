@@ -121,11 +121,11 @@ describe("reading a Superset profile page", function () {
   });
 
   test("takes a handle, an @handle, or a pasted profile URL", function () {
-    expect(normalizeHandle("jimmyvibes")).toBe("jimmyvibes");
-    expect(normalizeHandle(" @JimmyVibes ")).toBe("jimmyvibes");
-    expect(normalizeHandle("https://superset.sh/jimmyvibes")).toBe("jimmyvibes");
-    expect(normalizeHandle("superset.sh/md/user/jimmyvibes/")).toBe("jimmyvibes");
-    for (const bad of ["j", "jimmy_vibes", "-jimmy", "jimmy--vibes", "https://example.com/jimmyvibes", "a".repeat(40)]) {
+    expect(normalizeHandle("ada-lovelace")).toBe("ada-lovelace");
+    expect(normalizeHandle(" @Ada-Lovelace ")).toBe("ada-lovelace");
+    expect(normalizeHandle("https://superset.sh/ada-lovelace")).toBe("ada-lovelace");
+    expect(normalizeHandle("superset.sh/md/user/ada-lovelace/")).toBe("ada-lovelace");
+    for (const bad of ["a", "ada_lovelace", "-ada", "ada--lovelace", "https://example.com/ada-lovelace", "a".repeat(40)]) {
       expect(normalizeHandle(bad)).toBeNull();
     }
   });

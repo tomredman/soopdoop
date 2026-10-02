@@ -29,7 +29,7 @@ export function profilePageUrl(handle: string): string {
   return `${SUPERSET_SITE}/${handle}`;
 }
 
-// Takes "jimmyvibes", "@jimmyvibes", or a pasted profile URL. Null for anything that is not a Superset handle.
+// Takes "ada-lovelace", "@ada-lovelace", or a pasted profile URL. Null for anything that is not a Superset handle.
 export function normalizeHandle(raw: string): string | null {
   let s = raw.trim().toLowerCase();
   const fromUrl = /^(?:https?:\/\/)?(?:www\.)?superset\.sh\/(?:md\/user\/)?([^/?#\s]+)\/?(?:[?#].*)?$/.exec(s);
