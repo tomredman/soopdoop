@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.1 · 2026-10-02
+
+### Fixes
+- setup and status check the pairing against the rail's deployment (cli)
+- refuse hook posts from web pages (daemon)
+
 ## v0.1.0 · 2026-10-02
 
 ### New
