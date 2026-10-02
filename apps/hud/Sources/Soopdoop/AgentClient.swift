@@ -32,11 +32,11 @@ final class AgentClient: ObservableObject {
         guard task == nil else { return }
         let tokenFile = Self.home.appendingPathComponent("app-token")
         guard let token = try? String(contentsOf: tokenFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
-              !token.isEmpty else {
+              !token.isEmpty, let endpoint = URL(string: "ws://127.0.0.1:47312/app") else {
             retryLater()
             return
         }
-        var request = URLRequest(url: URL(string: "ws://127.0.0.1:47312/app")!)
+        var request = URLRequest(url: endpoint)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         let socket = session.webSocketTask(with: request)
         task = socket

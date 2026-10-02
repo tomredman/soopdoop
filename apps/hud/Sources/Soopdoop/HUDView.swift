@@ -286,8 +286,11 @@ struct KnockCard: View {
 }
 
 struct CrewSection: View {
+    @EnvironmentObject var client: AgentClient
     let state: AppState
     @State private var composing: String?
+    @State private var adding = false
+    @State private var handle = ""
 
     var body: some View {
         SectionHeader(title: "Crew", trailing: state.crew.isEmpty ? nil : "\(state.crew.count)")
@@ -298,6 +301,69 @@ struct CrewSection: View {
         ForEach(state.crew) { friend in
             FriendRow(friend: friend, composing: $composing)
             if composing == friend.handle { KnockComposer(handle: friend.handle, composing: $composing) }
+        }
+        SentKnocks(sent: state.sent)
+        // For someone who is already on soopdoop. Someone new needs an invite instead.
+        if adding {
+            HStack(spacing: 6) {
+                TextField("their handle", text: $handle)
+                    .textFieldStyle(.roundedBorder)
+                    .font(Theme.mono(11))
+                    .onSubmit(add)
+                Button("Add", action: add).buttonStyle(HUDButtonStyle(primary: true)).disabled(handle.isEmpty)
+                Button("Cancel") {
+                    adding = false
+                    handle = ""
+                }
+                .buttonStyle(HUDButtonStyle())
+            }
+        } else {
+            Button("+ add a friend by handle") { adding = true }
+                .buttonStyle(.plain)
+                .font(Theme.mono(10))
+                .foregroundStyle(Theme.dim)
+        }
+    }
+
+    private func add() {
+        let h = handle.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "^@", with: "", options: .regularExpression)
+        guard !h.isEmpty else { return }
+        client.run("addFriend", ["handle": h], done: "Asked @\(h) to be friends. They join your crew when they accept.")
+        handle = ""
+        adding = false
+    }
+}
+
+// The knocks I sent: waiting with a countdown, "they're looking", or "not now". Expired knocks make no noise.
+struct SentKnocks: View {
+    let sent: [SentKnock]
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let now = context.date.timeIntervalSince1970 * 1000
+            let rows = sent.filter { r in
+                r.outcome == "open" ? r.expiresAt > now - 1_000 : r.outcome != "expired" && now - r.expiresAt < 10 * 60_000
+            }
+            if !rows.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("YOU KNOCKED").font(Theme.mono(9)).tracking(1).foregroundStyle(Theme.dim)
+                    ForEach(rows) { r in
+                        HStack {
+                            Text("@\(r.toHandle)").font(Theme.mono(10.5, .semibold)).foregroundStyle(Theme.text)
+                            Spacer()
+                            Text(label(r, now)).font(Theme.mono(10)).foregroundStyle(r.outcome == "opened" ? Theme.green : Theme.muted)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func label(_ r: SentKnock, _ now: Double) -> String {
+        switch r.outcome {
+        case "open": return "waiting · \(CountdownRing.label(max(0, r.expiresAt - now)))"
+        case "opened": return "they're looking"
+        default: return "not now"
         }
     }
 }
@@ -358,8 +424,10 @@ struct FriendRow: View {
                     Text(card.achievements.map { a in a.level.map { "\(a.slug) \($0)/\(a.of ?? $0)" } ?? a.slug }.joined(separator: " · "))
                         .font(Theme.mono(10)).foregroundStyle(Theme.muted).lineLimit(2)
                 }
-                Link("superset.sh/\(card.handle)", destination: URL(string: "https://superset.sh/\(card.handle)")!)
-                    .font(Theme.mono(10)).foregroundStyle(Theme.text)
+                if let profile = URL(string: "https://superset.sh/\(card.handle)") {
+                    Link("superset.sh/\(card.handle)", destination: profile)
+                        .font(Theme.mono(10)).foregroundStyle(Theme.text)
+                }
             }
         }
     }
@@ -497,15 +565,22 @@ struct MachineSection: View {
                 .font(Theme.mono(10)).foregroundStyle(Theme.dim).fixedSize(horizontal: false, vertical: true)
         }
         ForEach(agents) { agent in
-            HStack(spacing: 6) {
-                if agent.open {
-                    LED(color: LED.color(for: agent.status), size: 7)
-                } else {
-                    Text("◇").font(.system(size: 9)).foregroundStyle(Theme.dim).frame(width: 7)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    if agent.open {
+                        LED(color: LED.color(for: agent.status), size: 7)
+                    } else {
+                        Text("◇").font(.system(size: 9)).foregroundStyle(Theme.dim).frame(width: 7)
+                    }
+                    Text(agent.name).font(Theme.mono(11)).foregroundStyle(Theme.text).lineLimit(1)
+                    Spacer()
+                    Text(agent.open ? agent.status : "private").font(Theme.mono(10)).foregroundStyle(Theme.dim)
                 }
-                Text(agent.name).font(Theme.mono(11)).foregroundStyle(Theme.text).lineLimit(1)
-                Spacer()
-                Text(agent.open ? agent.status : "private").font(Theme.mono(10)).foregroundStyle(Theme.dim)
+                // What the Operator knows about this agent, so its owner can see what questions get routed by.
+                if agent.open, let line = state.routing.first(where: { $0.agentId == agent.agentId })?.summary {
+                    Text("Operator sees: \(line)").font(Theme.mono(9.5)).foregroundStyle(Theme.dim).lineLimit(2)
+                        .padding(.leading, 13)
+                }
             }
         }
     }

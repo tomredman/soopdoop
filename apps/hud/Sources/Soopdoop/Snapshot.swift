@@ -68,6 +68,10 @@ enum Snapshot {
             Friend(handle: "dev", led: "x", inFocus: false, agentCount: 0, agents: nil, superset: nil, relaying: false),
         ]
         ready.requests = [FriendRequest(handle: "ada-lovelace")]
+        ready.sent = [
+            SentKnock(id: "s2", toHandle: "mira", outcome: "open", expiresAt: now + 18_000),
+            SentKnock(id: "s1", toHandle: "jimmy", outcome: "opened", expiresAt: now - 60_000),
+        ]
         ready.incoming = Incoming(
             current: Knock(id: "k1", fromHandle: "jimmy", item: KnockItem(kind: "link", title: "the coupon fix", url: "https://example.com/pr/1"),
                            note: "rounds half up now", expiresAt: now + 22_000, lifetimeMs: 30_000),
@@ -88,6 +92,7 @@ enum Snapshot {
             AgentState(agentId: "a", name: "seamless-onboarding", workspace: "soopdoop", status: "working", open: true),
             AgentState(agentId: "b", name: "taxes", workspace: nil, status: "idle", open: false),
         ])]
+        ready.routing = [RoutingSummary(agentId: "a", summary: "soopdoop@claude/hud-operator · \"make onboarding seamless\" · files: apps/daemon/src/cli.ts")]
         ready.local = LocalInfo(machine: "mbp16", paired: true, version: "0.2.0", latest: "v0.2.1", newer: true,
                                 releaseUrl: nil, autoUpdate: true, canUpdate: true, updating: false, updateError: nil)
         return [("signed-out", signedOut), ("handle", handle), ("ready", ready)]

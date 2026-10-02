@@ -99,6 +99,12 @@ struct SentKnock: Decodable, Identifiable {
     var expiresAt: Double = 0
 }
 
+// The one line the Operator routes questions with, for one of my open agents.
+struct RoutingSummary: Decodable {
+    var agentId = ""
+    var summary = ""
+}
+
 struct AgentState: Decodable, Identifiable {
     var agentId = ""
     var name = ""
@@ -158,6 +164,7 @@ struct AppState: Decodable {
     var incoming = Incoming()
     var sent: [SentKnock] = []
     var subset: [Machine] = []
+    var routing: [RoutingSummary] = []
     var wire: [Relay] = []
     var local: LocalInfo?
     var inviteWaiting = false
@@ -261,6 +268,14 @@ extension SentKnock {
     }
 }
 
+extension RoutingSummary {
+    enum CodingKeys: String, CodingKey { case agentId, summary }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        agentId = c.value(.agentId, ""); summary = c.value(.summary, "")
+    }
+}
+
 extension AgentState {
     enum CodingKeys: String, CodingKey { case agentId, name, workspace, status, open }
     init(from decoder: Decoder) throws {
@@ -306,13 +321,13 @@ extension LocalInfo {
 
 extension AppState {
     enum CodingKeys: String, CodingKey {
-        case version, phase, message, me, board, crew, requests, incoming, sent, subset, wire, local, inviteWaiting
+        case version, phase, message, me, board, crew, requests, incoming, sent, subset, routing, wire, local, inviteWaiting
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         version = c.value(.version, ""); phase = c.value(.phase, "signed-out"); message = c.maybe(.message)
         me = c.maybe(.me); board = c.value(.board, []); crew = c.value(.crew, []); requests = c.value(.requests, [])
         incoming = c.value(.incoming, Incoming()); sent = c.value(.sent, []); subset = c.value(.subset, [])
-        wire = c.value(.wire, []); local = c.maybe(.local); inviteWaiting = c.value(.inviteWaiting, false)
+        routing = c.value(.routing, []); wire = c.value(.wire, []); local = c.maybe(.local); inviteWaiting = c.value(.inviteWaiting, false)
     }
 }

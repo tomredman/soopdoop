@@ -32,6 +32,8 @@ export interface AppState {
   incoming: FunctionReturnType<typeof api.knocks.incoming>;
   sent: FunctionReturnType<typeof api.knocks.sent>;
   subset: FunctionReturnType<typeof api.subsets.mine>;
+  // What the Operator knows about each of my open agents: the one line it routes questions with.
+  routing: FunctionReturnType<typeof api.routing.mine>;
   wire: Relay[];
   local: LocalInfo | null;
   inviteWaiting: boolean;
@@ -52,6 +54,7 @@ const EMPTY = {
   incoming: { current: null, pending: 0 },
   sent: [],
   subset: [],
+  routing: [],
   wire: [],
 };
 
@@ -152,6 +155,7 @@ export function createAgent(server: LocalServer, open: (url: string) => Promise<
       c.onUpdate(api.knocks.incoming, {}, function (incoming) { set({ incoming }); }, logError),
       c.onUpdate(api.knocks.sent, {}, function (sent) { set({ sent }); }, logError),
       c.onUpdate(api.subsets.mine, {}, function (subset) { set({ subset }); }, logError),
+      c.onUpdate(api.routing.mine, {}, function (routing) { set({ routing }); }, logError),
       c.onUpdate(api.operator.log, {}, function (wire) { set({ wire }); }, logError),
     );
   }
