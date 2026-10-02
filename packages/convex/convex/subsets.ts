@@ -28,14 +28,11 @@ export const report = mutation({
   handler: async function (ctx, args) {
     const { hacker, daemon } = await requireDaemon(ctx, args.token);
     const now = Date.now();
-    await ctx.db.patch(daemon._id, { lastSeenAt: now });
+    await ctx.db.patch("daemonTokens", daemon._id, { lastSeenAt: now });
     const existing = await ctx.db
       .query("subsets")
-      .withIndex("by_hacker", function (q) {
-        return q.eq("hackerId", hacker._id);
-      })
-      .filter(function (q) {
-        return q.eq(q.field("machineName"), daemon.machineName);
+      .withIndex("by_hacker_machine", function (q) {
+        return q.eq("hackerId", hacker._id).eq("machineName", daemon.machineName);
       })
       .unique();
     if (existing === null) {
@@ -46,7 +43,7 @@ export const report = mutation({
         updatedAt: now,
       });
     } else {
-      await ctx.db.replace(existing._id, {
+      await ctx.db.replace("subsets", existing._id, {
         hackerId: hacker._id,
         machineName: daemon.machineName,
         agents: args.agents,
@@ -65,7 +62,7 @@ export const mine = query({
     const me = await requireHacker(ctx);
     const rows = await ctx.db
       .query("subsets")
-      .withIndex("by_hacker", function (q) {
+      .withIndex("by_hacker_machine", function (q) {
         return q.eq("hackerId", me._id);
       })
       .collect();

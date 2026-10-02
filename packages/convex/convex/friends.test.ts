@@ -63,7 +63,7 @@ describe("friends", function () {
           .withIndex("by_token", (q) => q.eq("token", old))
           .unique(),
       );
-      await ctx.db.patch(invite._id, { expiresAt: Date.now() - 1 });
+      await ctx.db.patch("invites", invite._id, { expiresAt: Date.now() - 1 });
     });
     await expect(dev.mutation(api.friends.redeemInvite, { token: old })).rejects.toThrow("no longer valid");
   });

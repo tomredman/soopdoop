@@ -1,5 +1,6 @@
-// ABOUTME: Resolves the calling hacker for public functions.
-// ABOUTME: Phase 1 uses the daemon token for the daemon and Convex auth identity for the rail; sign-in with Superset lands in Phase 1 step 4.
+// ABOUTME: Resolves the caller for public functions: the daemon by its token, the rail by its Superset sign-in.
+// ABOUTME: Every public function calls one of these first (the require-access-control lint rule checks it).
+import type { Auth, UserIdentity } from "convex/server";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 
@@ -15,17 +16,33 @@ export async function hashToken(token: string): Promise<string> {
   return sha256Hex(token);
 }
 
-// The rail signs in through Convex auth. The identity's subject is the hacker's Superset user id
-// once Superset OAuth is wired; until then it is the auth provider's subject.
-export async function requireHacker(ctx: QueryCtx | MutationCtx): Promise<Doc<"hackers">> {
+// The rail signs in with Superset. The identity's subject is the Superset user id. Actions have ctx.auth too.
+export async function requireIdentity(ctx: { auth: Auth }): Promise<UserIdentity> {
   const identity = await ctx.auth.getUserIdentity();
   if (identity === null) throw new Error("Not signed in");
-  const hacker = await ctx.db
+  return identity;
+}
+
+async function hackerFor(ctx: QueryCtx | MutationCtx, supersetUserId: string): Promise<Doc<"hackers"> | null> {
+  return await ctx.db
     .query("hackers")
     .withIndex("by_supersetUserId", function (q) {
-      return q.eq("supersetUserId", identity.subject);
+      return q.eq("supersetUserId", supersetUserId);
     })
     .unique();
+}
+
+// The caller's own hacker row, or null when signed out or before a handle is picked.
+// For reads that only ever show callers their own row.
+export async function checkHacker(ctx: QueryCtx | MutationCtx): Promise<Doc<"hackers"> | null> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (identity === null) return null;
+  return await hackerFor(ctx, identity.subject);
+}
+
+export async function requireHacker(ctx: QueryCtx | MutationCtx): Promise<Doc<"hackers">> {
+  const identity = await requireIdentity(ctx);
+  const hacker = await hackerFor(ctx, identity.subject);
   if (hacker === null) throw new Error("No hacker for this sign-in. Pick a handle first.");
   return hacker;
 }
@@ -43,7 +60,7 @@ export async function requireDaemon(
     })
     .unique();
   if (daemon === null) throw new Error("Unknown daemon token");
-  const hacker = await ctx.db.get(daemon.hackerId);
+  const hacker = await ctx.db.get("hackers", daemon.hackerId);
   if (hacker === null) throw new Error("Daemon token has no hacker");
   return { hacker, daemon };
 }

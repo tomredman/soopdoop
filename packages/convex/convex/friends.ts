@@ -11,7 +11,7 @@ const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 async function acceptedFriendIds(ctx: QueryCtx, me: Id<"hackers">): Promise<Id<"hackers">[]> {
   const asA = await ctx.db
     .query("friendships")
-    .withIndex("by_a", function (q) {
+    .withIndex("by_a_b", function (q) {
       return q.eq("a", me);
     })
     .collect();
@@ -93,11 +93,11 @@ export const list = query({
     const now = Date.now();
     const out = [];
     for (const id of ids) {
-      const hacker = await ctx.db.get(id);
+      const hacker = await ctx.db.get("hackers", id);
       if (hacker === null) continue;
       const subsets = await ctx.db
         .query("subsets")
-        .withIndex("by_hacker", function (q) {
+        .withIndex("by_hacker_machine", function (q) {
           return q.eq("hackerId", id);
         })
         .collect();
@@ -127,24 +127,18 @@ export const request = mutation({
     // A request in the other direction becomes an acceptance.
     const theirs = await ctx.db
       .query("friendships")
-      .withIndex("by_a", function (q) {
-        return q.eq("a", other._id);
-      })
-      .filter(function (q) {
-        return q.eq(q.field("b"), me._id);
+      .withIndex("by_a_b", function (q) {
+        return q.eq("a", other._id).eq("b", me._id);
       })
       .unique();
     if (theirs !== null) {
-      await ctx.db.patch(theirs._id, { status: "accepted" });
+      await ctx.db.patch("friendships", theirs._id, { status: "accepted" });
       return null;
     }
     const mine = await ctx.db
       .query("friendships")
-      .withIndex("by_a", function (q) {
-        return q.eq("a", me._id);
-      })
-      .filter(function (q) {
-        return q.eq(q.field("b"), other._id);
+      .withIndex("by_a_b", function (q) {
+        return q.eq("a", me._id).eq("b", other._id);
       })
       .unique();
     if (mine === null) {
@@ -159,9 +153,9 @@ export const accept = mutation({
   returns: v.null(),
   handler: async function (ctx, args) {
     const me = await requireHacker(ctx);
-    const f = await ctx.db.get(args.friendshipId);
+    const f = await ctx.db.get("friendships", args.friendshipId);
     if (f === null || f.b !== me._id) throw new Error("No such request.");
-    await ctx.db.patch(f._id, { status: "accepted" });
+    await ctx.db.patch("friendships", f._id, { status: "accepted" });
     return null;
   },
 });
@@ -180,7 +174,7 @@ export const pending = query({
     const out = [];
     for (const f of rows) {
       if (f.status !== "requested") continue;
-      const other = await ctx.db.get(f.a);
+      const other = await ctx.db.get("hackers", f.a);
       if (other !== null) out.push({ friendshipId: f._id, handle: other.handle });
     }
     return out;
@@ -213,11 +207,11 @@ export const redeemInvite = mutation({
       throw new Error("This invite link is no longer valid.");
     }
     if (invite.fromHackerId === me._id) throw new Error("That is your own invite.");
-    await ctx.db.patch(invite._id, { usedByHackerId: me._id });
+    await ctx.db.patch("invites", invite._id, { usedByHackerId: me._id });
     if (!(await areFriends(ctx, me._id, invite.fromHackerId))) {
       await ctx.db.insert("friendships", { a: invite.fromHackerId, b: me._id, status: "accepted", createdAt: Date.now() });
     }
-    const from = await ctx.db.get(invite.fromHackerId);
+    const from = await ctx.db.get("hackers", invite.fromHackerId);
     return from === null ? "" : from.handle;
   },
 });

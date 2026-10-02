@@ -10,7 +10,8 @@
     "daemon": "bun --cwd apps/daemon dev",
     "rail": "bun --cwd apps/rail dev",
     "test": "bun test",
-    "typecheck": "bun run --filter '*' typecheck"
+    "typecheck": "bun run --filter '*' typecheck",
+    "lint": "bun run --filter '*' lint"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

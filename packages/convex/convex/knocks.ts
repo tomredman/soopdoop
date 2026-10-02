@@ -34,17 +34,16 @@ export const send = mutation({
     if (to.focusUntil !== undefined && to.focusUntil > now) throw new Error("They are in focus mode. Try later.");
     const lifetimeMs = args.lifetimeMs ?? 30_000;
     if (!LIFETIMES.has(lifetimeMs)) throw new Error("A knock lasts 10 s, 30 s, or 2 min.");
-    // At most one open knock from one sender to one receiver.
+    // At most one open knock from one sender to one receiver. A receiver has few open knocks: each ends within 2 min.
     const open = await ctx.db
       .query("knocks")
-      .withIndex("by_from_to", function (q) {
-        return q.eq("fromHackerId", me._id).eq("toHackerId", to._id);
+      .withIndex("by_to_outcome", function (q) {
+        return q.eq("toHackerId", to._id).eq("outcome", "open");
       })
-      .filter(function (q) {
-        return q.eq(q.field("outcome"), "open");
-      })
-      .first();
-    if (open !== null) throw new Error("You already have a knock waiting with them.");
+      .collect();
+    if (open.some(function (k) { return k.fromHackerId === me._id; })) {
+      throw new Error("You already have a knock waiting with them.");
+    }
     const id = await ctx.db.insert("knocks", {
       fromHackerId: me._id,
       toHackerId: to._id,
@@ -64,9 +63,9 @@ export const expire = internalMutation({
   args: { knockId: v.id("knocks") },
   returns: v.null(),
   handler: async function (ctx, args) {
-    const k = await ctx.db.get(args.knockId);
+    const k = await ctx.db.get("knocks", args.knockId);
     if (k !== null && k.outcome === "open") {
-      await ctx.db.patch(k._id, { outcome: "expired", decidedAt: Date.now() });
+      await ctx.db.patch("knocks", k._id, { outcome: "expired", decidedAt: Date.now() });
     }
     return null;
   },
@@ -77,10 +76,10 @@ export const decide = mutation({
   returns: v.null(),
   handler: async function (ctx, args) {
     const me = await requireHacker(ctx);
-    const k = await ctx.db.get(args.knockId);
+    const k = await ctx.db.get("knocks", args.knockId);
     if (k === null || k.toHackerId !== me._id) throw new Error("Not your knock.");
     if (k.outcome !== "open") return null;
-    await ctx.db.patch(k._id, { outcome: args.outcome, decidedAt: Date.now() });
+    await ctx.db.patch("knocks", k._id, { outcome: args.outcome, decidedAt: Date.now() });
     return null;
   },
 });
@@ -115,7 +114,7 @@ export const incoming = query({
     });
     const first = open[0];
     if (first === undefined) return { current: null, pending: 0 };
-    const from = await ctx.db.get(first.fromHackerId);
+    const from = await ctx.db.get("hackers", first.fromHackerId);
     return {
       current: {
         _id: first._id,
@@ -147,7 +146,7 @@ export const sent = query({
       .take(20);
     const out = [];
     for (const k of rows) {
-      const to = await ctx.db.get(k.toHackerId);
+      const to = await ctx.db.get("hackers", k.toHackerId);
       out.push({ _id: k._id, toHandle: to === null ? "" : to.handle, outcome: k.outcome, expiresAt: k.expiresAt });
     }
     return out;

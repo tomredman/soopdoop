@@ -47,7 +47,7 @@ export default defineSchema({
     status: v.union(v.literal("requested"), v.literal("accepted")),
     createdAt: v.number(),
   })
-    .index("by_a", ["a"])
+    .index("by_a_b", ["a", "b"])
     .index("by_b", ["b"]),
 
   invites: defineTable({
@@ -63,7 +63,7 @@ export default defineSchema({
     machineName: v.string(),
     agents: v.array(agentState),
     updatedAt: v.number(),
-  }).index("by_hacker", ["hackerId"]),
+  }).index("by_hacker_machine", ["hackerId", "machineName"]),
 
   knocks: defineTable({
     fromHackerId: v.id("hackers"),

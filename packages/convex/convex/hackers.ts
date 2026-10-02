@@ -2,7 +2,7 @@
 // ABOUTME: A hacker row is created on first sign-in when the handle is chosen.
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireHacker } from "./lib/auth";
+import { checkHacker, requireHacker, requireIdentity } from "./lib/auth";
 
 const HANDLE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
@@ -19,14 +19,8 @@ export const me = query({
     }),
   ),
   handler: async function (ctx) {
-    const identity = await ctx.auth.getUserIdentity();
-    if (identity === null) return null;
-    const hacker = await ctx.db
-      .query("hackers")
-      .withIndex("by_supersetUserId", function (q) {
-        return q.eq("supersetUserId", identity.subject);
-      })
-      .unique();
+    // Signed out, or signed in without a handle yet: null, so the rail can show the right screen.
+    const hacker = await checkHacker(ctx);
     if (hacker === null) return null;
     return {
       _id: hacker._id,
@@ -42,8 +36,7 @@ export const claimHandle = mutation({
   args: { handle: v.string() },
   returns: v.id("hackers"),
   handler: async function (ctx, args) {
-    const identity = await ctx.auth.getUserIdentity();
-    if (identity === null) throw new Error("Not signed in");
+    const identity = await requireIdentity(ctx);
     const handle = args.handle.toLowerCase();
     if (handle.length < 2 || handle.length > 39 || !HANDLE.test(handle)) {
       throw new Error("A handle is 2 to 39 characters: lowercase letters, digits, single hyphens.");
@@ -77,7 +70,7 @@ export const updateSharing = mutation({
   returns: v.null(),
   handler: async function (ctx, args) {
     const hacker = await requireHacker(ctx);
-    await ctx.db.patch(hacker._id, args);
+    await ctx.db.patch("hackers", hacker._id, args);
     return null;
   },
 });
@@ -88,7 +81,7 @@ export const setFocus = mutation({
   returns: v.null(),
   handler: async function (ctx, args) {
     const hacker = await requireHacker(ctx);
-    await ctx.db.patch(hacker._id, {
+    await ctx.db.patch("hackers", hacker._id, {
       focusUntil: args.minutes === null ? undefined : Date.now() + args.minutes * 60_000,
     });
     return null;
