@@ -1,9 +1,13 @@
-// ABOUTME: The rail's local server on 127.0.0.1:47312: serves index.html through Bun's bundler, answers /config.json,
-// ABOUTME: forwards the OAuth token exchange the page cannot make itself, and answers /local: pairing, version, updates.
+// ABOUTME: The rail's local server on 127.0.0.1:47312: the native app's backend (/app socket, src/agent.ts), the web rail
+// ABOUTME: page, /config.json, the OAuth token exchange the page cannot make itself, and /local: pairing, version, updates.
 import path from "node:path";
+import type { ServerWebSocket } from "bun";
 import { currentVersion } from "@soopdoop/daemon/src/update";
 import index from "./index.html";
+import { createAgent } from "./src/agent";
+import { ensureAppToken, parseCommand, upgradeAllowed } from "./src/app-api";
 import { DEFAULT_CONVEX_URL } from "./src/config";
+import { cleanError } from "./src/format";
 import { localInfo, pairHere, settingsHere, updateHere, type LocalServer } from "./src/local";
 import { exchange } from "./src/token-proxy";
 
@@ -35,6 +39,16 @@ const server: LocalServer = {
   // Only setup's background services come with the updater job that "Update now" starts.
   canUpdate: SERVICE && process.platform === "darwin",
 };
+
+// The native app talks to the agent over /app; every connected app gets each new state.
+const appToken = await ensureAppToken();
+const agent = createAgent(server);
+const apps = new Set<ServerWebSocket<unknown>>();
+agent.subscribe(function (state) {
+  const message = JSON.stringify({ type: "state", state });
+  for (const ws of apps) ws.send(message);
+});
+await agent.start();
 
 Bun.serve({
   hostname: "127.0.0.1",
@@ -72,7 +86,31 @@ Bun.serve({
       },
     },
   },
-  fetch() {
+  websocket: {
+    open(ws) {
+      apps.add(ws);
+      ws.send(JSON.stringify({ type: "state", state: agent.state() }));
+    },
+    async message(ws, raw) {
+      const command = parseCommand(String(raw));
+      if (command === null) return;
+      try {
+        const value = await agent.act(command.action, command.args);
+        ws.send(JSON.stringify({ type: "result", id: command.id, ok: true, value: value ?? null }));
+      } catch (e) {
+        ws.send(JSON.stringify({ type: "result", id: command.id, ok: false, error: cleanError(e) }));
+      }
+    },
+    close(ws) {
+      apps.delete(ws);
+    },
+  },
+  fetch(req, srv) {
+    if (new URL(req.url).pathname === "/app") {
+      if (!upgradeAllowed(req, appToken)) return new Response("Forbidden", { status: 403 });
+      if (srv.upgrade(req)) return undefined;
+      return new Response("Expected a WebSocket", { status: 400 });
+    }
     return new Response("Not found", { status: 404 });
   },
 });

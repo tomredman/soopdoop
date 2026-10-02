@@ -79,3 +79,8 @@ export async function writeSettings(settings: Settings, file: string = settingsP
   await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
   await Bun.write(file, JSON.stringify(settings, null, 2) + "\n");
 }
+
+// An invite code from `soopdoop setup --invite`, waiting for the app's first sign-in to redeem it.
+export function invitePath(home: string = soopdoopHome()): string {
+  return path.join(home, "invite");
+}

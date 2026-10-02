@@ -69,9 +69,8 @@ export function hostAllowed(req: Request, railOrigin: string): boolean {
   return req.headers.get("host") === new URL(railOrigin).host;
 }
 
-// GET /local
-export async function localInfo(req: Request, server: LocalServer): Promise<Response> {
-  if (!hostAllowed(req, server.railOrigin)) return json(403, { error: "Only the rail's own page may ask." });
+// What this machine says about itself: pairing, version, updates. For GET /local and the app's state.
+export async function readLocalInfo(server: LocalServer): Promise<LocalInfo> {
   const [config, settings, state, updating] = await Promise.all([
     currentConfig(server.configFile ?? configPath()),
     readSettings(server.settingsFile ?? settingsPath()),
@@ -91,7 +90,13 @@ export async function localInfo(req: Request, server: LocalServer): Promise<Resp
     updating,
     updateError: state.error ?? null,
   };
-  return json(200, { ...info });
+  return info;
+}
+
+// GET /local
+export async function localInfo(req: Request, server: LocalServer): Promise<Response> {
+  if (!hostAllowed(req, server.railOrigin)) return json(403, { error: "Only the rail's own page may ask." });
+  return json(200, { ...(await readLocalInfo(server)) });
 }
 
 // POST /local/pair { token, replace? }. The Convex URL is this server's own, so a page cannot point the daemon
