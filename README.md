@@ -39,6 +39,8 @@ hacker (any user) · subset (one hacker's session and its agents; ∅ when empty
 
 Superset is source-available under the Elastic License 2.0. soopdoop is a companion: our own daemon, backend, plugin and rail, running beside an unmodified Superset and talking to it through public surfaces only (harness hooks, the Superset MCP server and SDK, Pages, Remote Access). Nothing in this repository imports Superset internals or hosts Superset.
 
+soopdoop's own code is under the MIT License (`LICENSE`). That covers only this repository, not Superset.
+
 ## Install
 
 You need a Mac, a Superset account and Claude Code. The installer gets Bun if you do not have it.
