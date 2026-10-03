@@ -1,7 +1,7 @@
 {
   "name": "soopdoop",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "soopdoop: a multiplayer layer on top of Superset. Your Superset, with your crew in it.",
   "license": "MIT",
   "workspaces": ["apps/*", "packages/*"],

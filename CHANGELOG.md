@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.2 · 2026-10-03
+
+### New
+- soopdoop.com, with eyes, a live demo, a canned Operator and page XP (site)
+
+### Fixes
+- routing summaries never show your home folder (daemon)
+- the HUD keeps its size and stays on screen (hud)
+- let Cloudflare's analytics beacon through the content policy (site)
+
 ## v0.2.1 · 2026-10-03
 
 ### Fixes
