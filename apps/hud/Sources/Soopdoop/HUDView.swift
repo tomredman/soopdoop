@@ -48,7 +48,8 @@ struct Background: View {
         ZStack {
             if let effect = style.material.effect {
                 VisualEffect(material: effect).opacity(style.opacity)
-                Theme.ground.opacity(style.opacity * 0.35)
+                // A dark tint, so text reads whatever window is behind the glass.
+                Theme.ground.opacity(style.opacity * 0.6)
             } else {
                 Theme.panel.opacity(style.opacity)
             }

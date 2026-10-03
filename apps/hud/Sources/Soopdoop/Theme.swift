@@ -10,9 +10,10 @@ enum Theme {
     static let line = Color(red: 0.122, green: 0.149, blue: 0.188)
     static let line2 = Color(red: 0.165, green: 0.196, blue: 0.251)
     static let text = Color(red: 0.835, green: 0.859, blue: 0.890)
-    static let muted = Color(red: 0.482, green: 0.522, blue: 0.584)
-    // Lighter than the prototype's #4b5462: small text has to read on glass, not only on a solid panel.
-    static let dim = Color(red: 0.384, green: 0.420, blue: 0.478)
+    // Muted and dim are lighter than the prototype's: small text has to read on glass with a light window behind it
+    // (about 4:1 there; check with the -light snapshots), not only on a solid dark panel.
+    static let muted = Color(red: 0.600, green: 0.639, blue: 0.698)
+    static let dim = Color(red: 0.522, green: 0.561, blue: 0.620)
     static let green = Color(red: 0.290, green: 0.871, blue: 0.502)
     static let blue = Color(red: 0.376, green: 0.647, blue: 0.980)
     static let purple = Color(red: 0.655, green: 0.545, blue: 0.980)

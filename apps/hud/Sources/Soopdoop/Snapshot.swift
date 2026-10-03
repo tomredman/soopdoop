@@ -1,5 +1,5 @@
 // ABOUTME: Draws the HUD with sample states into PNG files (`Soopdoop --snapshot <dir>`), to check the layout without a screen.
-// ABOUTME: Drawn in an off-screen window on a plain dark background (the glass needs the desktop behind it).
+// ABOUTME: Each is drawn on a dark and on a light backdrop: glass shows what is behind it, so text must read on both.
 import AppKit
 import SwiftUI
 
@@ -8,34 +8,42 @@ enum Snapshot {
     static func run(into dir: String) {
         _ = NSApplication.shared
         let style = HUDStyle()
+        // Off screen there is no desktop to blur, so the backdrop stands in for what is behind the glass.
+        let backdrops: [(String, Color)] = [("", Theme.ground), ("-light", Color(white: 0.82))]
         for (name, state) in samples() {
-            let client = AgentClient(preview: state)
-            let size = NSSize(width: 300, height: name == "ready" ? 1180 : 420)
-            let root = ZStack {
-                Theme.ground
-                HUDRoot().environmentObject(client).environmentObject(style)
+            for (suffix, backdrop) in backdrops {
+                let file = URL(fileURLWithPath: dir).appendingPathComponent("hud-\(name)\(suffix).png")
+                draw(state, height: name == "ready" ? 1180 : 420, on: backdrop, style: style, to: file)
             }
-            // A real (off-screen) window, so AppKit-backed views (scrolling, text fields) draw as they do on screen.
-            let host = NSHostingView(rootView: root.frame(width: size.width, height: size.height))
-            host.frame = NSRect(origin: .zero, size: size)
-            let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
-            window.contentView = host
-            window.appearance = NSAppearance(named: .darkAqua)
-            host.layoutSubtreeIfNeeded()
-            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-            guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
-                print("could not draw \(name)")
-                continue
-            }
-            host.cacheDisplay(in: host.bounds, to: bitmap)
-            guard let png = bitmap.representation(using: .png, properties: [:]) else { continue }
-            let file = URL(fileURLWithPath: dir).appendingPathComponent("hud-\(name).png")
-            do {
-                try png.write(to: file)
-                print(file.path)
-            } catch {
-                print("could not write \(file.path): \(error)")
-            }
+        }
+    }
+
+    private static func draw(_ state: AppState, height: CGFloat, on backdrop: Color, style: HUDStyle, to file: URL) {
+        let client = AgentClient(preview: state)
+        let size = NSSize(width: 300, height: height)
+        let root = ZStack {
+            backdrop
+            HUDRoot().environmentObject(client).environmentObject(style)
+        }
+        // A real (off-screen) window, so AppKit-backed views (scrolling, text fields) draw as they do on screen.
+        let host = NSHostingView(rootView: root.frame(width: size.width, height: size.height))
+        host.frame = NSRect(origin: .zero, size: size)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = host
+        window.appearance = NSAppearance(named: .darkAqua)
+        host.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
+            print("could not draw \(file.lastPathComponent)")
+            return
+        }
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        guard let png = bitmap.representation(using: .png, properties: [:]) else { return }
+        do {
+            try png.write(to: file)
+            print(file.path)
+        } catch {
+            print("could not write \(file.path): \(error)")
         }
     }
 
