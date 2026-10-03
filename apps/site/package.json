@@ -1,0 +1,14 @@
+{
+  "name": "@soopdoop/site",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot scripts/dev.ts",
+    "build": "bun scripts/build.ts",
+    "preview": "bun scripts/build.ts && bun scripts/dev.ts --dist",
+    "og": "bun scripts/og.ts",
+    "deploy": "bun scripts/build.ts && bunx wrangler@4 deploy",
+    "typecheck": "tsc --noEmit"
+  }
+}

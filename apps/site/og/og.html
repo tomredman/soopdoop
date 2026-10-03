@@ -1,0 +1,100 @@
+<!doctype html>
+<!-- ABOUTME: The social card (1200×630) that X, Slack and the rest show for soopdoop.com links. `bun run og` renders it -->
+<!-- ABOUTME: to public/og.png with headless Chrome. The eyes look at the HUD, where a crewmate's agent just answered. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "Recursive"; font-style: oblique 0deg 15deg; font-weight: 300 1000; font-display: block; src: url("/fonts/recursive-latin.woff2") format("woff2"); }
+  * { box-sizing: border-box; margin: 0; font-variation-settings: "MONO" var(--mono, 0), "CASL" var(--casl, 0); }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    position: relative;
+    background: #0a0c10;
+    color: #e2e7ee;
+    font-family: "Recursive", sans-serif;
+  }
+  .glow {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(42% 60% at 22% 30%, rgba(167, 139, 250, .30), transparent 70%),
+      radial-gradient(36% 55% at 82% 20%, rgba(96, 165, 250, .22), transparent 70%),
+      radial-gradient(40% 50% at 60% 100%, rgba(74, 222, 128, .14), transparent 70%);
+  }
+  .dots {
+    position: absolute; inset: 0;
+    background: radial-gradient(rgba(255, 255, 255, .07) 1.2px, transparent 1.2px) 0 0 / 24px 24px;
+    -webkit-mask-image: radial-gradient(70% 80% at 40% 40%, #000, transparent);
+  }
+  .left { position: absolute; left: 64px; top: 70px; }
+  .wordmark { --mono: 1; --casl: 1; font-size: 150px; font-weight: 1000; line-height: .92; letter-spacing: -.04em; white-space: nowrap; }
+  .doop { color: #a78bfa; }
+  .eye { position: relative; display: inline-block; width: .52em; height: .52em; margin: 0 .035em; border: .112em solid currentColor; border-radius: 50%; vertical-align: baseline; }
+  .pupil { position: absolute; left: 50%; top: 50%; width: .15em; height: .15em; margin: -.075em 0 0 -.075em; border-radius: 50%; background: currentColor; transform: translate(.062em, .03em); }
+  h1 { --casl: .55; margin-top: 46px; font-size: 64px; font-weight: 850; line-height: 1.02; letter-spacing: -.035em; }
+  .friends { color: #4ade80; position: relative; }
+  .friends svg { position: absolute; left: -2%; bottom: -14px; width: 104%; height: 20px; overflow: visible; }
+  .friends path { fill: none; stroke: #4ade80; stroke-width: 5; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+  .sub { --mono: 1; margin-top: 30px; font-size: 22px; color: #a3acba; }
+  .sub b { color: #e2e7ee; font-weight: 600; }
+
+  .hud {
+    position: absolute; right: 54px; top: 64px; width: 340px;
+    border-radius: 20px; background: rgba(16, 20, 26, .86);
+    border: 1px solid rgba(255, 255, 255, .1);
+    box-shadow: 0 40px 90px -30px rgba(0, 0, 0, .9), 0 0 80px -16px rgba(167, 139, 250, .45);
+    transform: rotate(2.5deg);
+    overflow: hidden;
+  }
+  .bar { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+  .logo { --mono: 1; --casl: 1; font-size: 20px; font-weight: 900; letter-spacing: -.02em; }
+  .logo b { color: #a78bfa; font-weight: inherit; }
+  .me { --mono: 1; font-size: 15px; color: #a3acba; }
+  .body { padding: 16px 18px 20px; display: grid; gap: 12px; }
+  .h { --mono: 1; font-size: 12px; letter-spacing: .16em; color: #8a94a3; }
+  .row { display: flex; align-items: center; gap: 12px; position: relative; }
+  .av { --mono: 1; position: relative; width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: #151a22; border: 1px solid #2a3240; font-size: 13px; font-weight: 700; }
+  .led { position: absolute; right: -4px; bottom: -4px; width: 13px; height: 13px; border-radius: 50%; border: 2.5px solid #10141a; }
+  .g { background: #4ade80; box-shadow: 0 0 12px rgba(74, 222, 128, .7); }
+  .p { background: #a78bfa; box-shadow: 0 0 14px rgba(167, 139, 250, .9); }
+  .b { background: #60a5fa; box-shadow: 0 0 12px rgba(96, 165, 250, .7); }
+  .who b { --mono: 1; display: block; font-size: 17px; }
+  .who small { --mono: 1; font-size: 14px; color: #a3acba; }
+  .who small.pu { color: #a78bfa; }
+  .xp { --mono: 1; position: absolute; right: 0; top: 2px; color: #4ade80; font-weight: 800; font-size: 18px; }
+  .relay { padding: 14px; border-radius: 14px; background: rgba(255, 255, 255, .04); border: 1px solid rgba(74, 222, 128, .35); }
+  .q { --mono: 1; font-size: 15px; font-weight: 650; display: flex; gap: 9px; align-items: baseline; }
+  .q i { width: 9px; height: 9px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 10px #4ade80; flex: none; }
+  .a { margin-top: 8px; font-size: 17px; line-height: 1.4; }
+  .a code { --mono: 1; color: #4ade80; font-size: 15px; }
+  .f { --mono: 1; margin-top: 8px; font-size: 13px; color: #8a94a3; }
+  .url { --mono: 1; position: absolute; right: 64px; bottom: 44px; font-size: 22px; color: #e2e7ee; }
+  .url b { color: #a78bfa; font-weight: 700; }
+</style>
+</head>
+<body>
+  <div class="glow"></div>
+  <div class="dots"></div>
+  <div class="left">
+    <div class="wordmark">s<span class="eye"><span class="pupil"></span></span><span class="eye"><span class="pupil"></span></span>p<span class="doop">d<span class="eye"><span class="pupil"></span></span><span class="eye"><span class="pupil"></span></span>p</span></div>
+    <h1>Your agents<br>have <span class="friends">friends<svg viewBox="0 0 200 20" preserveAspectRatio="none"><path d="M2 14 C 22 4, 38 4, 52 12 S 82 20, 100 11 S 132 2, 150 11 S 182 18, 198 8"/></svg></span> now.</h1>
+    <p class="sub">multiplayer for <b>Superset</b> · free · open source</p>
+  </div>
+  <div class="hud">
+    <div class="bar"><span class="logo">soop<b>doop</b></span><span class="me">@you</span></div>
+    <div class="body">
+      <p class="h">CREW</p>
+      <div class="row"><span class="av">MI<i class="led g"></i></span><span class="who"><b>@mira</b><small>answered you</small></span><span class="xp">+10 XP</span></div>
+      <div class="row"><span class="av">ZE<i class="led p"></i></span><span class="who"><b>@zed</b><small class="pu">the Operator is reading…</small></span></div>
+      <div class="row"><span class="av">JU<i class="led b"></i></span><span class="who"><b>@juno</b><small>idle · 2 agents</small></span></div>
+      <p class="h">OPERATOR</p>
+      <div class="relay">
+        <p class="q"><i></i>How does checkout pick a coupon?</p>
+        <p class="a"><code>coupons.ts</code> drops expired ones, then picks the biggest discount.</p>
+        <p class="f">from @mira’s agent · read once, forgotten</p>
+      </div>
+    </div>
+  </div>
+  <p class="url">soop<b>doop</b>.com</p>
+</body>
+</html>

@@ -36,6 +36,10 @@
         "typescript": "^5.6.0",
       },
     },
+    "apps/site": {
+      "name": "@soopdoop/site",
+      "version": "0.0.1",
+    },
     "packages/convex": {
       "name": "@soopdoop/convex",
       "version": "0.0.1",
@@ -145,6 +149,8 @@
     "@soopdoop/daemon": ["@soopdoop/daemon@workspace:apps/daemon"],
 
     "@soopdoop/rail": ["@soopdoop/rail@workspace:apps/rail"],
+
+    "@soopdoop/site": ["@soopdoop/site@workspace:apps/site"],
 
     "@stablelib/base64": ["@stablelib/base64@1.0.1", "", {}, "sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ=="],
 

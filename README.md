@@ -19,6 +19,7 @@ Status: Phase 1, released as early versions (`CHANGELOG.md`). See `docs/plan.htm
 | `packages/convex/` | The backend: hackers, friendships, subsets (presence), knocks with scheduled expiry, sign in with Superset, linked Superset profiles, the Operator (`operator.ts`, `http.ts`, `lib/claude.ts`) and play (XP, ranks, the board). Tests with `convex-test`. |
 | `apps/daemon/` | The subset daemon and the soopdoop CLI. Runs on a hacker's machine, installs lifecycle hooks into the coding harnesses, reports presence and routing summaries, and serves transcript reads to the Operator on request. Also the `ask_operator` MCP server (`src/mcp.ts`) and the app builder (`src/app.ts`). `setup` runs the services in the background. |
 | `apps/hud/` | The soopdoop Mac app (Swift): a menu bar icon and the HUD, a floating panel shown over Superset. `setup` builds it on each Mac. |
+| `apps/site/` | soopdoop.com: one static page on Cloudflare, with the eyes, a demo and a canned Operator. |
 | `apps/rail/` | The local agent and the web rail. `serve.ts` holds the Superset sign-in and the live data for the Mac app (`src/agent.ts`, a WebSocket at `/app`), pairs this machine, and serves the web rail (`index.html` + `src/`). `prototype.html` is the clickable design. |
 | `packages/operator/` | Notes on the Operator's design. The code is in `packages/convex` and `apps/daemon`. |
 | `packages/plugin/` | A Superset plugin skill that tells agents to ask the Operator first. Not installed yet; the `ask_operator` tool's description does that job for now. |

@@ -1,0 +1,391 @@
+<!doctype html>
+<!-- ABOUTME: soopdoop.com: the one-page site. All the words live here, so it reads fine without JavaScript; src/ adds -->
+<!-- ABOUTME: the eyes, the demo, the canned Operator, knocks, visitor XP and the easter eggs. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>soopdoop · your agents have friends now</title>
+  <meta name="description" content="soopdoop is multiplayer for Superset. See your crew and their coding agents, knock with links that self-destruct, and let the Operator ask a teammate's agent instead of reading their code. Free and open source, for macOS.">
+  <link rel="canonical" href="https://soopdoop.com/">
+  <meta name="theme-color" content="#0a0c10">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preload" href="/fonts/recursive-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="soopdoop">
+  <meta property="og:url" content="https://soopdoop.com/">
+  <meta property="og:title" content="soopdoop · your agents have friends now">
+  <meta property="og:description" content="Multiplayer for Superset. See your crew, knock with links that self-destruct, and let the Operator ask your teammate's agent for you.">
+  <meta property="og:image" content="https://soopdoop.com/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="The soopdoop wordmark, whose o's are eyes, over a HUD where a crewmate's agent answers a question.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="soopdoop · your agents have friends now">
+  <meta name="twitter:description" content="Multiplayer for Superset. See your crew, knock with links that self-destruct, and let the Operator ask your teammate's agent for you.">
+  <meta name="twitter:image" content="https://soopdoop.com/og.png">
+  <link rel="stylesheet" href="./src/styles.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "soopdoop",
+    "url": "https://soopdoop.com/",
+    "description": "Multiplayer for Superset: presence, knocks, and an Operator that asks your teammates' coding agents for you.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "macOS 14 or later",
+    "license": "https://opensource.org/licenses/MIT",
+    "codeRepository": "https://github.com/tomredman/soopdoop",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the content</a>
+
+  <header class="nav" data-nav>
+    <a class="nav-logo" href="#top" aria-label="soopdoop, back to the top">soop<b>doop</b></a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#how">How it works</a>
+      <a href="#operator">The Operator</a>
+      <a href="#ranks">Ranks</a>
+      <a href="#install">Install</a>
+    </nav>
+    <div class="nav-right">
+      <button class="icon-btn" type="button" data-sound aria-pressed="true" aria-label="Sound on" title="Sound">
+        <svg class="snd-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path class="wave" d="M15.5 9a4.5 4.5 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/></svg>
+        <svg class="snd-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path class="wave" d="M16 9.5l5 5M21 9.5l-5 5"/></svg>
+      </button>
+      <a class="gh-btn" href="https://github.com/tomredman/soopdoop" aria-label="soopdoop on GitHub">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top">
+      <canvas class="hero-wire" data-hero-wire aria-hidden="true"></canvas>
+      <div class="hero-glow" aria-hidden="true"></div>
+      <div class="wrap hero-inner">
+        <p class="dict" data-reveal><b>soop·doop</b> <i>adj.</i> super-duper, but multiplayer.</p>
+        <h1 class="hero-h1">
+          <span class="wordmark" data-wordmark aria-hidden="true"><span class="wm-l">s</span><span class="wm-pair"><span class="wm-eye"><span class="wm-pupil"></span></span><span class="wm-eye"><span class="wm-pupil"></span></span></span><span class="wm-l">p</span><span class="wm-l wm-doop">d</span><span class="wm-pair wm-doop"><span class="wm-eye"><span class="wm-pupil"></span></span><span class="wm-eye"><span class="wm-pupil"></span></span></span><span class="wm-l wm-doop">p</span></span>
+          <span class="sr-only">soopdoop: </span>
+          <span class="headline">Your agents have <span class="squiggle">friends<svg viewBox="0 0 200 20" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M2 14 C 22 4, 38 4, 52 12 S 82 20, 100 11 S 132 2, 150 11 S 182 18, 198 8"/></svg></span> now.</span>
+        </h1>
+        <p class="hero-sub" data-reveal>soopdoop is multiplayer for Superset. See your crew and their agents. Knock with links that self-destruct. Let the Operator ask a teammate’s agent, so you never have to read their code.</p>
+        <div class="hero-cta" data-reveal>
+          <button class="cmd" type="button" data-copy="curl -fsSL https://soopdoop.com/install | bash" title="Copy the install command">
+            <span class="cmd-prompt" aria-hidden="true">$</span>
+            <code>curl -fsSL https://soopdoop.com/install | bash</code>
+            <span class="cmd-copy" data-copy-label>copy</span>
+          </button>
+          <a class="btn-ghost" href="#how">See how it works</a>
+        </div>
+        <p class="hero-fine" data-reveal>macOS 14+ · Superset · Claude Code · free and open source</p>
+      </div>
+
+      <div class="wrap">
+        <div class="stage" data-stage>
+          <div class="win">
+            <div class="win-bar"><span class="win-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="win-title">~/tacocat — claude</span></div>
+            <div class="term" data-term>
+              <p class="t-dim">~/tacocat ❯ claude</p>
+              <p class="t-dim">✻ Welcome back, @you.</p>
+              <p class="t-user">&gt; add a “free guac” coupon type</p>
+              <p>⏺ Before I read 40 files, let me ask the crew.</p>
+              <p class="t-tool">⏺ soopdoop · ask_operator(“How does checkout pick a coupon?”)</p>
+              <p class="t-purple">  ⎿ the Operator is reading @mira’s agent…</p>
+              <p class="t-green">  ⎿ src/checkout/coupons.ts drops expired coupons, then picks the biggest discount. New kinds go in COUPON_KINDS.</p>
+              <p>⏺ Got it from @mira’s agent. Skipping the 40 files. Adding “free guac” to COUPON_KINDS…</p>
+            </div>
+          </div>
+          <aside class="hud" data-hud aria-label="The soopdoop HUD, a demo">
+            <div class="hud-bar"><span class="hud-logo">soop<b>doop</b></span><span class="hud-who">@you</span></div>
+            <div class="hud-body">
+              <div class="hud-me"><span class="chip chip-green" data-hud-rank>hacker</span><span class="hud-xp"><b data-hud-xp>128</b> XP</span></div>
+              <div class="xpbar" aria-hidden="true"><i data-hud-bar></i></div>
+              <div class="hud-knock" data-hud-knock hidden></div>
+              <p class="hud-h">Crew <span>3</span></p>
+              <ul class="crew" data-crew>
+                <li data-who="mira"><span class="av">MI<i class="led led-green"></i></span><span class="who"><b>@mira</b><small data-state>working · +10 XP</small></span><span class="knock-btn" aria-hidden="true">knock</span></li>
+                <li data-who="zed"><span class="av">ZE<i class="led led-green"></i></span><span class="who"><b>@zed</b><small data-state>3 agents</small></span><span class="knock-btn" aria-hidden="true">knock</span></li>
+                <li data-who="juno"><span class="av">JU<i class="led led-off"></i></span><span class="who"><b>@juno</b><small data-state>offline</small></span><span class="knock-btn off" aria-hidden="true">knock</span></li>
+              </ul>
+              <p class="hud-h">Operator</p>
+              <div class="wire" data-wire>
+                <div class="relay answered"><p class="relay-q"><i class="led led-green"></i>How does checkout pick a coupon?</p><p class="relay-a">Drops expired coupons, then picks the biggest discount. New kinds go in COUPON_KINDS.</p><p class="relay-f">from @mira’s checkout · read 14k tokens</p></div>
+              </div>
+            </div>
+          </aside>
+          <p class="stage-cap">A demo, on a loop: your agent asks the Operator, @mira’s agent answers, and a knock nobody opens self-destructs.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="ticker" aria-hidden="true">
+      <div class="ticker-track" data-ticker>
+        <span><i class="led led-purple"></i>the Operator is reading @mira’s agent</span>
+        <span><i class="led led-green"></i>@mira’s agent answered @you · +10 XP</span>
+        <span><i class="led led-blue"></i>@zed jacked in</span>
+        <span><i class="led led-off"></i>a knock self-destructed · nobody cried</span>
+        <span><i class="led led-green"></i>@juno hit wizard</span>
+        <span><i class="led led-purple"></i>14k tokens read, all of them forgotten</span>
+        <span><i class="led led-blue"></i>@kit is in focus · knocks bounce</span>
+        <span><i class="led led-green"></i>@you skipped reading 40 files</span>
+      </div>
+    </div>
+
+    <section class="section" id="how" data-xp-section="how">
+      <div class="wrap">
+        <p class="kicker" data-reveal>// how it works</p>
+        <h2 data-reveal>Superset, now with people in it.</h2>
+        <p class="lede" data-reveal>Your Superset stays your main screen. soopdoop adds a HUD with the people around you, and four things to do with them.</p>
+        <div class="cards">
+          <article class="card" data-reveal data-spot>
+            <div class="viz viz-crew" aria-hidden="true">
+              <div class="mini"><span class="av">MI<i class="led cyc-a"></i></span><span class="mini-l"><b>@mira</b><i></i></span></div>
+              <div class="mini"><span class="av">ZE<i class="led cyc-b"></i></span><span class="mini-l"><b>@zed</b><i></i></span></div>
+              <div class="mini"><span class="av">KI<i class="led cyc-c"></i></span><span class="mini-l"><b>@kit</b><i></i></span></div>
+            </div>
+            <h3>See your crew</h3>
+            <p>Your friends and their agents, live. <span class="c-green">Green</span> is working. <span class="c-blue">Blue</span> is idle and open to knocks. <span class="c-purple">Purple</span> means the Operator is reading. Grey means they touched grass.</p>
+          </article>
+          <article class="card" data-reveal data-spot>
+            <div class="viz viz-knock" aria-hidden="true">
+              <div class="mini-knock"><span class="mk-from"><b>@zed</b> wants you to see this</span><svg class="ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15"/><circle class="ring-fg" cx="18" cy="18" r="15"/></svg><span class="mk-item">LINK · the new menu page</span></div>
+            </div>
+            <h3>Knock</h3>
+            <p>Send a link, a page, a file or a session. It lands on their HUD with a 10-second, 30-second or 2-minute fuse. Ignored? Gone. No inbox. No guilt.</p>
+            <button class="btn-small" type="button" data-knock-me>Knock on yourself →</button>
+          </article>
+          <article class="card" data-reveal data-spot>
+            <div class="viz viz-op" aria-hidden="true">
+              <svg viewBox="0 0 260 90">
+                <path class="op-path" d="M24 45 H 112"/><path class="op-path" d="M148 45 C 180 45, 196 22, 236 22"/><path class="op-path" d="M148 45 C 180 45, 196 68, 236 68"/>
+                <circle class="op-n op-you" cx="24" cy="45" r="11"/><rect class="op-n op-op" x="112" y="31" width="36" height="28" rx="7"/><circle class="op-n op-a" cx="236" cy="22" r="10"/><circle class="op-n op-b" cx="236" cy="68" r="10"/>
+                <circle class="op-halo" cx="236" cy="22" r="15" opacity="0"><animate attributeName="opacity" values="0;1;0" keyTimes="0;0.52;0.7" calcMode="discrete" dur="3.4s" repeatCount="indefinite"/></circle>
+                <circle class="op-dot blue" r="4"><animateMotion dur="3.4s" repeatCount="indefinite" calcMode="linear" keyPoints="0;1;1" keyTimes="0;0.28;1" path="M24 45 H 112"/><animate attributeName="opacity" values="1;0" keyTimes="0;0.28" calcMode="discrete" dur="3.4s" repeatCount="indefinite"/></circle>
+                <circle class="op-dot purple" r="4" opacity="0"><animateMotion dur="3.4s" repeatCount="indefinite" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.3;0.52;1" path="M148 45 C 180 45, 196 22, 236 22"/><animate attributeName="opacity" values="0;1;0" keyTimes="0;0.3;0.52" calcMode="discrete" dur="3.4s" repeatCount="indefinite"/></circle>
+                <circle class="op-dot green" r="4" opacity="0"><animateMotion dur="3.4s" repeatCount="indefinite" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.7;0.96;1" path="M236 22 C 196 22, 180 45, 148 45 H 24"/><animate attributeName="opacity" values="0;1;0" keyTimes="0;0.7;0.96" calcMode="discrete" dur="3.4s" repeatCount="indefinite"/></circle>
+              </svg>
+            </div>
+            <h3>Ask the Operator</h3>
+            <p>Your agent asks a question. The Operator finds the crewmate’s agent that already knows, reads it once, answers in one line, and forgets what it read.</p>
+            <a class="btn-small" href="#operator">Try it ↓</a>
+          </article>
+          <article class="card" data-reveal data-spot>
+            <div class="viz viz-xp" aria-hidden="true">
+              <div class="xp-row"><span class="chip chip-green" data-cycle-rank>n00b</span><span class="xp-num"><b data-cycle-xp>0</b> XP</span></div>
+              <div class="xpbar big"><i data-cycle-bar></i></div>
+              <div class="xp-pops"><span>+10 assist</span><span>+1 ask</span></div>
+            </div>
+            <h3>Level up</h3>
+            <p>When your agent answers a crewmate, that’s an assist: 10 XP. Asking is 1. Go from n00b to legend. There are no token counts on the board. Helping is the score.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section op" id="operator" data-xp-section="operator">
+      <div class="wrap">
+        <p class="kicker" data-reveal>// the operator</p>
+        <h2 data-reveal>Stop reading your teammate’s code.<br><span class="grad">Ask their agent.</span></h2>
+        <p class="lede" data-reveal>Your crewmate’s agent already worked out how checkout picks a coupon. The Operator finds that agent, reads the last part of its conversation once, and hands you the answer in one line. Your agent skips the 40 files.</p>
+        <div class="op-grid" data-reveal>
+          <div class="op-console">
+            <form class="op-form" data-ask>
+              <label class="sr-only" for="op-q">Ask your crew’s agents</label>
+              <input id="op-q" name="q" type="text" maxlength="140" autocomplete="off" spellcheck="false" placeholder="Ask your crew’s agents…">
+              <button type="submit">Ask</button>
+            </form>
+            <div class="op-chips" data-chips>
+              <button type="button">How does checkout pick a coupon?</button>
+              <button type="button">How does the menu sync with the kitchen?</button>
+              <button type="button">Why do sessions expire after an hour?</button>
+              <button type="button">Who broke staging?</button>
+              <button type="button">How do I exit vim?</button>
+            </div>
+            <div class="op-out" data-out aria-live="polite">
+              <p class="op-empty">Pick a question or type your own. <span>This demo is canned and runs in your browser. The real Operator reads real agents.</span></p>
+            </div>
+          </div>
+          <div class="op-map">
+            <p class="map-title">the wire</p>
+            <svg viewBox="0 0 600 470" data-map role="img" aria-label="The wire: your question goes to the Operator, which reads one crewmate's agent and brings back the answer">
+              <path class="m-path" data-path="you" d="M96 235 H 200"/>
+              <path class="m-path" data-path="mira" d="M320 235 C 390 235, 400 70, 448 70"/>
+              <path class="m-path" data-path="zed" d="M320 235 C 390 235, 400 180, 448 180"/>
+              <path class="m-path" data-path="juno" d="M320 235 C 390 235, 400 290, 448 290"/>
+              <path class="m-path off" data-path="kit" d="M320 235 C 390 235, 400 400, 448 400"/>
+              <g class="m-node m-you"><circle cx="70" cy="235" r="26"/><text x="70" y="240">you</text></g>
+              <g class="m-node m-op" data-node="op"><rect x="200" y="205" width="120" height="60" rx="14"/><text x="260" y="232">OPERATOR</text><text class="m-sub" x="260" y="250" data-op-status>idle</text></g>
+              <g class="m-node m-agent" data-node="mira"><circle cx="470" cy="70" r="22"/><text x="470" y="75">MI</text><circle class="m-led led-blue" cx="486" cy="54" r="5"/><text class="m-label" x="502" y="66">@mira</text><text class="m-label m-dim" x="502" y="82">checkout</text></g>
+              <g class="m-node m-agent" data-node="zed"><circle cx="470" cy="180" r="22"/><text x="470" y="185">ZE</text><circle class="m-led led-green" cx="486" cy="164" r="5"/><text class="m-label" x="502" y="176">@zed</text><text class="m-label m-dim" x="502" y="192">menu-sync</text></g>
+              <g class="m-node m-agent" data-node="juno"><circle cx="470" cy="290" r="22"/><text x="470" y="295">JU</text><circle class="m-led led-green" cx="486" cy="274" r="5"/><text class="m-label" x="502" y="286">@juno</text><text class="m-label m-dim" x="502" y="302">auth</text></g>
+              <g class="m-node m-agent off" data-node="kit"><circle cx="470" cy="400" r="22"/><text x="470" y="405">KI</text><circle class="m-led led-off" cx="486" cy="384" r="5"/><text class="m-label" x="502" y="396">@kit</text><text class="m-label m-dim" x="502" y="412">∅ offline</text></g>
+            </svg>
+            <p class="map-legend" aria-hidden="true"><span><i class="led led-green"></i>working</span><span><i class="led led-blue"></i>idle</span><span><i class="led led-purple"></i>being read</span><span><i class="led led-off"></i>offline</span></p>
+          </div>
+        </div>
+        <ul class="facts">
+          <li data-reveal><b>Reads once.</b> One slice of one conversation, at most 60,000 characters, for one answer.</li>
+          <li data-reveal><b>Forgets.</b> The slice is never stored. Only the question and the answer are.</li>
+          <li data-reveal><b>Tells you.</b> Your light turns purple while it reads, and every read is logged on your Mac.</li>
+          <li data-reveal><b>Private stays home.</b> Folders you mark private are never read, never summarized, never shown.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section" id="rules" data-xp-section="rules">
+      <div class="wrap">
+        <p class="kicker" data-reveal>// rules that do not bend</p>
+        <h2 data-reveal>The fine print, in big print.</h2>
+        <div class="rules">
+          <div class="rule" data-reveal><span class="rule-n">01</span><h3>Agents never talk to each other.</h3><p>Every question goes through the Operator. No agent DMs. No swarm.</p></div>
+          <div class="rule" data-reveal><span class="rule-n">02</span><h3>Read once, then forget.</h3><p>One slice, one answer, gone. The question and the answer stay; the conversation does not.</p></div>
+          <div class="rule" data-reveal><span class="rule-n">03</span><h3>Private means private.</h3><p>Mark a folder private and its agents are never read, never summarized, and never shown to friends.</p></div>
+          <div class="rule" data-reveal><span class="rule-n">04</span><h3>Purple means reading.</h3><p>If the Operator is reading your agent, your light is purple. Always. There are no silent reads.</p></div>
+          <div class="rule" data-reveal><span class="rule-n">05</span><h3>Everything expires.</h3><p>Knocks last seconds. Questions last 90. The server enforces it, not your willpower.</p></div>
+          <div class="rule" data-reveal><span class="rule-n">06</span><h3>No token flexing.</h3><p>The board counts help, not spend. There is no leaderboard of who burned the most tokens.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="ranks" data-xp-section="ranks">
+      <div class="wrap ranks-wrap">
+        <div class="ranks-copy">
+          <p class="kicker" data-reveal>// play</p>
+          <h2 data-reveal>From n00b<br>to legend.</h2>
+          <p class="lede" data-reveal>When your agent answers a crewmate through the Operator, that’s an assist. That’s the whole economy.</p>
+          <ul class="econ" data-reveal>
+            <li><b class="c-green">+10 XP</b> your agent answered a crewmate</li>
+            <li><b class="c-blue">+1 XP</b> you asked a question</li>
+            <li><b class="c-dim">+0 XP</b> you burned a lot of tokens</li>
+          </ul>
+          <p class="ranks-note" data-reveal>This page has XP too. Look bottom left. <span data-you-are>You are a n00b.</span></p>
+        </div>
+        <ol class="ladder" data-ladder>
+          <li data-rank="n00b" data-reveal><span class="rk">n00b</span><span class="rk-xp">0 XP</span><span class="rk-say">Installed it. Proud of you.</span></li>
+          <li data-rank="script kiddie" data-reveal><span class="rk">script kiddie</span><span class="rk-xp">20 XP</span><span class="rk-say">Asking good questions.</span></li>
+          <li data-rank="hacker" data-reveal><span class="rk">hacker</span><span class="rk-xp">100 XP</span><span class="rk-say">Your agent has answered people.</span></li>
+          <li data-rank="wizard" data-reveal><span class="rk">wizard</span><span class="rk-xp">400 XP</span><span class="rk-say">Your crew’s agents lean on yours.</span></li>
+          <li data-rank="legend" data-reveal><span class="rk">legend</span><span class="rk-xp">1,000 XP</span><span class="rk-say">They write songs about your agent.</span></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section install" id="install" data-xp-section="install">
+      <div class="wrap">
+        <p class="kicker" data-reveal>// install</p>
+        <h2 data-reveal>One line. About a minute.</h2>
+        <div class="install-grid">
+          <div class="term-card" data-reveal>
+            <div class="win-bar"><span class="win-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="win-title">Terminal</span></div>
+            <button class="cmd cmd-big" type="button" data-copy="curl -fsSL https://soopdoop.com/install | bash" title="Copy the install command">
+              <span class="cmd-prompt" aria-hidden="true">$</span>
+              <code>curl -fsSL https://soopdoop.com/install | bash</code>
+              <span class="cmd-copy" data-copy-label>copy</span>
+            </button>
+            <ol class="steps">
+              <li><b>Run the line.</b> It installs soopdoop, builds the Mac app on your Mac, and starts it.</li>
+              <li><b>Sign in with Superset</b> in the HUD. Your browser opens Superset’s page once.</li>
+              <li><b>Pick a handle.</b> Use your Superset handle and your Superset profile links up too.</li>
+              <li><b>Invite your crew.</b> Menu bar → Invite someone new. Each invite works once, for 7 days.</li>
+            </ol>
+          </div>
+          <div class="install-side">
+            <div class="need" data-reveal>
+              <h3>You need</h3>
+              <ul class="tags">
+                <li>macOS 14+</li>
+                <li>a Superset account</li>
+                <li>Claude Code</li>
+                <li>Xcode command line tools</li>
+              </ul>
+              <p class="small">No Xcode tools? <code>xcode-select --install</code>, then run the line again.</p>
+            </div>
+            <div class="need" data-reveal>
+              <h3>Got an invite?</h3>
+              <p class="small">Paste the line from the message instead. It is the same line with your invite code on the end, and it makes you friends with whoever sent it.</p>
+            </div>
+            <details class="changes" data-reveal>
+              <summary>What it changes on your Mac</summary>
+              <ul>
+                <li>Adds its hooks to <code>~/.claude/settings.json</code>, next to Superset’s, after backing up your file.</li>
+                <li>Builds <code>~/Applications/soopdoop.app</code> from source, signed for your Mac only.</li>
+                <li>Runs four small background services that start at login: the agent, the daemon, the HUD and the updater.</li>
+                <li>Adds the <code>ask_operator</code> tool to Claude Code.</li>
+                <li>Keeps everything else in <code>~/.soopdoop</code>.</li>
+              </ul>
+              <p class="small">Updates install themselves. <code>soopdoop uninstall</code> takes it all back out.</p>
+            </details>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="faq" data-xp-section="faq">
+      <div class="wrap">
+        <p class="kicker" data-reveal>// questions</p>
+        <h2 data-reveal>Asked and answered.</h2>
+        <div class="faq">
+          <details data-reveal><summary>Is this made by Superset?</summary><p>No. soopdoop is an independent, open-source companion. It runs beside an unmodified Superset and uses only public surfaces: Superset sign-in and Claude Code hooks.</p></details>
+          <details data-reveal><summary>What can my friends see?</summary><p>That you are online, how many agents you run, your rank, and agent names only if you share them. Never your code or your prompts. When a friend asks the Operator something, it may read the last part of one of your open agents’ conversations to answer. Your light turns purple while it does.</p></details>
+          <details data-reveal><summary>Is the Operator switched on?</summary><p>It is warming up. Until it is switched on, it politely tells you so. Presence, knocks, ranks and the HUD work today.</p></details>
+          <details data-reveal><summary>Codex? Cursor? Something else?</summary><p>Claude Code today. More harnesses later.</p></details>
+          <details data-reveal><summary>Linux? Windows?</summary><p>The HUD app is macOS only for now. The web rail runs anywhere if you start it by hand.</p></details>
+          <details data-reveal><summary>What does it cost?</summary><p>Nothing. It is MIT licensed, and the code is on GitHub.</p></details>
+          <details data-reveal><summary>How do I get rid of it?</summary><p><code>soopdoop uninstall</code> removes the hooks, the background services, the app and the tool.</p></details>
+          <details data-reveal><summary>Why “soopdoop”?</summary><p>Say it out loud. Now say it to a coworker. That is the whole product.</p></details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-top">
+      <div>
+        <p class="foot-tag">Your Superset, with your crew in it.</p>
+        <button class="cmd" type="button" data-copy="curl -fsSL https://soopdoop.com/install | bash" title="Copy the install command">
+          <span class="cmd-prompt" aria-hidden="true">$</span>
+          <code>curl -fsSL https://soopdoop.com/install | bash</code>
+          <span class="cmd-copy" data-copy-label>copy</span>
+        </button>
+      </div>
+      <nav class="foot-links" aria-label="More">
+        <a href="https://github.com/tomredman/soopdoop">GitHub</a>
+        <a href="https://github.com/tomredman/soopdoop/releases">Releases</a>
+        <a href="https://github.com/tomredman/soopdoop/blob/main/CHANGELOG.md">Changelog</a>
+        <a href="https://github.com/tomredman/soopdoop/blob/main/LICENSE">MIT license</a>
+      </nav>
+    </div>
+    <div class="wrap foot-fine">
+      <p>soopdoop is not made by or affiliated with Superset.</p>
+      <p class="egg-hint">psst: ↑ ↑ ↓ ↓ ← → ← → B A</p>
+    </div>
+    <div class="foot-mark" aria-hidden="true">
+      <span class="wordmark" data-wordmark><span class="wm-l">s</span><span class="wm-pair"><span class="wm-eye"><span class="wm-pupil"></span></span><span class="wm-eye"><span class="wm-pupil"></span></span></span><span class="wm-l">p</span><span class="wm-l wm-doop">d</span><span class="wm-pair wm-doop"><span class="wm-eye"><span class="wm-pupil"></span></span><span class="wm-eye"><span class="wm-pupil"></span></span></span><span class="wm-l wm-doop">p</span></span>
+    </div>
+  </footer>
+
+  <div class="me" data-me>
+    <button class="me-pill" type="button" data-me-toggle aria-expanded="false" aria-controls="quests">
+      <span class="av av-you">YOU<i class="led led-green"></i></span>
+      <span class="me-txt"><span class="chip chip-green" data-me-rank>n00b</span><span class="me-xp"><b data-me-xp>0</b> XP</span></span>
+      <span class="me-bar" aria-hidden="true"><i data-me-bar></i></span>
+    </button>
+    <div class="quests" id="quests" data-quests hidden>
+      <p class="quests-h">This page has XP. <span>Earn some.</span></p>
+      <ul data-quest-list></ul>
+      <a class="share" data-share href="https://x.com/intent/post" target="_blank" rel="noopener">Post your rank</a>
+    </div>
+  </div>
+  <div class="toasts" data-toasts role="status" aria-live="polite"></div>
+
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>
