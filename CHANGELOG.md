@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.5 · 2026-10-03
+
+### New
+- operator:forget deletes a wrong answer from the wire (convex)
+
 ## v0.2.4 · 2026-10-03
 
 ### Fixes
