@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.4 · 2026-10-03
+
+### Fixes
+- the Operator only answers about whose agent it read (convex)
+
 ## v0.2.3 · 2026-10-03
 
 ### Fixes
