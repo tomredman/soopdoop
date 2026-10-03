@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.3 · 2026-10-03
+
+### Fixes
+- you see what went wrong instead of "Server Error" (convex)
+
 ## v0.2.2 · 2026-10-03
 
 ### New
