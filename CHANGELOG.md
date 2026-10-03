@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.1 · 2026-10-03
+
+### Fixes
+- the HUD stays up while Settings is open (hud)
+- small text reads on glass with a light window behind it (hud)
+
 ## v0.2.0 · 2026-10-02
 
 ### New
