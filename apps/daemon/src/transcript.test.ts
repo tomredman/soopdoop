@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { conversationSlice, parseTranscript, readTail, routingSummary } from "./transcript";
+import { conversationSlice, parseTranscript, readTail, routingSummary, shortPath } from "./transcript";
 
 // Lines in the shape Claude Code writes them.
 function row(type: string, content: unknown, extra: Record<string, unknown> = {}): string {
@@ -58,6 +58,20 @@ describe("transcripts", function () {
     expect(routingSummary(parseTranscript(""))).toBe("");
     const long = parseTranscript(row("user", "x".repeat(900)));
     expect(routingSummary(long).length).toBeLessThanOrEqual(600);
+  });
+
+  test("files outside the agent's folder lose their home folder and user name", function () {
+    expect(shortPath("/Users/me/vibes", "/Users/me/vibes/src/a.ts", "/Users/me")).toBe("src/a.ts");
+    expect(shortPath("/Users/me/vibes", "/Users/me/projects/soopdoop/apps/daemon/src/cli.ts", "/Users/me")).toBe("…/daemon/src/cli.ts");
+    expect(shortPath("/Users/me/vibes", "/Users/me/notes.md", "/Users/me")).toBe("notes.md");
+    expect(shortPath("/Users/me/vibes", "/private/tmp/a/b/c/d.txt", "/Users/me")).toBe("…/b/c/d.txt");
+    expect(shortPath(undefined, "src/relative.ts", "/Users/me")).toBe("src/relative.ts");
+    const elsewhere = parseTranscript(row("assistant", [
+      { type: "tool_use", name: "Edit", input: { file_path: "/Users/me/projects/other/apps/web/page.tsx", old_string: "a", new_string: "b" } },
+    ]));
+    const summary = routingSummary(elsewhere, "/Users/me");
+    expect(summary).toContain("files: …/apps/web/page.tsx");
+    expect(summary).not.toContain("/Users/");
   });
 
   test("the slice keeps the newest turns that fit, oldest first, one line each", function () {

@@ -1,5 +1,6 @@
 // ABOUTME: Reads Claude Code transcripts (JSONL) on this machine: the tail of the file, the conversation in it, and the
 // ABOUTME: one-line routing summary. Pure parsing, so it is tested. Only the Operator's reads and summaries use it.
+import { homedir } from "node:os";
 import path from "node:path";
 import { isRecord } from "./state";
 
@@ -83,13 +84,18 @@ export function conversationSlice(parsed: Parsed, maxChars: number): string {
   return lines.reverse().join("\n");
 }
 
-function relativeTo(cwd: string | undefined, file: string): string {
-  if (cwd === undefined || !file.startsWith(cwd + "/")) return file;
-  return path.relative(cwd, file);
+// Inside the agent's folder: the path from there. Anywhere else: only its last three parts, so a home folder or a user
+// name never reaches the summary ("…/daemon/src/cli.ts").
+export function shortPath(cwd: string | undefined, file: string, home: string = homedir()): string {
+  if (cwd !== undefined && file.startsWith(cwd + "/")) return path.relative(cwd, file);
+  if (!path.isAbsolute(file)) return file;
+  const rest = file.startsWith(home + "/") ? path.relative(home, file) : file.slice(1);
+  const parts = rest.split("/");
+  return parts.length <= 3 ? parts.join("/") : `…/${parts.slice(-3).join("/")}`;
 }
 
 // "vibes@feat/x · "fix coupon rounding" · files: src/a.ts, src/b.ts", at most 600 characters.
-export function routingSummary(parsed: Parsed): string {
+export function routingSummary(parsed: Parsed, home: string = homedir()): string {
   const workspace = parsed.cwd === undefined ? undefined : path.basename(parsed.cwd);
   const where = workspace === undefined ? "" : `${workspace}${parsed.branch === undefined ? "" : `@${parsed.branch}`}`;
   const prompt = parsed.lastPrompt === undefined ? "" : `"${parsed.lastPrompt.slice(0, 160)}"`;
@@ -97,7 +103,7 @@ export function routingSummary(parsed: Parsed): string {
   for (let i = parsed.files.length - 1; i >= 0 && recent.length < 8; i--) {
     const file = parsed.files[i];
     if (file === undefined) continue;
-    const short = relativeTo(parsed.cwd, file);
+    const short = shortPath(parsed.cwd, file, home);
     if (!recent.includes(short)) recent.push(short);
   }
   const files = recent.length === 0 ? "" : `files: ${recent.join(", ")}`;
