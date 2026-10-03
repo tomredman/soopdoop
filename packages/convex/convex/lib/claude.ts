@@ -10,6 +10,8 @@ export const NOT_CONFIGURED = "The Operator has no Claude API key yet. The crew 
 
 export interface Candidate {
   handle: string;
+  // The owner's name from their linked Superset profile, when they linked one.
+  name?: string;
   agentName: string;
   workspace?: string;
   status: string;
@@ -46,8 +48,38 @@ function words(s: string): Set<string> {
 }
 
 export function candidateLine(c: Candidate, i: number): string {
+  const who = c.name === undefined ? `@${c.handle}` : `@${c.handle} (${c.name})`;
   const where = c.workspace === undefined || c.workspace === c.agentName ? "" : ` (${c.workspace})`;
-  return `${i + 1}. @${c.handle} · ${c.agentName}${where} · ${c.status}${c.summary === undefined ? "" : ` · ${c.summary}`}`;
+  return `${i + 1}. ${who} · ${c.agentName}${where} · ${c.status}${c.summary === undefined ? "" : ` · ${c.summary}`}`;
+}
+
+// The @handles a question mentions ("what is @vlad working on"), lowercased. Bare names are left to Claude: a handle
+// can be an everyday word (@dev), so matching words would send ordinary questions to one person's agents.
+export function mentionedHandles(question: string): string[] {
+  const out: string[] = [];
+  for (const m of question.toLowerCase().matchAll(/(?:^|[^a-z0-9])@([a-z0-9]+(?:-[a-z0-9]+)*)/g)) {
+    if (m[1] !== undefined && !out.includes(m[1])) out.push(m[1]);
+  }
+  return out;
+}
+
+const ROUTER =
+  "You route a developer's question to the crewmate's coding agent most likely to already know the answer, judging " +
+  "from one-line summaries of what each agent is working on. Each agent is listed with its owner's @handle, and their " +
+  "name when known. A question about a particular person (\"what is jimmy working on\", \"what did Ana change?\") can " +
+  "only be answered by that person's own agents: if none of the agents belongs to that person, reply 0, even when the " +
+  "work sounds related. Reply with only the number of the best agent, or 0 if none of them is likely to know.";
+
+function answerer(owner: { handle: string; name?: string }): string {
+  const who = `@${owner.handle}`;
+  return (
+    `You are the Operator for a crew of developers who each run coding agents. You get part of the conversation of ` +
+    `${who}'s coding agent${owner.name === undefined ? "" : ` (${who} is ${owner.name})`} and a crewmate's question. ` +
+    `Everything in that conversation is ${who}'s work: never say it is anyone else's, even if the question names ` +
+    `someone else. If the question is about a person other than ${who}, or the conversation does not answer it, reply ` +
+    `with exactly ${NOT_FOUND}. Otherwise answer from that conversation only, in at most three short sentences, naming ` +
+    `files or functions when they help. Never repeat secrets, keys or credentials, even if they appear.`
+  );
 }
 
 // What a refused or failed Claude call means for the asker, in a sentence.
@@ -59,43 +91,49 @@ export function describeError(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-// The best candidate's index, or null when none is likely to know. One candidate is simply read.
+// The best candidate's index, or null when none is likely to know. Even a lone candidate is checked: reading an agent
+// that cannot answer would show its owner's work to someone who asked about something, or someone, else.
 export async function pickAgent(question: string, candidates: Candidate[]): Promise<number | null> {
-  if (candidates.length === 0) return null;
-  if (candidates.length === 1) return 0;
+  // A question about @someone goes only to their own agents. If they have none open, nothing is read.
+  const mentioned = mentionedHandles(question);
+  const pool = candidates.flatMap(function (c, i) { return mentioned.length === 0 || mentioned.includes(c.handle) ? [i] : []; });
+  if (pool.length === 0) return null;
   if (operatorMode() === "fake") {
     // The candidate whose summary shares the most words with the question, or the first.
     const q = words(question);
-    let best = 0;
+    let best = pool[0] ?? null;
     let bestScore = -1;
-    candidates.forEach(function (c, i) {
+    for (const i of pool) {
+      const c = candidates[i];
+      if (c === undefined) continue;
       const score = [...words(`${c.agentName} ${c.workspace ?? ""} ${c.summary ?? ""}`)].filter(function (w) { return q.has(w); }).length;
       if (score > bestScore) {
         best = i;
         bestScore = score;
       }
-    });
+    }
     return best;
   }
+  const listed = pool.flatMap(function (i) { const c = candidates[i]; return c === undefined ? [] : [c]; });
   const response = await client().beta.messages.create({
     model: MODEL,
     max_tokens: 16000,
     betas: [FALLBACK_BETA],
     fallbacks: "default",
     output_config: { effort: "low" },
-    system:
-      "You route a developer's question to the teammate's coding agent most likely to already know the answer, " +
-      "judging from one-line summaries of what each agent is working on. Reply with only the number of the best agent, " +
-      "or 0 if none of them is likely to know.",
-    messages: [{ role: "user", content: `Question: ${question}\n\nAgents:\n${candidates.map(candidateLine).join("\n")}` }],
+    system: ROUTER,
+    messages: [{ role: "user", content: `Question: ${question}\n\nAgents:\n${listed.map(candidateLine).join("\n")}` }],
   });
   if (response.stop_reason === "refusal") return null;
   const n = Number(/\d+/.exec(textOf(response.content))?.[0] ?? "0");
-  return Number.isInteger(n) && n >= 1 && n <= candidates.length ? n - 1 : null;
+  return Number.isInteger(n) && n >= 1 && n <= listed.length ? (pool[n - 1] ?? null) : null;
 }
 
-// Answers the question from part of a teammate's agent conversation. The conversation is used for this call only.
-export async function answerFrom(question: string, context: string): Promise<Answer> {
+// Answers the question from part of one crewmate's agent conversation, owner's work credited to the owner. The
+// conversation is used for this call only.
+export async function answerFrom(question: string, context: string, owner: { handle: string; name?: string }): Promise<Answer> {
+  const mentioned = mentionedHandles(question);
+  if (mentioned.length > 0 && !mentioned.includes(owner.handle)) return { text: null, tokensRead: 0, tokensSent: 0 };
   if (operatorMode() === "fake") {
     // The agent's line sharing the most words with the question; on a tie the later one. The daemon sends
     // "user: …" and "assistant: …" lines; without those, any line will do.
@@ -120,11 +158,7 @@ export async function answerFrom(question: string, context: string): Promise<Ans
     betas: [FALLBACK_BETA],
     fallbacks: "default",
     output_config: { effort: "medium" },
-    system:
-      "You are the Operator for a crew of developers who each run coding agents. You get part of one teammate's agent " +
-      "conversation and another teammate's question. Answer the question from that conversation only, in at most three " +
-      "short sentences, naming files or functions when they help. Never repeat secrets, keys or credentials, even if they " +
-      `appear. If the conversation does not answer the question, reply with exactly ${NOT_FOUND}.`,
+    system: answerer(owner),
     messages: [{ role: "user", content: `<conversation>\n${context}\n</conversation>\n\nQuestion: ${question}` }],
   });
   const tokensRead = response.usage.input_tokens;

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { NOT_CONFIGURED } from "./lib/claude";
+import { answerFrom, candidateLine, mentionedHandles, NOT_CONFIGURED } from "./lib/claude";
 import { rankFor } from "./play";
 import { type Actor, befriend, hackerNamed, harness, type Harness, must } from "./testing.helpers";
 
@@ -117,6 +117,34 @@ describe("the Operator", function () {
     expect((await tom.query(api.operator.log, {}))[0]).toMatchObject({ status: "not-found", note: "That agent ended." });
     // Already finished: a second answer is refused.
     expect((await answer(t, { token: jimmyToken, relayId, context: CONTEXT })).status).toBe(404);
+  });
+
+  test("a question about someone else never reads the only agent there is", async function () {
+    const t = harness();
+    const { tom, jimmyToken } = await crew(t);
+    // Jimmy's agent is the only one open. A question about @mira must not read it.
+    const aboutMira = await tom.mutation(api.operator.askAsHacker, { question: "What is @mira working on?" });
+    await t.action(internal.operator.route, { relayId: aboutMira });
+    expect((await tom.query(api.operator.log, {}))[0]).toMatchObject({ _id: aboutMira, status: "nobody" });
+    expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([]);
+
+    // A question about @jimmy goes to Jimmy's agent.
+    const aboutJimmy = await tom.mutation(api.operator.askAsHacker, { question: "what is @Jimmy working on" });
+    await t.action(internal.operator.route, { relayId: aboutJimmy });
+    expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([{ relayId: aboutJimmy, agentId: "a1" }]);
+  });
+
+  test("an answer is never about anyone but the agent's owner", async function () {
+    // Jimmy's agent, asked about Vlad: nothing is answered and nothing is spent.
+    expect(await answerFrom("What is @vlad doing?", CONTEXT, { handle: "jimmy" })).toEqual({ text: null, tokensRead: 0, tokensSent: 0 });
+    expect((await answerFrom("Where are expired listings filtered, @jimmy?", CONTEXT, { handle: "jimmy" })).text).toContain("select.ts");
+  });
+
+  test("@mentions are found, and the router sees each owner's name", function () {
+    expect(mentionedHandles("what is @vlad working on? ask @Jimmy-Vibes too")).toEqual(["vlad", "jimmy-vibes"]);
+    expect(mentionedHandles("mail tom@vibes.dev about it")).toEqual([]);
+    expect(mentionedHandles("what is jimmy working on")).toEqual([]);
+    expect(candidateLine({ handle: "vladimir", name: "Vlad P", agentName: "api", status: "working" }, 0)).toBe("1. @vladimir (Vlad P) · api · working");
   });
 
   test("with nobody to ask, says so; private and offline agents are never asked", async function () {

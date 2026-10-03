@@ -33,7 +33,7 @@ http.route({
     if (context === null && refused === null) return json(400, { error: "Send the context, or why it cannot be read." });
     if (context !== null && context.length > MAX_CONTEXT_CHARS) return json(413, { error: "That context is too long." });
 
-    let found: { relayId: Id<"relays">; question: string } | null = null;
+    let found: { relayId: Id<"relays">; question: string; owner: { handle: string; name?: string } } | null = null;
     try {
       found = await ctx.runQuery(internal.operator.relayForDaemon, { token, relayId: body.relayId });
     } catch {
@@ -48,7 +48,7 @@ http.route({
       return json(200, { ok: true });
     }
     try {
-      const answer = await answerFrom(found.question, context);
+      const answer = await answerFrom(found.question, context, found.owner);
       await ctx.runMutation(internal.operator.finish, {
         relayId,
         status: answer.text === null ? "not-found" : "answered",

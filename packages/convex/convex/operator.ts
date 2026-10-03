@@ -7,7 +7,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { acceptedFriendIds } from "./friends";
 import { requireDaemon, requireHacker } from "./lib/auth";
-import { describeError, NOT_CONFIGURED, operatorMode, pickAgent } from "./lib/claude";
+import { answerFrom, describeError, NOT_CONFIGURED, operatorMode, pickAgent } from "./lib/claude";
 import { relayStatus } from "./schema";
 
 const TIMEOUT_MS = 90_000;
@@ -159,6 +159,7 @@ export const log = query({
 const candidate = v.object({
   hackerId: v.id("hackers"),
   handle: v.string(),
+  name: v.optional(v.string()),
   shareAgentNames: v.boolean(),
   machineName: v.string(),
   agentId: v.string(),
@@ -167,6 +168,17 @@ const candidate = v.object({
   status: v.string(),
   summary: v.optional(v.string()),
 });
+
+// A hacker's name from their linked Superset profile, if they linked one: it lets "what is Vlad doing" find @vladimir.
+async function linkedName(ctx: QueryCtx, hackerId: Id<"hackers">): Promise<string | undefined> {
+  const profile = await ctx.db
+    .query("supersetProfiles")
+    .withIndex("by_hacker", function (q) {
+      return q.eq("hackerId", hackerId);
+    })
+    .first();
+  return profile?.name;
+}
 
 // The open, live agents of the asker's crewmates, with their routing summaries. For now the crew is the asker's friends.
 export const candidates = internalQuery({
@@ -180,6 +192,7 @@ export const candidates = internalQuery({
     for (const id of await acceptedFriendIds(ctx, relay.askerHackerId)) {
       const hacker = await ctx.db.get("hackers", id);
       if (hacker === null) continue;
+      const name = await linkedName(ctx, id);
       const subsets = await ctx.db
         .query("subsets")
         .withIndex("by_hacker_machine", function (s) {
@@ -199,6 +212,7 @@ export const candidates = internalQuery({
           out.push({
             hackerId: id,
             handle: hacker.handle,
+            name,
             shareAgentNames: hacker.shareAgentNames,
             machineName: subset.machineName,
             agentId: agent.agentId,
@@ -302,13 +316,42 @@ export const expire = internalMutation({
 // one the relay waits on.
 export const relayForDaemon = internalQuery({
   args: { token: v.string(), relayId: v.string() },
-  returns: v.union(v.null(), v.object({ relayId: v.id("relays"), question: v.string() })),
+  returns: v.union(
+    v.null(),
+    v.object({ relayId: v.id("relays"), question: v.string(), owner: v.object({ handle: v.string(), name: v.optional(v.string()) }) }),
+  ),
   handler: async function (ctx, args) {
     const { hacker, daemon } = await requireDaemon(ctx, args.token);
     const relayId = ctx.db.normalizeId("relays", args.relayId);
     const relay = relayId === null ? null : await ctx.db.get("relays", relayId);
     if (relay === null || relay.status !== "reading") return null;
     if (relay.targetHackerId !== hacker._id || relay.targetMachine !== daemon.machineName) return null;
-    return { relayId: relay._id, question: relay.question };
+    // Whose agent is read, so the answer credits the work to them and to nobody else.
+    return { relayId: relay._id, question: relay.question, owner: { handle: hacker.handle, name: await linkedName(ctx, hacker._id) } };
+  },
+});
+
+const dryRunCandidate = v.object({
+  handle: v.string(),
+  name: v.optional(v.string()),
+  agentName: v.string(),
+  workspace: v.optional(v.string()),
+  status: v.string(),
+  summary: v.optional(v.string()),
+});
+
+// Tries the Operator's two Claude calls on made-up agents, to check the prompts against the real model:
+// npx convex run --prod operator:dryRun '{"question": "...", "candidates": [...], "context": "...", "owner": "tom"}'
+// Reads no hacker's data and stores nothing.
+export const dryRun = internalAction({
+  args: { question: v.string(), candidates: v.array(dryRunCandidate), context: v.optional(v.string()), owner: v.optional(v.string()) },
+  returns: v.object({ picked: v.union(v.null(), v.string()), answer: v.union(v.null(), v.string()) }),
+  handler: async function (_ctx, args) {
+    const index = await pickAgent(args.question, args.candidates);
+    const picked = index === null ? null : (args.candidates[index]?.handle ?? null);
+    const answer = args.context === undefined || args.owner === undefined
+      ? null
+      : (await answerFrom(args.question, args.context, { handle: args.owner })).text;
+    return { picked, answer };
   },
 });
