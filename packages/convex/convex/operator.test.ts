@@ -147,6 +147,21 @@ describe("the Operator", function () {
     expect(candidateLine({ handle: "vladimir", name: "Vlad P", agentName: "api", status: "working" }, 0)).toBe("1. @vladimir (Vlad P) · api · working");
   });
 
+  test("a wrong answer can be deleted, and the assist it gave goes with it", async function () {
+    const t = harness();
+    const { tom, jimmy, jimmyToken } = await crew(t);
+    const relayId = await tom.mutation(api.operator.askAsHacker, { question: "Where are expired listings filtered?" });
+    await t.action(internal.operator.route, { relayId });
+    await answer(t, { token: jimmyToken, relayId, context: CONTEXT });
+    expect((await jimmy.query(api.play.board, {})).find(function (r) { return r.handle === "jimmy"; })?.xp).toBe(10);
+
+    expect(await t.mutation(internal.operator.forget, { relayIds: [relayId, "not-an-id"] })).toBe(1);
+    expect(await tom.query(api.operator.log, {})).toEqual([]);
+    expect(await jimmy.query(api.operator.log, {})).toEqual([]);
+    expect((await jimmy.query(api.play.board, {})).find(function (r) { return r.handle === "jimmy"; })?.xp).toBe(0);
+    expect(await t.mutation(internal.operator.forget, { relayIds: [relayId] })).toBe(0);
+  });
+
   test("with nobody to ask, says so; private and offline agents are never asked", async function () {
     const t = harness();
     const tom = await hackerNamed(t, "tom");

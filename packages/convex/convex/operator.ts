@@ -331,6 +331,23 @@ export const relayForDaemon = internalQuery({
   },
 });
 
+// Deletes relays by id: for a wrong answer that should not stay on anyone's wire. XP is counted from relays, so any
+// assist it gave goes too. Internal, so no app can call it: npx convex run --prod operator:forget '{"relayIds": ["…"]}'
+export const forget = internalMutation({
+  args: { relayIds: v.array(v.string()) },
+  returns: v.number(),
+  handler: async function (ctx, args) {
+    let deleted = 0;
+    for (const raw of args.relayIds) {
+      const id = ctx.db.normalizeId("relays", raw);
+      if (id === null || (await ctx.db.get("relays", id)) === null) continue;
+      await ctx.db.delete("relays", id);
+      deleted += 1;
+    }
+    return deleted;
+  },
+});
+
 const dryRunCandidate = v.object({
   handle: v.string(),
   name: v.optional(v.string()),
