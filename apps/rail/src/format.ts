@@ -29,9 +29,11 @@ export function initials(handle: string): string {
   return (a + b).toUpperCase();
 }
 
-// Convex wraps a thrown Error in "[CONVEX M(knocks:send)] [Request ID: …] Server Error\nUncaught Error: <message>\n    at …".
-// Hackers should read only <message>.
+// A ConvexError's message travels as its data, which production deployments pass on; there, the text of any other error
+// becomes "Server Error". In development Convex wraps the text in "[CONVEX M(knocks:send)] [Request ID: …] Server
+// Error\nUncaught Error: <message>\n    at …". Hackers should read only <message>.
 export function cleanError(e: unknown): string {
+  if (e instanceof Error && "data" in e && typeof e.data === "string") return e.data;
   const raw = e instanceof Error ? e.message : String(e);
   const match = /Uncaught (?:Convex)?Error: ([^\n]*?)(?:\s+at\s|\n|$)/.exec(raw);
   return match?.[1] ?? raw;

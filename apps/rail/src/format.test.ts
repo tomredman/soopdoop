@@ -37,4 +37,10 @@ describe("cleanError", function () {
     expect(cleanError(new Error("plain failure"))).toBe("plain failure");
     expect(cleanError("string")).toBe("string");
   });
+
+  test("reads a ConvexError's message from its data, the only part production passes on", function () {
+    const fromProduction = Object.assign(new Error("[CONVEX M(friends:request)] [Request ID: 99ad] Server Error\n  Called by client"), { data: "ain’t nobody with that handle" });
+    expect(cleanError(fromProduction)).toBe("ain’t nobody with that handle");
+    expect(cleanError(Object.assign(new Error("Server Error"), { data: { code: 1 } }))).toBe("Server Error");
+  });
 });

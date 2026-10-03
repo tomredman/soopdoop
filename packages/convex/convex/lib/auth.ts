@@ -1,5 +1,6 @@
 // ABOUTME: Resolves the caller for public functions: the daemon by its token, the rail by its Superset sign-in.
 // ABOUTME: Every public function calls one of these first (the require-access-control lint rule checks it).
+import { ConvexError } from "convex/values";
 import type { Auth, UserIdentity } from "convex/server";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -19,7 +20,7 @@ export async function hashToken(token: string): Promise<string> {
 // The rail signs in with Superset. The identity's subject is the Superset user id. Actions have ctx.auth too.
 export async function requireIdentity(ctx: { auth: Auth }): Promise<UserIdentity> {
   const identity = await ctx.auth.getUserIdentity();
-  if (identity === null) throw new Error("Not signed in");
+  if (identity === null) throw new ConvexError("Not signed in");
   return identity;
 }
 
@@ -43,7 +44,7 @@ export async function checkHacker(ctx: QueryCtx | MutationCtx): Promise<Doc<"hac
 export async function requireHacker(ctx: QueryCtx | MutationCtx): Promise<Doc<"hackers">> {
   const identity = await requireIdentity(ctx);
   const hacker = await hackerFor(ctx, identity.subject);
-  if (hacker === null) throw new Error("No hacker for this sign-in. Pick a handle first.");
+  if (hacker === null) throw new ConvexError("No hacker for this sign-in. Pick a handle first.");
   return hacker;
 }
 
@@ -59,8 +60,8 @@ export async function requireDaemon(
       return q.eq("tokenHash", tokenHash);
     })
     .unique();
-  if (daemon === null) throw new Error("Unknown daemon token");
+  if (daemon === null) throw new ConvexError("Unknown daemon token");
   const hacker = await ctx.db.get("hackers", daemon.hackerId);
-  if (hacker === null) throw new Error("Daemon token has no hacker");
+  if (hacker === null) throw new ConvexError("Daemon token has no hacker");
   return { hacker, daemon };
 }

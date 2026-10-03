@@ -1,6 +1,6 @@
 // ABOUTME: Friends: request by handle, accept, invite links (7 days, one use), and the friend list with live presence.
 // ABOUTME: Presence shown to a friend respects the owner's sharing settings and focus mode.
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
@@ -125,8 +125,8 @@ export const request = mutation({
         return q.eq("handle", args.handle.toLowerCase());
       })
       .unique();
-    if (other === null) throw new Error("No hacker with that handle.");
-    if (other._id === me._id) throw new Error("That is you.");
+    if (other === null) throw new ConvexError("ain’t nobody with that handle");
+    if (other._id === me._id) throw new ConvexError("That is you.");
     if (await areFriends(ctx, me._id, other._id)) return null;
     // A request in the other direction becomes an acceptance.
     const theirs = await ctx.db
@@ -158,7 +158,7 @@ export const accept = mutation({
   handler: async function (ctx, args) {
     const me = await requireHacker(ctx);
     const f = await ctx.db.get("friendships", args.friendshipId);
-    if (f === null || f.b !== me._id) throw new Error("No such request.");
+    if (f === null || f.b !== me._id) throw new ConvexError("No such request.");
     await ctx.db.patch("friendships", f._id, { status: "accepted" });
     return null;
   },
@@ -208,9 +208,9 @@ export const redeemInvite = mutation({
       })
       .unique();
     if (invite === null || invite.usedByHackerId !== undefined || invite.expiresAt < Date.now()) {
-      throw new Error("This invite link is no longer valid.");
+      throw new ConvexError("This invite link is no longer valid.");
     }
-    if (invite.fromHackerId === me._id) throw new Error("That is your own invite.");
+    if (invite.fromHackerId === me._id) throw new ConvexError("That is your own invite.");
     await ctx.db.patch("invites", invite._id, { usedByHackerId: me._id });
     if (!(await areFriends(ctx, me._id, invite.fromHackerId))) {
       await ctx.db.insert("friendships", { a: invite.fromHackerId, b: me._id, status: "accepted", createdAt: Date.now() });

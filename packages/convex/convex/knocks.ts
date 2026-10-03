@@ -1,6 +1,6 @@
 // ABOUTME: Knocks: a short, expiring request for attention with one item attached.
 // ABOUTME: Expiry is enforced by a scheduled function, so an ignored knock goes away even if no client is open.
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { areFriends } from "./friends";
@@ -28,12 +28,12 @@ export const send = mutation({
         return q.eq("handle", args.toHandle.toLowerCase());
       })
       .unique();
-    if (to === null) throw new Error("No hacker with that handle.");
-    if (!(await areFriends(ctx, me._id, to._id))) throw new Error("You can only knock on a friend.");
+    if (to === null) throw new ConvexError("ain’t nobody with that handle");
+    if (!(await areFriends(ctx, me._id, to._id))) throw new ConvexError("You can only knock on a friend.");
     const now = Date.now();
-    if (to.focusUntil !== undefined && to.focusUntil > now) throw new Error("They are in focus mode. Try later.");
+    if (to.focusUntil !== undefined && to.focusUntil > now) throw new ConvexError("They are in focus mode. Try later.");
     const lifetimeMs = args.lifetimeMs ?? 30_000;
-    if (!LIFETIMES.has(lifetimeMs)) throw new Error("A knock lasts 10 s, 30 s, or 2 min.");
+    if (!LIFETIMES.has(lifetimeMs)) throw new ConvexError("A knock lasts 10 s, 30 s, or 2 min.");
     // At most one open knock from one sender to one receiver. A receiver has few open knocks: each ends within 2 min.
     const open = await ctx.db
       .query("knocks")
@@ -42,7 +42,7 @@ export const send = mutation({
       })
       .collect();
     if (open.some(function (k) { return k.fromHackerId === me._id; })) {
-      throw new Error("You already have a knock waiting with them.");
+      throw new ConvexError("You already have a knock waiting with them.");
     }
     const id = await ctx.db.insert("knocks", {
       fromHackerId: me._id,
@@ -77,7 +77,7 @@ export const decide = mutation({
   handler: async function (ctx, args) {
     const me = await requireHacker(ctx);
     const k = await ctx.db.get("knocks", args.knockId);
-    if (k === null || k.toHackerId !== me._id) throw new Error("Not your knock.");
+    if (k === null || k.toHackerId !== me._id) throw new ConvexError("Not your knock.");
     if (k.outcome !== "open") return null;
     await ctx.db.patch("knocks", k._id, { outcome: args.outcome, decidedAt: Date.now() });
     return null;

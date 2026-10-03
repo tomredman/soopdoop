@@ -1,6 +1,6 @@
 // ABOUTME: Links a hacker to their public Superset leaderboard profile and keeps a small copy fresh for their friends.
 // ABOUTME: Reads only the page its owner chose to publish (superset.sh/md/user/<handle>); keeps no token counts, cost or rank.
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -29,9 +29,9 @@ export async function supersetCard(ctx: QueryCtx, hackerId: Id<"hackers">) {
 async function fetchProfile(handle: string): Promise<SupersetProfile | null> {
   const res = await fetch(profileMarkdownUrl(handle), { headers: { accept: "text/markdown" } });
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Superset answered ${res.status} for @${handle}. Try again in a minute.`);
+  if (!res.ok) throw new ConvexError(`Superset answered ${res.status} for @${handle}. Try again in a minute.`);
   const profile = parseProfileMarkdown(await res.text());
-  if (profile === null) throw new Error("Superset's profile page has changed shape, so soopdoop could not read it.");
+  if (profile === null) throw new ConvexError("Superset's profile page has changed shape, so soopdoop could not read it.");
   return profile;
 }
 
@@ -56,18 +56,18 @@ export const linkProfile = action({
     const identity = await requireIdentity(ctx);
     const handle = normalizeHandle(args.handle);
     if (handle === null) {
-      throw new Error("A Superset handle is 2 to 39 lowercase letters, digits and single hyphens, like ada-lovelace.");
+      throw new ConvexError("A Superset handle is 2 to 39 lowercase letters, digits and single hyphens, like ada-lovelace.");
     }
     const profile = await fetchProfile(handle);
     if (profile === null) {
-      throw new Error(`Superset has no public profile for @${handle}. Check the handle, or publish your profile in Superset first.`);
+      throw new ConvexError(`Superset has no public profile for @${handle}. Check the handle, or publish your profile in Superset first.`);
     }
     // A light check that this is the caller's own profile: the page's name must match the name in their Superset sign-in.
     const check = nameCheck(profile.name, identity.name);
     if (check === "mismatch") {
-      throw new Error(`@${handle} on Superset is ${profile.name ?? "someone else"}, but you signed in as ${identity.name ?? "someone else"}. Link your own profile.`);
+      throw new ConvexError(`@${handle} on Superset is ${profile.name ?? "someone else"}, but you signed in as ${identity.name ?? "someone else"}. Link your own profile.`);
     }
-    if (check === "unknown" && args.auto === true) throw new Error("Not linked: no name to compare.");
+    if (check === "unknown" && args.auto === true) throw new ConvexError("Not linked: no name to compare.");
     await ctx.runMutation(internal.superset.save, { supersetUserId: identity.subject, profile, fetchedAt: Date.now() });
     return profile.name === undefined ? { handle: profile.handle } : { handle: profile.handle, name: profile.name };
   },
@@ -78,7 +78,7 @@ export const save = internalMutation({
   returns: v.null(),
   handler: async function (ctx, args) {
     const hacker = await hackerFor(ctx, args.supersetUserId);
-    if (hacker === null) throw new Error("Pick a soopdoop handle first.");
+    if (hacker === null) throw new ConvexError("Pick a soopdoop handle first.");
     const taken = await ctx.db
       .query("supersetProfiles")
       .withIndex("by_handle", function (q) {
@@ -86,7 +86,7 @@ export const save = internalMutation({
       })
       .first();
     if (taken !== null && taken.hackerId !== hacker._id) {
-      throw new Error(`@${args.profile.handle} is already linked to another soopdoop hacker.`);
+      throw new ConvexError(`@${args.profile.handle} is already linked to another soopdoop hacker.`);
     }
     await store(ctx, hacker._id, args.profile, args.fetchedAt);
     return null;

@@ -1,13 +1,24 @@
 import { describe, expect, test } from "bun:test";
+import { ConvexError } from "convex/values";
 import { api } from "./_generated/api";
 import { hackerNamed, harness, must } from "./testing.helpers";
+
+// convex-test hands over a ConvexError's data JSON-encoded; the real clients decode it (checked against the dev
+// deployment, over HTTP and the websocket, on 3 Oct 2026).
+function dataOf(e: unknown): unknown {
+  if (!(e instanceof ConvexError)) return null;
+  return typeof e.data === "string" && e.data.startsWith('"') ? JSON.parse(e.data) : e.data;
+}
 
 describe("friends", function () {
   test("a request waits for acceptance, then both sides list each other", async function () {
     const t = harness();
     const tom = await hackerNamed(t, "tom");
     const mira = await hackerNamed(t, "mira");
-    await expect(tom.mutation(api.friends.request, { handle: "nobody" })).rejects.toThrow("No hacker");
+    // A ConvexError: production passes its message (the data) on to the app, where a plain Error would read "Server Error".
+    const unknown = await tom.mutation(api.friends.request, { handle: "nobody" }).catch(function (e: unknown) { return e; });
+    expect(unknown).toBeInstanceOf(ConvexError);
+    expect(dataOf(unknown)).toBe("ain’t nobody with that handle");
     await expect(tom.mutation(api.friends.request, { handle: "tom" })).rejects.toThrow("That is you");
 
     await tom.mutation(api.friends.request, { handle: "MIRA" });

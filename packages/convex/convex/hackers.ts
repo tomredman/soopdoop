@@ -1,6 +1,6 @@
 // ABOUTME: Hacker identity: pick a handle, read your own profile, change presence-sharing settings, focus mode.
 // ABOUTME: A hacker row is created on first sign-in when the handle is chosen.
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { checkHacker, requireHacker, requireIdentity } from "./lib/auth";
 import { supersetCard, supersetCardView } from "./superset";
@@ -44,7 +44,7 @@ export const claimHandle = mutation({
     const identity = await requireIdentity(ctx);
     const handle = args.handle.toLowerCase();
     if (handle.length < 2 || handle.length > 39 || !HANDLE.test(handle)) {
-      throw new Error("A handle is 2 to 39 characters: lowercase letters, digits, single hyphens.");
+      throw new ConvexError("A handle is 2 to 39 characters: lowercase letters, digits, single hyphens.");
     }
     const taken = await ctx.db
       .query("hackers")
@@ -52,14 +52,14 @@ export const claimHandle = mutation({
         return q.eq("handle", handle);
       })
       .unique();
-    if (taken !== null) throw new Error("That handle is taken.");
+    if (taken !== null) throw new ConvexError("That handle is taken.");
     const existing = await ctx.db
       .query("hackers")
       .withIndex("by_supersetUserId", function (q) {
         return q.eq("supersetUserId", identity.subject);
       })
       .unique();
-    if (existing !== null) throw new Error("You already have a handle.");
+    if (existing !== null) throw new ConvexError("You already have a handle.");
     return await ctx.db.insert("hackers", {
       handle,
       supersetUserId: identity.subject,

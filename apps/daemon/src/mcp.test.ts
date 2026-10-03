@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { formatRelay, handle, TOOL } from "./mcp";
+import { cleanError, formatRelay, handle, TOOL } from "./mcp";
 import { logRead, parseReads, prepareRead, siteUrl, SLICE_CHARS } from "./operator";
 import type { AgentRecord, Subset } from "./state";
 
@@ -111,5 +111,13 @@ describe("the daemon's side of the Operator", function () {
     expect(siteUrl("https://fleet-skunk-723.convex.cloud")).toBe("https://fleet-skunk-723.convex.site");
     expect(parseReads([{ relayId: "r1", agentId: "a1" }, { relayId: 2 }, "x"])).toEqual([{ relayId: "r1", agentId: "a1" }]);
     expect(parseReads(null)).toEqual([]);
+  });
+});
+
+describe("cleanError", function () {
+  test("shows a ConvexError's message, which production deployments pass on as data", function () {
+    expect(cleanError(Object.assign(new Error("[CONVEX M(operator:ask)] [Request ID: 1] Server Error"), { data: "That is a lot of questions. Wait a minute." })))
+      .toBe("That is a lot of questions. Wait a minute.");
+    expect(cleanError(new Error("[CONVEX M(operator:ask)] [Request ID: 1] Server Error\nUncaught Error: Ask a question.\n  at handler"))).toBe("Ask a question.");
   });
 });

@@ -49,8 +49,10 @@ export function formatRelay(r: RelayView): string {
   return `${r.note ?? "The Operator could not answer."} Work it out yourself.`;
 }
 
-// Convex wraps a thrown Error in "[CONVEX M(…)] [Request ID: …] Server Error\nUncaught Error: <message>\n    at …".
-function cleanError(e: unknown): string {
+// A ConvexError's message travels as its data (production passes it on; any other error's text becomes "Server
+// Error"). In development Convex wraps the text in "[CONVEX M(…)] [Request ID: …] Server Error\nUncaught Error: <message>".
+export function cleanError(e: unknown): string {
+  if (e instanceof Error && "data" in e && typeof e.data === "string") return e.data;
   const raw = e instanceof Error ? e.message : String(e);
   return /Uncaught (?:Convex)?Error: ([^\n]*?)(?:\s+at\s|\n|$)/.exec(raw)?.[1] ?? raw;
 }

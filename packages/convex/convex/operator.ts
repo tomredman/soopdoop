@@ -1,6 +1,6 @@
 // ABOUTME: The Operator. A question goes to the crewmate agent most likely to know; its owner's daemon then sends a slice
 // ABOUTME: of that agent's conversation once, straight into the answer call (http.ts). Only the question and answer are kept.
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -18,8 +18,8 @@ const PER_MINUTE = 6;
 
 async function startRelay(ctx: MutationCtx, asker: Doc<"hackers">, question: string): Promise<Id<"relays">> {
   const q = question.trim();
-  if (q === "") throw new Error("Ask a question.");
-  if (q.length > MAX_QUESTION) throw new Error(`Keep the question under ${MAX_QUESTION} characters.`);
+  if (q === "") throw new ConvexError("Ask a question.");
+  if (q.length > MAX_QUESTION) throw new ConvexError(`Keep the question under ${MAX_QUESTION} characters.`);
   const now = Date.now();
   const recent = await ctx.db
     .query("relays")
@@ -29,7 +29,7 @@ async function startRelay(ctx: MutationCtx, asker: Doc<"hackers">, question: str
     .order("desc")
     .take(PER_MINUTE);
   const oldest = recent[PER_MINUTE - 1];
-  if (oldest !== undefined && now - oldest.createdAt < 60_000) throw new Error("That is a lot of questions. Wait a minute.");
+  if (oldest !== undefined && now - oldest.createdAt < 60_000) throw new ConvexError("That is a lot of questions. Wait a minute.");
   const id = await ctx.db.insert("relays", { askerHackerId: asker._id, question: q, status: "routing", createdAt: now });
   await ctx.scheduler.runAfter(0, internal.operator.route, { relayId: id });
   await ctx.scheduler.runAfter(TIMEOUT_MS, internal.operator.expire, { relayId: id });
