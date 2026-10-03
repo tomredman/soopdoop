@@ -90,7 +90,7 @@ A menu bar icon and the HUD. The HUD is a small floating panel that shows while 
 
 The menu bar icon shows the HUD any time, and has Focus (25, 50 or 90 minutes off the rail; knocks bounce), Invite someone new, Settings, and sign in or out. It turns into a bell while a knock waits.
 
-**Settings** (menu bar → Settings…): when the HUD shows (with Superset, always, or only from the menu bar), its material (glass, frosted, dark, solid), background opacity, compact size, which sections show, and notifications. Also what friends see, hiding from the board, your Superset profile, and updates.
+**Settings** (menu bar → Settings…): when the HUD shows (with Superset, always, or only from the menu bar), its material (glass, frosted, dark, solid), background opacity, compact size, which sections show, and notifications. Also what friends see, hiding from the board, your Superset profile, and updates. The HUD stays on screen while Settings is open, so you see each change.
 
 **Notifications:** when the HUD is hidden (the default), a knock, an answer to your question, or a friend request comes as a macOS notification. A knock's notification has Show me and Not now. Settings can make them always or never.
 

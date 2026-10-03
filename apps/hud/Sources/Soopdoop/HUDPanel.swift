@@ -82,6 +82,11 @@ final class HUDController {
         NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Self.supersetBundleId
     }
 
+    // soopdoop itself is in front while its Settings window is open: the HUD stays up to show the look being picked.
+    private var selfInFront: Bool {
+        NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+    }
+
     // Until the hacker is signed in with a handle, the HUD is how they get there, so it shows whatever is in front.
     private var needsAttention: Bool {
         guard let phase = client.state?.phase else { return false }
@@ -92,8 +97,8 @@ final class HUDController {
         let show: Bool
         switch style.mode {
         case .always: show = true
-        case .hidden: show = peeking
-        case .withSuperset: show = peeking || supersetInFront || needsAttention
+        case .hidden: show = peeking || selfInFront
+        case .withSuperset: show = peeking || supersetInFront || selfInFront || needsAttention
         }
         if show && !visible {
             panel.orderFrontRegardless()
