@@ -116,6 +116,26 @@ Checked after the v0.6.0 release, with `operator:dryRun` and made-up agents on p
 
 Not checked: a chat from the installed app with a crewmate's real agent answering.
 
+## Handles, crew_status, and answers from the summaries (5 Oct 2026)
+
+Why: a Claude session asked the Operator what a crewmate was working on, and put his first name in as the handle. His handle was longer. A question with an @handle only looks at that exact handle's agents, so no agent was asked, the tool said "Work it out yourself", and the session went to search GitHub instead.
+
+What changed:
+
+- `route` matches each @mention to the crew first (`resolveMentions` in `lib/claude.ts`): the crewmate with that handle; else the one who linked that Superset handle; else the only crewmate whose handle, Superset handle, or a word of whose name starts with it ("@ada" finds @adalovelace). The agent is asked the question with the handle written out (`routedQuestion`), so the check on its answer passes. A mention that fits nobody, or more than one crewmate, ends the relay as `nobody` with the crew's handles in the note and `askAgain` set, and the MCP tool says to ask again with the right handle. In the chat, the Operator replies with the same note. A crewmate with no open agent, or the asker's own handle, gets a note of its own.
+- The router answers in JSON: a reply from the routing summaries, an agent to ask, or nobody (`routeQuestion`). "What is @jimmy working on?" is answered from the summaries (`byOperator`), so no agent is asked and nobody earns XP for it.
+- A second MCP tool, `crew_status` (`friends.crew`, with the daemon's token): each crewmate's handle, linked name and light.
+- The skill names `crew_status`, says not to guess a handle, and says to look for the tools again while the MCP server is still starting.
+
+Checked:
+
+- `bun test`, typecheck and lint.
+- The new router prompt against the real model (Opus 5.5, low effort), by running `routeQuestion` locally with made-up agents and the dev deployment's key. "What is @adalovelace working on?" and "what is jimmy working on?" got short answers from the summaries; "who is working on coupons?" named the agent on coupons; "Where does @jimmy filter expired listings, and why there?", "How does checkout pick a coupon?" and "Why do segment sends skip the mirror now?" went to the right agent; "What did Ana change…?" (nobody named Ana) got nobody. The long question from that session (branch, feature, files, and what is half done) got the branches, tasks and files from the summaries, and the answer said the summaries do not show what is half done.
+- End to end on a local Convex backend (`CONVEX_AGENT_MODE=anonymous`, the routing stand-in), through the real MCP server over stdio, with a crewmate whose handle is longer than his first name: `crew_status` listed the crew; "What is @<first name> working on?" came back from the summaries; "@nobody" got the crew's handles and "Ask again"; a question about his code reached a stand-in for his daemon with the full handle written out, and the answer came back credited to his agent. The installed v0.7.0 MCP server against the new backend: its questions were matched and routed the same way (until it updates, it credits the Operator's own answers to "a crewmate's agent"), and it has no `crew_status`.
+- A real Claude Code session (`claude -p`, Opus 5.5) with the new MCP server and the skill's text, asked to use soopdoop to ask that crewmate's agent, by first name, what it is working on: it called `crew_status`, asked about the full handle, and reported his work. A first run without the skill's text read the Operator's note as an invitation and asked his agent a second question; the note no longer invites one.
+
+Not checked: production and the dev deployment (the local backend was used instead), and the HUD with these relays. The Operator's own answers can name a branch or folder from a routing summary even when its owner does not share workspace names; the chat has done the same since v0.6.0.
+
 ## Spike 1: our hooks beside Superset's (29 Sep 2026)
 
 The installer adds one `soopdoop hook <event>` command per Claude Code event and leaves every other hook alone; reinstalling does not duplicate; uninstalling removes only ours. This is unit-tested (`apps/daemon/src/hooks.test.ts`), including the absolute-path form the installer now writes by default (`<bun> <cli.ts> hook <event>`), so the hook works without anything on PATH.
