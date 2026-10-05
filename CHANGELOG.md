@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.8.0 · 2026-10-05
+
+### New
+- "@ada" finds @adalovelace, crew_status lists the crew, and "what is @jimmy working on?" comes from the summaries (operator)
+
+### Docs
+- asking by first name, crew_status, answers from the summaries, and what was checked
+
 ## v0.7.0 · 2026-10-05
 
 ### New
