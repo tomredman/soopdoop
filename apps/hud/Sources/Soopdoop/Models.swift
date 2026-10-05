@@ -105,12 +105,34 @@ struct IncomingFlick: Decodable, Identifiable {
     var fromHandle = ""
     var rally = 1
     var expiresAt: Double = 0
+    // Until when catching it takes the flicker's XP; 0 once that is over, and for a superflick.
+    var catchUntil: Double = 0
+    var superflick = false
+    // What a superflick took from me.
+    var xp = 0
 }
 
-// Who flicked me, and whom I flicked and am waiting on.
+// One of my flicks that a friend caught, and what they took.
+struct CaughtFlick: Decodable, Identifiable {
+    var id = ""
+    var byHandle = ""
+    var xp = 0
+    var at: Double = 0
+}
+
+// Superflicks ready to use, and clean flicks toward the next one (one every `every`).
+struct Superflicks: Decodable {
+    var ready = 0
+    var clean = 0
+    var every = 5
+}
+
+// Who flicked me, whom I flicked and am waiting on, my flicks caught lately, and my superflicks.
 struct Flicks: Decodable {
     var incoming: [IncomingFlick] = []
     var waitingOn: [String] = []
+    var caught: [CaughtFlick] = []
+    var superflicks = Superflicks()
 }
 
 // The one line the Operator routes questions with, for one of my open agents.
@@ -284,18 +306,36 @@ extension SentKnock {
 }
 
 extension IncomingFlick {
-    enum CodingKeys: String, CodingKey { case id = "_id", fromHandle, rally, expiresAt }
+    enum CodingKeys: String, CodingKey { case id = "_id", fromHandle, rally, expiresAt, catchUntil, superflick, xp }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = c.value(.id, ""); fromHandle = c.value(.fromHandle, ""); rally = c.value(.rally, 1); expiresAt = c.value(.expiresAt, 0)
+        catchUntil = c.value(.catchUntil, 0); superflick = c.value(.superflick, false); xp = c.value(.xp, 0)
+    }
+}
+
+extension CaughtFlick {
+    enum CodingKeys: String, CodingKey { case id = "_id", byHandle, xp, at }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = c.value(.id, ""); byHandle = c.value(.byHandle, ""); xp = c.value(.xp, 0); at = c.value(.at, 0)
+    }
+}
+
+extension Superflicks {
+    enum CodingKeys: String, CodingKey { case ready, clean, every }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ready = c.value(.ready, 0); clean = c.value(.clean, 0); every = c.value(.every, 5)
     }
 }
 
 extension Flicks {
-    enum CodingKeys: String, CodingKey { case incoming, waitingOn }
+    enum CodingKeys: String, CodingKey { case incoming, waitingOn, caught, superflicks }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        incoming = c.value(.incoming, []); waitingOn = c.value(.waitingOn, [])
+        incoming = c.value(.incoming, []); waitingOn = c.value(.waitingOn, []); caught = c.value(.caught, [])
+        superflicks = c.value(.superflicks, Superflicks())
     }
 }
 

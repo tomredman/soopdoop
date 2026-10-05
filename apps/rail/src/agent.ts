@@ -5,7 +5,7 @@ import { ConvexClient } from "convex/browser";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "@soopdoop/convex/convex/_generated/api";
 import { configPath, invitePath, readConfig, settingsPath, writeConfig, writeSettings } from "@soopdoop/daemon/src/config";
-import { startNow, UPDATER_LABEL } from "@soopdoop/daemon/src/service";
+import { DAEMON_PORT, startNow, UPDATER_LABEL } from "@soopdoop/daemon/src/service";
 import { requestUpdate } from "@soopdoop/daemon/src/update";
 import { RAIL_ORIGIN } from "./config";
 import { cleanError } from "./format";
@@ -37,7 +37,7 @@ export interface AppState {
   wire: Relay[];
   local: LocalInfo | null;
   inviteWaiting: boolean;
-  // Who flicked me and waits for a flick back, and whom I flicked and wait on.
+  // Who flicked me (catchable until catchUntil), whom I flicked and wait on, my flicks caught lately, my superflicks.
   flicks: FunctionReturnType<typeof api.flicks.mine>;
 }
 
@@ -58,7 +58,7 @@ const EMPTY = {
   subset: [],
   routing: [],
   wire: [],
-  flicks: { incoming: [], waitingOn: [] },
+  flicks: { incoming: [], waitingOn: [], caught: [], superflicks: { ready: 0, clean: 0, every: 5 } },
 };
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -304,6 +304,25 @@ export function createAgent(server: LocalServer, open: (url: string) => Promise<
       }
       case "flick":
         return await live().mutation(api.flicks.send, { toHandle: text(args, "handle") });
+      case "catchFlick": {
+        // Only a flick on screen: the app's id is checked against them, as knocks are.
+        const id = text(args, "flickId");
+        const flick = state.flicks.incoming.find(function (f) { return f._id === id; });
+        if (flick === undefined) throw new Error("That flick is gone.");
+        return await live().mutation(api.flicks.catchFlick, { flickId: flick._id });
+      }
+      case "superflick":
+        return await live().mutation(api.flicks.superflick, { toHandle: text(args, "handle") });
+      case "setPrivate": {
+        // The daemon knows each agent's folder and repository, and keeps the list; folders never pass through here.
+        const res = await fetch(`http://127.0.0.1:${DAEMON_PORT}/private`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ agentId: text(args, "agentId"), private: flag(args, "private") }),
+        });
+        if (!res.ok) throw new Error((await res.text()).trim() || `The daemon answered ${res.status}.`);
+        return await res.json();
+      }
       case "acceptFriend": {
         const handle = text(args, "handle");
         const request = state.requests.find(function (r) { return r.handle === handle; });

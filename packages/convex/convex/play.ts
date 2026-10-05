@@ -1,5 +1,5 @@
-// ABOUTME: Play: XP and ranks from what hackers do for each other, and the crew board. Only positive signals, no tokens.
-// ABOUTME: An assist (your agent answered a crewmate through the Operator) is worth 10 XP, a question asked 1.
+// ABOUTME: Play: XP and ranks from what hackers do for each other, and the crew board. No tokens. An assist (your agent
+// ABOUTME: answered a crewmate through the Operator) is worth 10 XP, a question asked 1, and flicks move XP between friends.
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
@@ -32,7 +32,14 @@ export function rankFor(xp: number): { rank: string; at: number; next: number | 
   return { rank: current.name, at: current.at, next };
 }
 
-async function countsFor(ctx: QueryCtx, id: Id<"hackers">): Promise<{ assists: number; asks: number }> {
+interface Counts {
+  assists: number;
+  asks: number;
+  // XP flicks moved (flicks.ts): what this hacker caught or superflicked from others, minus what others took from them.
+  flickXp: number;
+}
+
+async function countsFor(ctx: QueryCtx, id: Id<"hackers">): Promise<Counts> {
   const assists = await ctx.db
     .query("relays")
     .withIndex("by_target_status", function (q) {
@@ -45,7 +52,31 @@ async function countsFor(ctx: QueryCtx, id: Id<"hackers">): Promise<{ assists: n
       return q.eq("askerHackerId", id);
     })
     .collect();
-  return { assists: assists.length, asks: asks.length };
+  const sent = await ctx.db
+    .query("flicks")
+    .withIndex("by_from_outcome", function (q) {
+      return q.eq("fromHackerId", id);
+    })
+    .collect();
+  const got = await ctx.db
+    .query("flicks")
+    .withIndex("by_to_outcome", function (q) {
+      return q.eq("toHackerId", id);
+    })
+    .collect();
+  let flickXp = 0;
+  for (const f of sent) flickXp += (f.superXp ?? 0) - (f.caughtXp ?? 0);
+  for (const f of got) flickXp += (f.caughtXp ?? 0) - (f.superXp ?? 0);
+  return { assists: assists.length, asks: asks.length, flickXp };
+}
+
+// Never below zero: a flick only takes what is there.
+function xpFrom(c: Counts): number {
+  return Math.max(0, c.assists * XP.assist + c.asks * XP.ask + c.flickXp);
+}
+
+export async function xpOf(ctx: QueryCtx, id: Id<"hackers">): Promise<number> {
+  return xpFrom(await countsFor(ctx, id));
 }
 
 const row = v.object({
@@ -73,8 +104,9 @@ export const board = query({
       if (hacker === null) continue;
       const hidden = hacker.hideFromBoards === true;
       if (hidden && id !== me._id) continue;
-      const { assists, asks } = await countsFor(ctx, id);
-      const xp = assists * XP.assist + asks * XP.ask;
+      const counts = await countsFor(ctx, id);
+      const { assists, asks } = counts;
+      const xp = xpFrom(counts);
       const rank = rankFor(xp);
       const profile = await ctx.db
         .query("supersetProfiles")

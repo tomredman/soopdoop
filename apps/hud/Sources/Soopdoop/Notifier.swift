@@ -15,6 +15,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     private var finishedRelays = Set<String>()
     private var requests = Set<String>()
     private var flicks = Set<String>()
+    private var caught = Set<String>()
     private var asked = false
 
     init(client: AgentClient, style: HUDStyle) {
@@ -25,7 +26,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         center.delegate = self
         let show = UNNotificationAction(identifier: "SHOW", title: "Show me", options: [.foreground])
         let later = UNNotificationAction(identifier: "LATER", title: "Not now", options: [])
-        center.setNotificationCategories([UNNotificationCategory(identifier: "knock", actions: [show, later], intentIdentifiers: [])])
+        // A flick's notification can catch it right there, while the 10 seconds last.
+        let catchIt = UNNotificationAction(identifier: "CATCH", title: "Catch!", options: [])
+        center.setNotificationCategories([
+            UNNotificationCategory(identifier: "knock", actions: [show, later], intentIdentifiers: []),
+            UNNotificationCategory(identifier: "flick", actions: [catchIt], intentIdentifiers: []),
+        ])
         watcher = client.$state.sink { [weak self] state in
             DispatchQueue.main.async { self?.observe(state) }
         }
@@ -46,10 +52,27 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let finished = Set(state.wire.filter { $0.role == "asked" && !$0.inFlight }.map(\.id))
         let requestHandles = Set(state.requests.map(\.handle))
         let flickIds = Set(state.flicks.incoming.map(\.id))
+        let caughtIds = Set(state.flicks.caught.map(\.id))
+        if seeded {
+            // Someone caught one of my flicks: a notification while the HUD is hidden, a toast while it shows.
+            for c in state.flicks.caught where !caught.contains(c.id) {
+                if wanted {
+                    post(id: "caught-\(c.id)", title: "@\(c.byHandle) caught your flick", body: c.xp > 0 ? "They took \(c.xp) XP. What a shame." : "You had no XP to lose.", category: nil)
+                } else {
+                    client.toast = c.xp > 0 ? "@\(c.byHandle) caught your flick and took \(c.xp) XP. What a shame." : "@\(c.byHandle) caught your flick. You had no XP to lose."
+                }
+            }
+        }
         if seeded && wanted {
+            let now = Date().timeIntervalSince1970 * 1000
             for flick in state.flicks.incoming where !flicks.contains(flick.id) {
-                let rally = flick.rally > 1 ? " Rally: \(flick.rally)." : ""
-                post(id: "flick-\(flick.id)", title: "@\(flick.fromHandle) flicked you", body: "Flick back from the soopdoop HUD.\(rally)", category: nil)
+                if flick.superflick {
+                    post(id: "flick-\(flick.id)", title: "@\(flick.fromHandle) superflicked you", body: "They took \(flick.xp) XP. Nobody catches a superflick.", category: nil)
+                } else if flick.catchUntil > now {
+                    post(id: "flick-\(flick.id)", title: "@\(flick.fromHandle) flicked you", body: "Catch it in 10 seconds and their XP is yours.", category: "flick")
+                } else {
+                    post(id: "flick-\(flick.id)", title: "@\(flick.fromHandle) flicked you", body: "Flick back from the soopdoop HUD.", category: nil)
+                }
             }
             if let knock, knock.id != lastKnock {
                 post(id: "knock-\(knock.id)", title: "@\(knock.fromHandle) wants you to see this", body: knock.item.title, category: "knock")
@@ -67,6 +90,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         finishedRelays = finished
         requests = requestHandles
         flicks = flickIds
+        caught = caughtIds
     }
 
     private func post(id: String, title: String, body: String, category: String?) {
@@ -92,10 +116,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler done: @escaping () -> Void
     ) {
         let action = response.actionIdentifier
+        let id = response.notification.request.identifier
         Task { @MainActor in
             switch action {
             case "SHOW": self.client.run("decideKnock", ["outcome": "opened"])
             case "LATER": self.client.run("decideKnock", ["outcome": "not-now"])
+            case "CATCH": self.client.catchFlick(String(id.dropFirst("flick-".count)))
             default: self.hud?.peek()
             }
             done()

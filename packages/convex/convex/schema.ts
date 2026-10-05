@@ -87,14 +87,24 @@ export default defineSchema({
     .index("by_forHandle", ["forHandle"]),
 
   // A flick: a poke between friends, for fun. Open until it is flicked back or a scheduled function expires it. A
-  // sender has at most one open flick per friend. Each flick back adds one to the rally.
+  // sender has at most one open flick per friend. Each flick back adds one to the rally. Caught in its first 10 seconds,
+  // the receiver takes XP from the sender; every 5 flicks in a row nobody catches earn a superflick, which takes XP from
+  // the receiver and cannot be caught.
   flicks: defineTable({
     fromHackerId: v.id("hackers"),
     toHackerId: v.id("hackers"),
     rally: v.number(),
-    outcome: v.union(v.literal("open"), v.literal("flicked-back"), v.literal("expired")),
+    outcome: v.union(v.literal("open"), v.literal("flicked-back"), v.literal("caught"), v.literal("expired")),
     createdAt: v.number(),
     expiresAt: v.number(),
+    // The catch window closed without a catch (a scheduled function sets it): it counts toward a superflick.
+    safe: v.optional(v.boolean()),
+    // What the receiver took from the sender by catching it.
+    caughtXp: v.optional(v.number()),
+    caughtAt: v.optional(v.number()),
+    // A superflick, and what the sender took from the receiver with it.
+    superflick: v.optional(v.boolean()),
+    superXp: v.optional(v.number()),
   })
     .index("by_to_outcome", ["toHackerId", "outcome"])
     .index("by_from_outcome", ["fromHackerId", "outcome"]),

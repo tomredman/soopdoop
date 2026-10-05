@@ -8,6 +8,8 @@ enum Snapshot {
     static func run(into dir: String) {
         _ = NSApplication.shared
         let style = HUDStyle()
+        // This Mac is off by default; the snapshot shows it, private switches included.
+        style.showMachine = true
         // Off screen there is no desktop to blur, so the backdrop stands in for what is behind the glass.
         let backdrops: [(String, Color)] = [("", Theme.ground), ("-light", Color(white: 0.82))]
         for (name, state) in samples() {
@@ -16,6 +18,9 @@ enum Snapshot {
                 draw(state, height: name == "ready" ? 1260 : 420, on: backdrop, style: style, to: file)
             }
         }
+        // Settings → HUD: the sections, which can be hidden and put in order.
+        let look = LookSettings().environmentObject(style)
+        render(look, size: NSSize(width: 460, height: 520), to: URL(fileURLWithPath: dir).appendingPathComponent("settings-hud.png"))
         // The knock composer at the HUD's default and narrowest widths: its buttons must never wrap.
         let client = AgentClient(preview: AppState())
         for width in [300.0, 260.0] {
@@ -89,7 +94,14 @@ enum Snapshot {
             Friend(handle: "dev", led: "x", inFocus: false, agentCount: 0, agents: nil, superset: nil, relaying: false),
         ]
         ready.requests = [FriendRequest(handle: "ada-lovelace")]
-        ready.flicks = Flicks(incoming: [IncomingFlick(id: "f1", fromHandle: "mira", rally: 3, expiresAt: now + 400_000)], waitingOn: ["jimmy"])
+        ready.flicks = Flicks(
+            incoming: [
+                IncomingFlick(id: "f2", fromHandle: "jimmy", rally: 0, expiresAt: now + 500_000, superflick: true, xp: 10),
+                IncomingFlick(id: "f1", fromHandle: "mira", rally: 3, expiresAt: now + 400_000, catchUntil: now + 7_000),
+            ],
+            waitingOn: ["jimmy"],
+            superflicks: Superflicks(ready: 1, clean: 0, every: 5)
+        )
         ready.sent = [
             SentKnock(id: "s2", toHandle: "mira", outcome: "open", expiresAt: now + 18_000),
             SentKnock(id: "s1", toHandle: "jimmy", outcome: "opened", expiresAt: now - 60_000),

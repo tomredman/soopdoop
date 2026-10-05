@@ -193,10 +193,17 @@ struct Main: View {
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line2, style: StrokeStyle(lineWidth: 1, dash: [3])))
         }
         ForEach(state.flicks.incoming) { flick in FlickRow(flick: flick) }
-        if style.showCrew { CrewSection(state: state) }
-        if style.showOperator { OperatorSection(state: state) }
-        if style.showBoard { BoardSection(state: state) }
-        if style.showMachine { MachineSection(state: state) }
+        // In the order chosen in Settings.
+        ForEach(style.order) { section in
+            if style.shows(section) {
+                switch section {
+                case .crew: CrewSection(state: state)
+                case .operatorLine: OperatorSection(state: state)
+                case .board: BoardSection(state: state)
+                case .machine: MachineSection(state: state)
+                }
+            }
+        }
     }
 }
 
@@ -295,13 +302,13 @@ struct CrewSection: View {
     @State private var handle = ""
 
     var body: some View {
-        SectionHeader(title: "Crew", trailing: state.crew.isEmpty ? nil : "\(state.crew.count)")
+        SectionHeader(title: "Crew", trailing: state.crew.isEmpty ? nil : "\(state.crew.count)\(superflickLine)")
         if state.crew.isEmpty {
             Text("No crew yet. Invite someone from the menu bar: soopdoop → Invite someone new.")
                 .font(Theme.mono(10)).foregroundStyle(Theme.dim).fixedSize(horizontal: false, vertical: true)
         }
         ForEach(state.crew) { friend in
-            FriendRow(friend: friend, flicked: state.flicks.waitingOn.contains(friend.handle), composing: $composing)
+            FriendRow(friend: friend, flicked: state.flicks.waitingOn.contains(friend.handle), canSuperflick: state.flicks.superflicks.ready > 0, composing: $composing)
             if composing == friend.handle { KnockComposer(handle: friend.handle, composing: $composing) }
         }
         SentKnocks(sent: state.sent)
@@ -328,6 +335,13 @@ struct CrewSection: View {
     }
 
     // Someone on soopdoop gets a friend request. Anyone else gets an invite, and its message goes on the clipboard.
+    // "⚡ 3/5" toward the next superflick, or "⚡ 1 ready".
+    private var superflickLine: String {
+        let s = state.flicks.superflicks
+        if s.ready > 0 { return " · ⚡ \(s.ready) ready" }
+        return s.clean > 0 ? " · ⚡ \(s.clean)/\(s.every)" : ""
+    }
+
     private func add() {
         let h = handle.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "^@", with: "", options: .regularExpression)
         guard !h.isEmpty else { return }
@@ -365,13 +379,39 @@ enum AddFriend {
 }
 
 extension AgentClient {
-    // A flick does nothing. The toast says how long the rally is.
+    // A flick: the toast says how long the rally is, and what is at stake.
     func flick(_ handle: String) {
         Task {
             do {
                 let result = try await act("flick", ["handle": handle]) as? [String: Any]
                 let rally = result?["rally"] as? Int ?? 1
-                toast = rally > 1 ? "Flicked @\(handle) back. Rally: \(rally)." : "Flicked @\(handle)."
+                toast = rally > 1 ? "Flicked @\(handle) back. Rally: \(rally). Hope they're slow." : "Flicked @\(handle). Hope they're slow."
+            } catch {
+                toast = (error as? AgentError)?.message ?? error.localizedDescription
+            }
+        }
+    }
+
+    // Caught in time: the flicker's XP is yours.
+    func catchFlick(_ id: String) {
+        Task {
+            do {
+                let result = try await act("catchFlick", ["flickId": id]) as? [String: Any]
+                let from = result?["fromHandle"] as? String ?? "them"
+                let xp = result?["xp"] as? Int ?? 0
+                toast = xp > 0 ? "Caught! You took \(xp) XP from @\(from)." : "Caught @\(from)'s flick, but they had no XP to take."
+            } catch {
+                toast = (error as? AgentError)?.message ?? error.localizedDescription
+            }
+        }
+    }
+
+    func superflick(_ handle: String) {
+        Task {
+            do {
+                let result = try await act("superflick", ["handle": handle]) as? [String: Any]
+                let xp = result?["xp"] as? Int ?? 0
+                toast = xp > 0 ? "SUPERFLICK! You took \(xp) XP from @\(handle)." : "Superflicked @\(handle), but they had no XP to take."
             } catch {
                 toast = (error as? AgentError)?.message ?? error.localizedDescription
             }
@@ -379,39 +419,71 @@ extension AgentClient {
     }
 }
 
-// A friend flicked you: pointless on purpose. Flick back and the rally goes on. It goes away by itself after 10 minutes.
+// A friend flicked you. Catch it in its first 10 seconds and you take their XP; after that, flick back and the rally goes
+// on. A superflick already took your XP and cannot be caught. Either goes away by itself after 10 minutes.
 struct FlickRow: View {
     @EnvironmentObject var client: AgentClient
     let flick: IncomingFlick
     @State private var wiggle = false
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "hand.point.right.fill")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.amber)
-                .rotationEffect(.degrees(wiggle ? -18 : 0), anchor: .leading)
-            // The rally shows only when it fits; "@mira flicked you" always does.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 6) {
-                    who
-                    if flick.rally > 1 { Text("rally \(flick.rally)").font(Theme.mono(10)).foregroundStyle(Theme.dim).lineLimit(1) }
+        Group {
+            if flick.superflick {
+                // Rare and loud: the name on its own line, the loss and the button under it.
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        hand
+                        who
+                        Spacer(minLength: 0)
+                    }
+                    HStack(spacing: 6) {
+                        Text(flick.xp > 0 ? "took \(flick.xp) XP" : "you had no XP to take").font(Theme.mono(10)).foregroundStyle(Theme.amber).lineLimit(1)
+                        Spacer(minLength: 4)
+                        Button("flick back") { client.flick(flick.fromHandle) }.buttonStyle(HUDButtonStyle())
+                    }
+                    .padding(.leading, 17)
                 }
-                who
+            } else {
+                TimelineView(.periodic(from: .now, by: 0.5)) { context in
+                    let left = flick.catchUntil - context.date.timeIntervalSince1970 * 1000
+                    HStack(spacing: 6) {
+                        hand
+                        // The rally shows only when it fits; "@mira flicked you" always does.
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 6) {
+                                who
+                                if flick.rally > 1 { Text("rally \(flick.rally)").font(Theme.mono(10)).foregroundStyle(Theme.dim).lineLimit(1) }
+                            }
+                            who
+                        }
+                        Spacer(minLength: 4)
+                        if left > 0 {
+                            Button("catch! \(Int((left / 1000).rounded(.up)))") { client.catchFlick(flick.id) }
+                                .buttonStyle(HUDButtonStyle(primary: true))
+                        } else {
+                            Button("flick back") { client.flick(flick.fromHandle) }.buttonStyle(HUDButtonStyle(primary: true))
+                        }
+                    }
+                }
             }
-            Spacer(minLength: 4)
-            Button("flick back") { client.flick(flick.fromHandle) }.buttonStyle(HUDButtonStyle(primary: true))
         }
         .padding(6)
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line2, style: StrokeStyle(lineWidth: 1, dash: [3])))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(flick.superflick ? Theme.purple.opacity(0.7) : Theme.line2, style: StrokeStyle(lineWidth: 1, dash: [3])))
         .onAppear {
             withAnimation(.easeInOut(duration: 0.08).repeatCount(6, autoreverses: true)) { wiggle = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { wiggle = false }
         }
     }
 
+    private var hand: some View {
+        Image(systemName: flick.superflick ? "bolt.fill" : "hand.point.right.fill")
+            .font(.system(size: 11))
+            .foregroundStyle(flick.superflick ? Theme.purple : Theme.amber)
+            .rotationEffect(.degrees(wiggle ? -18 : 0), anchor: .leading)
+    }
+
     private var who: some View {
-        (Text("@\(flick.fromHandle)").font(Theme.mono(11, .semibold)) + Text(" flicked you").font(Theme.mono(11)))
+        (Text("@\(flick.fromHandle)").font(Theme.mono(11, .semibold)) + Text(flick.superflick ? " superflicked you" : " flicked you").font(Theme.mono(11)))
             .foregroundStyle(Theme.text)
             .lineLimit(1)
     }
@@ -457,6 +529,8 @@ struct FriendRow: View {
     let friend: Friend
     // I flicked them and wait for a flick back.
     let flicked: Bool
+    // I have a superflick to use.
+    let canSuperflick: Bool
     @Binding var composing: String?
     @State private var open = false
 
@@ -479,8 +553,14 @@ struct FriendRow: View {
                 .buttonStyle(HUDButtonStyle())
                 .disabled(flicked || friend.inFocus)
                 .opacity(flicked || friend.inFocus ? 0.4 : 1)
-                .help(flicked ? "Flicked. Waiting for @\(friend.handle) to flick back." : "flick: it does nothing, and that is the point")
+                .help(flicked ? "Flicked. Waiting for @\(friend.handle) to flick back." : "flick: if they catch it in 10 seconds, they take your XP")
                 .accessibilityLabel(flicked ? "flicked" : "flick")
+                if canSuperflick {
+                    Button { client.superflick(friend.handle) } label: { Image(systemName: "bolt.fill").foregroundStyle(Theme.purple) }
+                        .buttonStyle(HUDButtonStyle())
+                        .help("SUPERFLICK: take up to 10 XP from @\(friend.handle). Nobody catches a superflick.")
+                        .accessibilityLabel("superflick")
+                }
                 let reachable = friend.led != "x" && !friend.inFocus
                 Button("knock") { composing = composing == friend.handle ? nil : friend.handle }
                     .buttonStyle(HUDButtonStyle())
@@ -606,6 +686,7 @@ struct BoardSection: View {
 }
 
 struct MachineSection: View {
+    @EnvironmentObject var client: AgentClient
     let state: AppState
 
     var body: some View {
@@ -626,6 +707,16 @@ struct MachineSection: View {
                     Text(agent.name).font(Theme.mono(11)).foregroundStyle(Theme.text).lineLimit(1)
                     Spacer()
                     Text(agent.open ? agent.status : "private").font(Theme.mono(10)).foregroundStyle(Theme.dim)
+                    // Private covers the agent's whole repository, so every Superset workspace of the project.
+                    Toggle("private", isOn: Binding(get: { !agent.open }, set: { on in
+                        client.run("setPrivate", ["agentId": agent.agentId, "private": on], done: on
+                            ? "Private: friends never see this project's agents, and the Operator never asks them."
+                            : "This project is open to your crew again.")
+                    }))
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .labelsHidden()
+                    .help(agent.open ? "Make this project private" : "Private. Turn off to share this project with your crew again.")
                 }
                 // What the Operator knows about this agent, so its owner can see what questions get routed by.
                 if agent.open, let line = state.routing.first(where: { $0.agentId == agent.agentId })?.summary {
