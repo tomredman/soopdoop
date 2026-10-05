@@ -92,6 +92,11 @@ final class HUDStyle: ObservableObject {
     @AppStorage("hud.showMachine") var showMachine = false
     // The section order, "crew,operator,board,machine"; empty until the hacker moves one.
     @AppStorage("hud.order") var orderRaw = ""
+    // Real names (from linked Superset profiles) next to handles. Off: just the @handle.
+    @AppStorage("hud.showNames") var showNames = false
+    // This Mac folded to its header; the Operator opened to its last few lines.
+    @AppStorage("hud.machineFolded") var machineFolded = false
+    @AppStorage("hud.operatorOpen") var operatorOpen = false
     @AppStorage("hud.notify") var notifyRaw = NotifyMode.whenHidden.rawValue
 
     var mode: HUDMode {

@@ -120,6 +120,41 @@ struct Chip: View {
     }
 }
 
+// A section header that folds its section away: click the title. `trailing` goes on the right (a button).
+struct FoldingHeader<Trailing: View>: View {
+    let title: String
+    var detail: String?
+    @Binding var open: Bool
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Button { withAnimation(.easeInOut(duration: 0.15)) { open.toggle() } } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 7.5, weight: .bold))
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                    Text(title.uppercased()).font(Theme.mono(9.5, .medium)).tracking(1)
+                    if let detail { Text(detail).font(Theme.mono(9.5)).lineLimit(1) }
+                }
+                .foregroundStyle(Theme.dim)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(open ? "Fold \(title)" : "Open \(title)")
+            Spacer()
+            trailing()
+        }
+        .padding(.top, 6)
+    }
+}
+
+extension FoldingHeader where Trailing == EmptyView {
+    init(title: String, detail: String? = nil, open: Binding<Bool>) {
+        self.init(title: title, detail: detail, open: open) { EmptyView() }
+    }
+}
+
 struct SectionHeader: View {
     let title: String
     var trailing: String? = nil

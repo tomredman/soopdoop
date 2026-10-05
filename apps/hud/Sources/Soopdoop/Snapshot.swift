@@ -8,8 +8,10 @@ enum Snapshot {
     static func run(into dir: String) {
         _ = NSApplication.shared
         let style = HUDStyle()
-        // This Mac is off by default; the snapshot shows it, private switches included.
+        // This Mac is off by default; the snapshot shows it, private switches included, and the Operator opened.
         style.showMachine = true
+        style.machineFolded = false
+        style.operatorOpen = true
         // Off screen there is no desktop to blur, so the backdrop stands in for what is behind the glass.
         let backdrops: [(String, Color)] = [("", Theme.ground), ("-light", Color(white: 0.82))]
         for (name, state) in samples() {
@@ -19,6 +21,14 @@ enum Snapshot {
                      toast: name == "ready" ? "@mira flicked you. You gonna just take that? Catch it!" : nil)
             }
         }
+        // The same HUD with the Operator and This Mac folded to their headers.
+        style.operatorOpen = false
+        style.machineFolded = true
+        if let ready = samples().first(where: { $0.0 == "ready" })?.1 {
+            draw(ready, height: 1000, on: Theme.ground, style: style, to: URL(fileURLWithPath: dir).appendingPathComponent("hud-folded.png"))
+        }
+        style.operatorOpen = true
+        style.machineFolded = false
         // The Operator chat, with a reply of its own, an answer from a crewmate's agent, and a question on its way.
         var chatting = AppState()
         chatting.phase = "ready"

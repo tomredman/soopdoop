@@ -34,6 +34,7 @@ struct LookSettings: View {
                 }
             }
             Toggle("Compact", isOn: $style.compact)
+            Toggle("Real names next to handles", isOn: $style.showNames)
             Section("Sections") {
                 ForEach(Array(style.order.enumerated()), id: \.element) { index, section in
                     HStack {

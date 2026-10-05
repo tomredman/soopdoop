@@ -300,6 +300,7 @@ struct KnockCard: View {
 
 struct CrewSection: View {
     @EnvironmentObject var client: AgentClient
+    @EnvironmentObject var style: HUDStyle
     let state: AppState
     @State private var composing: String?
     @State private var adding = false
@@ -354,7 +355,7 @@ struct CrewSection: View {
         Task {
             do {
                 let result = try await client.act("addOrInvite", ["handle": h]) as? [String: Any] ?? [:]
-                client.toast = AddFriend.outcome(result, typed: h)
+                client.toast = AddFriend.outcome(result, typed: h, showNames: style.showNames)
             } catch {
                 client.toast = (error as? AgentError)?.message ?? error.localizedDescription
             }
@@ -364,7 +365,7 @@ struct CrewSection: View {
 
 // What adding a friend by handle did, as one toast. An invite's message goes on the clipboard, ready for Slack.
 enum AddFriend {
-    @MainActor static func outcome(_ result: [String: Any], typed: String) -> String {
+    @MainActor static func outcome(_ result: [String: Any], typed: String, showNames: Bool) -> String {
         let handle = result["handle"] as? String ?? typed
         if result["kind"] as? String == "asked" {
             let via = result["viaSuperset"] as? Bool == true ? " (@\(typed) on Superset)" : ""
@@ -375,7 +376,7 @@ enum AddFriend {
             NSPasteboard.general.setString(message, forType: .string)
         }
         if result["onSuperset"] as? Bool == true {
-            let who = result["name"] as? String ?? "@\(handle)"
+            let who = showNames ? result["name"] as? String ?? "@\(handle)" : "@\(handle)"
             return "\(who) is on Superset but not soopdoop yet. Invite link copied: send it to them. They join your crew when they sign in."
         }
         return "Nobody is @\(handle) on soopdoop or Superset. Invite link copied: send it to them."
@@ -545,7 +546,9 @@ struct FriendRow: View {
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 4) {
                         Text("@\(friend.handle)").font(Theme.mono(style.bodySize, .semibold)).foregroundStyle(Theme.text)
-                        if let name = friend.superset?.name { Text(name).font(.system(size: style.smallSize)).foregroundStyle(Theme.muted).lineLimit(1) }
+                        if style.showNames, let name = friend.superset?.name {
+                            Text(name).font(.system(size: style.smallSize)).foregroundStyle(Theme.muted).lineLimit(1)
+                        }
                     }
                     Text(stateLine).font(Theme.mono(style.smallSize)).foregroundStyle(friend.relaying ? Theme.purple : Theme.muted).lineLimit(1)
                 }
@@ -650,20 +653,34 @@ struct KnockComposer: View {
     }
 }
 
-// One line: how many questions the Operator answered today, the ones your agents asked and the ones your agents answered,
-// and a chat button: the Operator chat (OperatorChat.swift) is where you ask it things yourself.
+// The Operator, folded to one line: how many questions it answered today, and a chat button (OperatorChat.swift). Opened,
+// its last few moves, newest first: a very small view of what it is doing.
 struct OperatorSection: View {
+    @EnvironmentObject var style: HUDStyle
     let state: AppState
 
     var body: some View {
-        // The section header, with a way into the chat.
-        HStack(alignment: .firstTextBaseline) {
-            Text("OPERATOR").font(Theme.mono(9.5, .medium)).tracking(1).foregroundStyle(Theme.dim)
-            Text(OperatorSection.count(state.wire, now: Date())).font(Theme.mono(9.5)).foregroundStyle(Theme.dim)
-            Spacer()
+        FoldingHeader(title: "Operator", detail: OperatorSection.count(state.wire, now: Date()), open: $style.operatorOpen) {
             Button("chat") { ChatWindow.shared?.show() }.buttonStyle(HUDButtonStyle())
         }
-        .padding(.top, 6)
+        if style.operatorOpen {
+            let lines = OperatorLines.recent(state.wire)
+            if lines.isEmpty {
+                Text("Quiet so far. Agents ask it on their own; chat with it any time.")
+                    .font(Theme.mono(10)).foregroundStyle(Theme.dim).fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(lines) { line in
+                HStack(alignment: .top, spacing: 7) {
+                    LED(color: line.color, size: 6, pulse: line.pulse).padding(.top, 4)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(line.text).font(Theme.mono(10.5)).foregroundStyle(Theme.muted).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                        if let detail = line.detail {
+                            Text(detail).font(Theme.mono(9.5)).foregroundStyle(Theme.dim).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // The agent sends the newest 20 questions (operator.log). When all 20 are from today, there may be more: "20+".
@@ -675,6 +692,60 @@ struct OperatorSection: View {
         let answered = today.filter { $0.status == "answered" }.count
         let more = wire.count >= wireLimit && today.count == wire.count ? "+" : ""
         return "\(answered)\(more) answered today"
+    }
+}
+
+// The Operator's last few moves, newest first: what happened, and a small line under it (what it cost, what it earned,
+// why it stopped). Purple while it works, green when someone got an answer, grey when nobody did.
+enum OperatorLines {
+    struct Line: Identifiable {
+        let id: String
+        let color: Color?
+        var pulse = false
+        let text: String
+        var detail: String?
+    }
+
+    static func recent(_ wire: [Relay], limit: Int = 3) -> [Line] {
+        wire.prefix(limit).map(line)
+    }
+
+    static func line(_ r: Relay) -> Line {
+        let q = "“\(r.question.count > 40 ? String(r.question.prefix(39)) + "…" : r.question)”"
+        let agent = "@\(r.targetHandle ?? "a crewmate")'s agent"
+        if r.inFlight {
+            let text = r.status == "reading" ? "Asking \(agent) \(q)" : "Finding who knows \(q)"
+            return Line(id: r.id, color: Theme.purple, pulse: true, text: text)
+        }
+        if r.role == "answered" {
+            return r.status == "answered"
+                ? Line(id: r.id, color: Theme.green, text: "Your agent helped @\(r.askerHandle) with \(q)", detail: "+10 XP")
+                : Line(id: r.id, color: nil, text: "Your agent couldn't help @\(r.askerHandle) with \(q)")
+        }
+        switch r.status {
+        // The Operator answered itself: a chat message, or a question it could answer from what the crew is doing.
+        case "answered" where r.byOperator:
+            return r.via == "chat"
+                ? Line(id: r.id, color: Theme.green, text: "Chatted with you: \(q)")
+                : Line(id: r.id, color: Theme.green, text: "Answered \(q) itself", detail: "no agent needed")
+        case "answered":
+            return Line(id: r.id, color: Theme.green, text: "\(agent) answered \(q)", detail: read(r))
+        case "not-found":
+            return Line(id: r.id, color: nil, text: "\(agent) didn't know \(q)", detail: read(r))
+        case "nobody":
+            return Line(id: r.id, color: nil, text: "Nobody to ask about \(q)", detail: r.note)
+        case "timeout":
+            return Line(id: r.id, color: nil, text: "Gave up on \(q)", detail: r.note)
+        default:
+            return Line(id: r.id, color: nil, text: "Couldn't ask \(q)", detail: "Something went wrong.")
+        }
+    }
+
+    // What answering cost the crewmate's agent. Ephemeral: the copy of its session that read them is never saved.
+    private static func read(_ r: Relay) -> String? {
+        guard let t = r.tokensRead, t > 0 else { return nil }
+        let n = t >= 1000 ? "\(Int((t / 1000).rounded()))k" : "\(Int(t))"
+        return "\(n) tokens read ephemerally"
     }
 }
 
@@ -697,12 +768,29 @@ struct BoardSection: View {
 }
 
 struct MachineSection: View {
-    @EnvironmentObject var client: AgentClient
+    @EnvironmentObject var style: HUDStyle
     let state: AppState
 
     var body: some View {
-        SectionHeader(title: "This Mac", trailing: state.local?.machine)
         let agents = state.subset.flatMap { $0.agents }
+        let machine = state.local?.machine
+        let open = Binding(get: { !style.machineFolded }, set: { style.machineFolded = !$0 })
+        // Folded, the header still says how many agents run.
+        let count = "\(agents.count) agent\(agents.count == 1 ? "" : "s")"
+        let detail = style.machineFolded ? [machine, count].compactMap { $0 }.joined(separator: " · ") : machine
+        FoldingHeader(title: "This Mac", detail: detail, open: open)
+        if !style.machineFolded {
+            MachineAgents(state: state, agents: agents)
+        }
+    }
+}
+
+struct MachineAgents: View {
+    @EnvironmentObject var client: AgentClient
+    let state: AppState
+    let agents: [AgentState]
+
+    var body: some View {
         if agents.isEmpty {
             Text("∅ no agents running. Claude Code sessions show up on their next prompt.")
                 .font(Theme.mono(10)).foregroundStyle(Theme.dim).fixedSize(horizontal: false, vertical: true)
