@@ -112,7 +112,9 @@ The icon is rendered by `apps/hud/icon/icon.py` in Blender 3.6 (Cycles, Metal): 
 
 Checked: `bun test` covers a chat answered by the Operator itself (no XP), one routed to an agent with its standalone question, the history a follow-up sees, and the JSON reading. On the dev deployment (routing stand-in), a chat message went through the real scheduler and came back answered by the Operator. The chat window and the HUD's chat button were drawn in snapshot mode.
 
-Not checked: the chat prompt against the real model (dev uses the stand-in; `operator:dryRun` with `chatAs` runs it), and the icon inside an installed app.
+Checked after the v0.6.0 release, with `operator:dryRun` and made-up agents on production: "who is around?" got the Operator's own short crew summary; "where does jimmy filter expired listings?" went to Jimmy's agent as a question that stands alone; the follow-up "and is that tested?" went to the same agent rewritten with the file it was about. The installed app's bundle carries `AppIcon.icns`.
+
+Not checked: a chat from the installed app with a crewmate's real agent answering.
 
 ## Spike 1: our hooks beside Superset's (29 Sep 2026)
 
