@@ -136,6 +136,26 @@ Checked:
 
 Not checked: production and the dev deployment (the local backend was used instead), and the HUD with these relays. The Operator's own answers can name a branch or folder from a routing summary even when its owner does not share workspace names; the chat has done the same since v0.6.0.
 
+## Who-questions, and answers that sound like a teammate (5 Oct 2026)
+
+Why: Mr. Tom asked his agent "who should I ask about contact enrichment?". It did not use soopdoop until he told it to. Then it turned the question into a long one (files, git history), and the Operator answered from the routing summaries: "All open agents belong to @…, and one is on enrichment … Its summary doesn't say what it changes or which files it touches." The agent passed all of that on, with the tool's note that no agent was asked. "All open agents" were one crewmate's only because the Operator does not count the asker's own agents, and the other crewmate's agents were private. What he wanted was one line naming the crewmate ("…'s got an agent working on enrichment right now. What would you like to know?"), and then his question going to that agent.
+
+What changed:
+
+- The router (`ROUTER` in `lib/claude.ts`) answers itself only when the summaries answer every part of a who-question or a "what is … working on" question. Anything that needs files, details, or whether something is still true goes to the agent. A who-question gets the person, their @handle once, and "What would you like to know?"; one that no agent fits gets one sentence saying nobody in the crew is on it. Replies never name agents, never describe the list of agents, and never talk about summaries or what the Operator can see. The chat prompt says the same.
+- The `ask_operator` description says to use it as soon as a user asks who to ask, who knows, or what a crewmate is doing, and how to send the follow-up: the question with the @handle. The note under the Operator's own answers tells the agent how to pass it on and ask more, instead of saying that no agent was asked.
+- The skill: who-questions trigger it, go out as they are in the user's words, and come back to the user in a sentence or two; the follow-up goes with the @handle. It says not to explain how the Operator found an answer.
+- The agent that answers (`askPrompt` in `apps/daemon/src/ask.ts`) answers like a teammate in a chat: the answer first, "I" for its own work, no talk about its conversation, and part of an answer when it knows part.
+
+Checked:
+
+- `bun test` (a who-question in fake mode, its follow-up reaching the agent, a who-question that no agent fits), typecheck and lint.
+- The router and chat prompts against the real model (Opus 5.5, low effort), run locally with made-up agents and the dev deployment's key, three times. "who should i ask about contact enrichment?" got "Ada (@adalovelace) has an agent on contact enrichment right now. What would you like to know?". The long question from that session went to the agent, and so did "@adalovelace: does enrichment skip contacts that already have an email?". "what is @adalovelace working on?" and "what's the crew working on?" got short answers that name no agents. "who knows about the billing webhooks?" got "Nobody in the crew is on the billing webhooks right now." In the chat, the who-question got the same invitation, and the follow-up went to the agent as a question that stands alone.
+- The new answer prompt on a throwaway Claude Code session (its own config folder, made-up enrichment work): the answers started with the answer, in the first person, and a question it had not worked on came back as `NOT_FOUND`.
+- A real Claude Code session (Opus 5.5, its own config folder, a stand-in soopdoop MCP server with the real tool list and replies) in a small repo. With the new skill, "who should i ask about contact enrichment?" called `ask_operator` at once with those words and told the user "Ask Ada. One of her agents is working on contact enrichment right now. … What do you want to know?". The follow-up went out as "@adalovelace: does contact enrichment skip CRM contacts that already have an email?", and the reply credited Ada's agent. With the released skill and tool text, the same question went to `crew_status` and then "What is @adalovelace working on right now?", and came back as a long list with notes on how the answer was found.
+
+Not checked: production (the prompts ship with the next release). The Operator still does not see the asker's own agents.
+
 ## Spike 1: our hooks beside Superset's (29 Sep 2026)
 
 The installer adds one `soopdoop hook <event>` command per Claude Code event and leaves every other hook alone; reinstalling does not duplicate; uninstalling removes only ours. This is unit-tested (`apps/daemon/src/hooks.test.ts`), including the absolute-path form the installer now writes by default (`<bun> <cli.ts> hook <event>`), so the hook works without anything on PATH.
