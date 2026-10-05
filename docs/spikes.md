@@ -158,6 +158,28 @@ After v0.10.0: the line letting the Operator answer about a person's agents when
 
 Not checked: production with this last change. The Operator still does not see the asker's own agents.
 
+Decided: the Operator only looks at crewmates' agents, never the asker's own. Superset already lists your own sessions, and they can message each other.
+
+## The anti-hijacking fund, and what an answer costs (5 Oct 2026)
+
+Why: Mr. Tom asked for a limit on what crewmates' questions can spend of each member's Claude account, and for cheaper questions.
+
+What an answer costs, measured: a 72,000-token Claude Code session on Claude Opus 5.5, asked twice in a row the way the daemon asks. The first copy wrote the conversation to the prompt cache (72,063 tokens at $5 a million) and wrote about 1,400 output tokens, mostly thinking at effort low: $0.39. The second, a minute later, read the conversation back from the cache at $0.20 a million: $0.04. Claude Code's `total_cost_usd` said $1.60 and $1.03, because after `--resume` it also counts what the original session spent before (its `modelUsage` still held that session's 750,000 cache reads and 146,500 cache writes). The daemon logged that number, and the costs in the sections above came from it, so they were too high. At Opus 5.5 prices, a first question to a 433,000-token session costs about $2.20.
+
+What changed:
+
+- The daemon prices each answer from the copy's own usage at the model's API prices (`fund.ts`), and runs the copy on the session's own model, read from the transcript and named with `--model`, so the price is known. `reads.log` gains `asker`, `model` and `usd`, and no longer logs `total_cost_usd`.
+- The anti-hijacking fund (`fund.ts`): before each answer, the daemon adds up the `usd` of the last 24 hours in `reads.log`, what answers still running have reserved, and what reading this agent with nothing cached is expected to cost (from its last read). Over the fund ($5 by default) or over the asker's share (half by default), it refuses and says which `limit`; the backend makes that a `nobody` relay with a note naming whose fund it was. The settings live in `~/.soopdoop/fund.json`; `soopdoop fund` shows and sets them, and `soopdoop status` has a line. `operator.readsFor` now sends the asker's handle.
+- Work orders: the router and the chat turn away questions that ask an agent to do work, before any agent is read, and the answering copy is told to refuse them too.
+
+Checked:
+
+- `bun test` (the fund, prices against the measured copies, the model and cost in the daemon, the backend's notes), typecheck and lint.
+- The router and chat prompts against the real model (Opus 5.5, low effort), run locally with made-up agents and the dev deployment's key. Four work orders ("write a function…", "fix the failing test…", "review my PR…", "write the migration…") got a one-sentence refusal, and no agent was asked. The who-question, two detail questions and "what is @adalovelace working on?" went as before. In the chat, a work order got a refusal too.
+- End to end on the dev deployment: two test hackers who are friends, a second daemon (`SOOPDOOP_HOME`, `SOOPDOOP_PORT`) with a real Claude Code session reported through `/hook`, and real `ask_operator` calls over the MCP server. With the fund at $0: "@fundtest-ada has turned off answering questions." in 2 seconds, and nothing was read. At $5: a real answer in 48 seconds, logged with the asker, `claude-opus-5-5`, 72,652 tokens and $0.12. With a $0.50 share already used: "You have used your share of @fundtest-ada's answering fund for today." With a $0.40 fund: "@fundtest-ada's agents have spent today's answering fund." Both came back in under 2 seconds, with nothing read. The test questions were deleted from dev afterwards.
+
+Not checked: production, and the HUD with these notes (it shows them like any other note). Not built yet: reusing a recent answer to the same question, answering on a cheaper model, and reading only the latest part of a long conversation.
+
 ## The app icon on Apple's template (5 Oct 2026)
 
 Why: the icon was a 3D render of a tilted tile on a clear background. Its solid part was 823 × 835 px, lower than the middle, with a faint haze in the corners. macOS 26 drew it shrunk on a grey plate, because its shape was not Apple's. macOS 14 and 15 drew it as it was, a little smaller than other apps.
