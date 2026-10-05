@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { hasInvite, inviteMessage, stashInvite, takeInvite } from "./invite";
+import { hasInvite, inviteLink, inviteMessage, stashInvite, takeInvite } from "./invite";
 
 const CODE = "0123456789abcdef0123456789abcdef";
 
@@ -30,10 +30,13 @@ describe("invites", function () {
     expect(hasInvite(storage)).toBe(false);
   });
 
-  test("the message installs soopdoop and opens the invite in one line", function () {
-    const lines = inviteMessage(CODE, "tom").split("\n");
-    expect(lines[0]).toBe("@tom invited you to soopdoop. Paste this into Terminal:");
-    expect(lines).toContain(`curl -fsSL https://raw.githubusercontent.com/tomredman/soopdoop/main/install.sh | bash -s -- --invite ${CODE}`);
-    expect(lines).toContain(`Already running soopdoop? Open http://127.0.0.1:47312/?invite=${CODE}`);
+  test("the message is the link and one more sentence, greeting them by their Superset name when there is one", function () {
+    expect(inviteLink(CODE)).toBe(`https://soopdoop.com/invite#${CODE}`);
+    expect(inviteMessage(CODE, "tom").split("\n")).toEqual([
+      `@tom invited you to soopdoop, so your coding agents can help each other: https://soopdoop.com/invite#${CODE}`,
+      "The link works once, for 7 days.",
+    ]);
+    expect(inviteMessage(CODE, "tom", "Vladimir Babic").startsWith("Vladimir, @tom invited you")).toBe(true);
+    expect(inviteMessage(CODE, "tom", "  ").startsWith("@tom invited you")).toBe(true);
   });
 });

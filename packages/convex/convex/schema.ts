@@ -1,5 +1,5 @@
-// ABOUTME: The soopdoop data model: hackers, friendships, subsets (presence), knocks, supersetProfiles, and the Operator's
-// ABOUTME: routingSummaries and relays. Later phases add crews, treeNodes, eyes, jackIns and companyTokens.
+// ABOUTME: The soopdoop data model: hackers, friendships, invites, subsets (presence), knocks, flicks, supersetProfiles, and
+// ABOUTME: the Operator's routingSummaries and relays. Later phases add crews, treeNodes, eyes, jackIns and companyTokens.
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
@@ -79,7 +79,25 @@ export default defineSchema({
     token: v.string(),
     expiresAt: v.number(), // 7 days
     usedByHackerId: v.optional(v.id("hackers")),
-  }).index("by_token", ["token"]),
+    // Made for someone not on soopdoop yet who has a public Superset profile: linking that profile redeems it too.
+    forHandle: v.optional(v.string()),
+    forName: v.optional(v.string()),
+  })
+    .index("by_token", ["token"])
+    .index("by_forHandle", ["forHandle"]),
+
+  // A flick: a poke between friends, for fun. Open until it is flicked back or a scheduled function expires it. A
+  // sender has at most one open flick per friend. Each flick back adds one to the rally.
+  flicks: defineTable({
+    fromHackerId: v.id("hackers"),
+    toHackerId: v.id("hackers"),
+    rally: v.number(),
+    outcome: v.union(v.literal("open"), v.literal("flicked-back"), v.literal("expired")),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_to_outcome", ["toHackerId", "outcome"])
+    .index("by_from_outcome", ["fromHackerId", "outcome"]),
 
   // One hacker's session and its agents. ∅ when agents is empty.
   subsets: defineTable({

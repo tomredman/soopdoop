@@ -2,6 +2,7 @@
 // ABOUTME: plain files, or with --dist exactly what `bun run build` made (what Cloudflare will serve).
 import path from "node:path";
 import index from "../index.html";
+import invite from "../invite.html";
 
 const root = path.join(import.meta.dir, "..");
 const fromDist = Bun.argv.includes("--dist");
@@ -12,7 +13,7 @@ const server = Bun.serve({
   hostname: "127.0.0.1",
   port,
   development: fromDist ? false : { hmr: true, console: true },
-  routes: fromDist ? undefined : { "/": index },
+  routes: fromDist ? undefined : { "/": index, "/invite": invite },
   async fetch(req) {
     const url = new URL(req.url);
     const wanted = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
@@ -20,6 +21,9 @@ const server = Bun.serve({
     if (!file.startsWith(base + path.sep)) return new Response("Not found", { status: 404 });
     const found = Bun.file(file);
     if (await found.exists()) return new Response(found);
+    // As on Cloudflare: /invite serves invite.html.
+    const page = Bun.file(`${file}.html`);
+    if (await page.exists()) return new Response(page);
     const missing = Bun.file(path.join(base, "404.html"));
     return (await missing.exists()) ? new Response(missing, { status: 404 }) : new Response("Not found", { status: 404 });
   },

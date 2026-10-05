@@ -13,6 +13,9 @@ export const SCOPES = "openid profile email offline_access";
 export const DEFAULT_CONVEX_URL = "https://fleet-skunk-723.convex.cloud";
 // The installer puts the newest release in ~/.soopdoop/app and runs its setup.
 export const INSTALL_SCRIPT_URL = "https://raw.githubusercontent.com/tomredman/soopdoop/main/install.sh";
+// The page an invite link opens (apps/site/invite.html): the install line with the code, and a button for someone who
+// already runs soopdoop.
+export const INVITE_PAGE_URL = "https://soopdoop.com/invite";
 export const RELEASES_URL = "https://github.com/tomredman/soopdoop/releases";
 
 const URL_KEY = "soopdoop.convexUrl";

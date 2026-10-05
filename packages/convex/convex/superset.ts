@@ -6,6 +6,7 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { action, internalAction, internalMutation, internalQuery, mutation } from "./_generated/server";
 import { hackerFor, requireHacker, requireIdentity } from "./lib/auth";
+import { redeemInvitesFor } from "./lib/friendships";
 import { nameCheck, normalizeHandle, parseProfileMarkdown, profileMarkdownUrl, type SupersetProfile } from "./lib/supersetProfile";
 import { supersetProfileFields } from "./schema";
 
@@ -26,7 +27,7 @@ export async function supersetCard(ctx: QueryCtx, hackerId: Id<"hackers">) {
 }
 
 // The profile, or null when Superset has no public profile for the handle. Throws when Superset cannot be read.
-async function fetchProfile(handle: string): Promise<SupersetProfile | null> {
+export async function fetchProfile(handle: string): Promise<SupersetProfile | null> {
   const res = await fetch(profileMarkdownUrl(handle), { headers: { accept: "text/markdown" } });
   if (res.status === 404) return null;
   if (!res.ok) throw new ConvexError(`Superset answered ${res.status} for @${handle}. Try again in a minute.`);
@@ -49,10 +50,11 @@ async function store(ctx: MutationCtx, hackerId: Id<"hackers">, profile: Superse
 
 // The rail calls this with the Superset handle the hacker typed, or with `auto` right after they pick a soopdoop
 // handle (Superset and soopdoop handles have the same shape, so many people will use the same one).
+// It also redeems invites made for this Superset handle before its owner joined: `invitedBy` names who sent them.
 export const linkProfile = action({
   args: { handle: v.string(), auto: v.optional(v.boolean()) },
-  returns: v.object({ handle: v.string(), name: v.optional(v.string()) }),
-  handler: async function (ctx, args) {
+  returns: v.object({ handle: v.string(), name: v.optional(v.string()), invitedBy: v.array(v.string()) }),
+  handler: async function (ctx, args): Promise<{ handle: string; name?: string; invitedBy: string[] }> {
     const identity = await requireIdentity(ctx);
     const handle = normalizeHandle(args.handle);
     if (handle === null) {
@@ -68,14 +70,14 @@ export const linkProfile = action({
       throw new ConvexError(`@${handle} on Superset is ${profile.name ?? "someone else"}, but you signed in as ${identity.name ?? "someone else"}. Link your own profile.`);
     }
     if (check === "unknown" && args.auto === true) throw new ConvexError("Not linked: no name to compare.");
-    await ctx.runMutation(internal.superset.save, { supersetUserId: identity.subject, profile, fetchedAt: Date.now() });
-    return profile.name === undefined ? { handle: profile.handle } : { handle: profile.handle, name: profile.name };
+    const invitedBy: string[] = await ctx.runMutation(internal.superset.save, { supersetUserId: identity.subject, profile, fetchedAt: Date.now() });
+    return { handle: profile.handle, name: profile.name, invitedBy };
   },
 });
 
 export const save = internalMutation({
   args: { supersetUserId: v.string(), profile: profileValidator, fetchedAt: v.number() },
-  returns: v.null(),
+  returns: v.array(v.string()),
   handler: async function (ctx, args) {
     const hacker = await hackerFor(ctx, args.supersetUserId);
     if (hacker === null) throw new ConvexError("Pick a soopdoop handle first.");
@@ -89,7 +91,7 @@ export const save = internalMutation({
       throw new ConvexError(`@${args.profile.handle} is already linked to another soopdoop hacker.`);
     }
     await store(ctx, hacker._id, args.profile, args.fetchedAt);
-    return null;
+    return await redeemInvitesFor(ctx, hacker, args.profile.handle);
   },
 });
 

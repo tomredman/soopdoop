@@ -147,7 +147,7 @@ describe("linking a Superset profile", function () {
     const tom = await hackerCalled(t, "tom", "Tom Redman");
     await befriend(ada, tom, "tom");
 
-    expect(await ada.action(api.superset.linkProfile, { handle: "@Ada-Lovelace" })).toEqual({ handle: "ada-lovelace", name: "Ada Lovelace" });
+    expect(await ada.action(api.superset.linkProfile, { handle: "@Ada-Lovelace" })).toEqual({ handle: "ada-lovelace", name: "Ada Lovelace", invitedBy: [] });
     const [seen] = await tom.query(api.friends.list, {});
     expect(seen?.superset).toEqual({
       handle: "ada-lovelace",
@@ -178,7 +178,7 @@ describe("linking a Superset profile", function () {
     fakeSuperset({ ada: "# ada (@ada)\n" });
     const ada = await hackerCalled(t, "ada", "Ada Lovelace");
     await expect(ada.action(api.superset.linkProfile, { handle: "ada", auto: true })).rejects.toThrow("no name to compare");
-    expect(await ada.action(api.superset.linkProfile, { handle: "ada" })).toEqual({ handle: "ada" });
+    expect(await ada.action(api.superset.linkProfile, { handle: "ada" })).toEqual({ handle: "ada", invitedBy: [] });
   });
 
   test("one Superset profile links to one soopdoop hacker", async function () {
@@ -219,5 +219,61 @@ describe("refreshing linked profiles", function () {
     fakeSuperset({});
     await t.action(internal.superset.refreshAll, {});
     expect((await ada.query(api.hackers.me, {}))?.superset).toBeUndefined();
+  });
+});
+
+describe("adding a friend by handle", function () {
+  test("someone on soopdoop is asked, found by their soopdoop handle or by the Superset handle they linked", async function () {
+    const t = harness();
+    fakeSuperset({ "ada-lovelace": profilePage() });
+    const tom = await hackerCalled(t, "tom", "Tom Redman");
+    const ada = await hackerCalled(t, "ada", "Ada Lovelace");
+    expect(await tom.action(api.friends.addByHandle, { handle: "@Ada" })).toEqual({ kind: "asked", handle: "ada", viaSuperset: false });
+    expect((await ada.query(api.friends.pending, {})).map(function (r) { return r.handle; })).toEqual(["tom"]);
+
+    // Ada linked Superset's @ada-lovelace, so that handle finds her too.
+    await ada.action(api.superset.linkProfile, { handle: "ada-lovelace" });
+    const grace = await hackerCalled(t, "grace", "Grace Hopper");
+    expect(await grace.action(api.friends.addByHandle, { handle: "ada-lovelace" })).toEqual({ kind: "asked", handle: "ada", viaSuperset: true });
+    await expect(tom.action(api.friends.addByHandle, { handle: "tom" })).rejects.toThrow("That is you.");
+  });
+
+  test("someone only on Superset gets an invite that works even without the link, once they link that profile", async function () {
+    const t = harness();
+    const asked = fakeSuperset({ vlad: profilePage({ handle: "vlad", name: "Vladimir Babic" }) });
+    const tom = await hackerCalled(t, "tom", "Tom Redman");
+    const added = await tom.action(api.friends.addByHandle, { handle: "https://superset.sh/vlad" });
+    expect(added).toMatchObject({ kind: "invited", handle: "vlad", onSuperset: true, name: "Vladimir Babic" });
+    expect(asked).toContain("https://superset.sh/md/user/vlad");
+    if (added.kind !== "invited") throw new Error("expected an invite");
+
+    // Someone else cannot take it: linking needs the profile's own name.
+    const grace = await hackerCalled(t, "grace", "Grace Hopper");
+    await expect(grace.action(api.superset.linkProfile, { handle: "vlad" })).rejects.toThrow("Link your own profile");
+
+    // Vlad installs without the link, picks another handle, and links his Superset profile: he is in Tom's crew.
+    const vlad = await hackerCalled(t, "vladimir", "Vladimir Babic");
+    expect(await vlad.action(api.superset.linkProfile, { handle: "vlad" })).toMatchObject({ handle: "vlad", invitedBy: ["tom"] });
+    expect((await tom.query(api.friends.list, {})).map(function (f) { return f.handle; })).toEqual(["vladimir"]);
+    // The invite is used up, so its link no longer works for anyone.
+    await expect(grace.mutation(api.friends.redeemInvite, { token: added.token })).rejects.toThrow("no longer valid");
+  });
+
+  test("nobody on soopdoop or Superset, or Superset down: still an invite to send, and its link works", async function () {
+    const t = harness();
+    fakeSuperset({});
+    const tom = await hackerCalled(t, "tom", "Tom Redman");
+    const added = await tom.action(api.friends.addByHandle, { handle: "zed" });
+    expect(added).toMatchObject({ kind: "invited", handle: "zed", onSuperset: false });
+    if (added.kind !== "invited") throw new Error("expected an invite");
+    const zed = await hackerCalled(t, "zed-real", undefined);
+    expect(await zed.mutation(api.friends.redeemInvite, { token: added.token })).toBe("tom");
+    expect((await tom.query(api.friends.list, {})).map(function (f) { return f.handle; })).toEqual(["zed-real"]);
+
+    spyOn(globalThis, "fetch").mockImplementation(async function () {
+      throw new Error("offline");
+    } as unknown as typeof fetch);
+    expect(await tom.action(api.friends.addByHandle, { handle: "kit" })).toMatchObject({ kind: "invited", handle: "kit", onSuperset: false });
+    await expect(tom.action(api.friends.addByHandle, { handle: "not a handle" })).rejects.toThrow("A handle is 2 to 39");
   });
 });

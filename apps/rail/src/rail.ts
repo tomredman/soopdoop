@@ -281,23 +281,31 @@ function wireSettings(client: ConvexClient, options: RailOptions): void {
       }).catch(fail);
     });
   }
+  // Shows the invite and copies it, so it can go out in Slack or anywhere.
+  function showInvite(message: string, copied: string): void {
+    const out = byId("inviteOut");
+    out.textContent = message;
+    out.hidden = false;
+    navigator.clipboard.writeText(message)
+      .then(function () { flash(copied); })
+      .catch(function () { flash("Copy the invite below and send it to them."); });
+  }
   byId("addFriend").addEventListener("submit", function (event) {
     event.preventDefault();
-    const handle = input("addHandle").value.trim().replace(/^@/, "");
-    client.mutation(api.friends.request, { handle }).then(function () {
+    const typed = input("addHandle").value.trim().replace(/^@/, "");
+    client.action(api.friends.addByHandle, { handle: typed }).then(function (added) {
       input("addHandle").value = "";
-      flash(`Asked @${handle}. If they already asked you, you are friends now.`);
+      if (added.kind === "asked") {
+        flash(`Asked @${added.handle}${added.viaSuperset ? ` (@${typed} on Superset)` : ""}. If they already asked you, you are friends now.`);
+        return;
+      }
+      const who = added.onSuperset ? `${added.name ?? `@${added.handle}`} is on Superset but not on soopdoop yet` : `Nobody is @${added.handle} on soopdoop or Superset`;
+      showInvite(inviteMessage(added.token, me?.handle ?? "a friend", added.name), `${who}. Invite link copied: send it to them.`);
     }).catch(fail);
   });
   byId("inviteBtn").addEventListener("click", function () {
     client.mutation(api.friends.createInvite, {}).then(function (code) {
-      const message = inviteMessage(code, me?.handle ?? "a friend");
-      const out = byId("inviteOut");
-      out.textContent = message;
-      out.hidden = false;
-      navigator.clipboard.writeText(message)
-        .then(function () { flash("Invite copied. Send it to one person."); })
-        .catch(function () { flash("Copy the invite below and send it to one person."); });
+      showInvite(inviteMessage(code, me?.handle ?? "a friend"), "Invite link copied. Send it to one person.");
     }).catch(fail);
   });
   byId("supersetForm").addEventListener("submit", function (event) {

@@ -1,6 +1,6 @@
-// ABOUTME: Invites in the rail: the message an inviter sends, and keeping an invite code through the Superset sign-in.
-// ABOUTME: Sign-in leaves the page and comes back to a URL without ?invite=, so the code waits in storage until redeemed.
-import { INSTALL_SCRIPT_URL, RAIL_ORIGIN } from "./config";
+// ABOUTME: Invites in the rail: the link and message an inviter sends, and keeping an invite code through the Superset
+// ABOUTME: sign-in, which leaves the page and comes back to a URL without ?invite=, so the code waits in storage.
+import { INVITE_PAGE_URL } from "./config";
 
 const KEY = "soopdoop.invite";
 // friends.createInvite makes a UUID without hyphens.
@@ -27,15 +27,16 @@ export function takeInvite(storage: Storage): string | null {
   return code;
 }
 
-// One line installs the newest release and opens the invite (when soopdoop is already there, it updates it and opens
-// the invite). The plain link is for someone who already runs soopdoop.
-export function inviteMessage(code: string, from: string): string {
-  return [
-    `@${from} invited you to soopdoop. Paste this into Terminal:`,
-    "",
-    `curl -fsSL ${INSTALL_SCRIPT_URL} | bash -s -- --invite ${code}`,
-    "",
-    `Already running soopdoop? Open ${RAIL_ORIGIN}/?invite=${code}`,
-    "The invite works once, for 7 days.",
-  ].join("\n");
+// The page shows the one line that installs soopdoop with this invite, and a button for someone who already runs it.
+// The code rides in the fragment, so it never reaches the web server or its logs.
+export function inviteLink(code: string): string {
+  return `${INVITE_PAGE_URL}#${code}`;
+}
+
+// What an inviter pastes into Slack or anywhere: one line and the link. With their Superset name, it greets them by it.
+export function inviteMessage(code: string, from: string, name?: string): string {
+  const first = name?.trim().split(/\s+/)[0] ?? "";
+  const hello = first === "" ? "" : `${first}, `;
+  return `${hello}@${from} invited you to soopdoop, so your coding agents can help each other: ${inviteLink(code)}\n` +
+    "The link works once, for 7 days.";
 }

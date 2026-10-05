@@ -1,11 +1,13 @@
-// ABOUTME: Friends: request by handle, accept, invite links (7 days, one use), and the friend list with live presence.
-// ABOUTME: Presence shown to a friend respects the owner's sharing settings and focus mode.
+// ABOUTME: Friends: request by handle (or invite someone not here yet, found on Superset when possible), accept, invite
+// ABOUTME: links (7 days, one use), and the friend list with live presence, which respects sharing settings and focus mode.
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { QueryCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
-import { requireHacker } from "./lib/auth";
-import { supersetCard, supersetCardView } from "./superset";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { action, internalMutation, mutation, query } from "./_generated/server";
+import { hackerFor, requireHacker, requireIdentity } from "./lib/auth";
+import { normalizeHandle, type SupersetProfile } from "./lib/supersetProfile";
+import { fetchProfile, supersetCard, supersetCardView } from "./superset";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -114,6 +116,31 @@ export const list = query({
   },
 });
 
+// Asks `other` to be friends. Nothing when they already are; their waiting request becomes an acceptance.
+async function askToBeFriends(ctx: MutationCtx, me: Doc<"hackers">, other: Doc<"hackers">): Promise<void> {
+  if (other._id === me._id) throw new ConvexError("That is you.");
+  if (await areFriends(ctx, me._id, other._id)) return;
+  const theirs = await ctx.db
+    .query("friendships")
+    .withIndex("by_a_b", function (q) {
+      return q.eq("a", other._id).eq("b", me._id);
+    })
+    .unique();
+  if (theirs !== null) {
+    await ctx.db.patch("friendships", theirs._id, { status: "accepted" });
+    return;
+  }
+  const mine = await ctx.db
+    .query("friendships")
+    .withIndex("by_a_b", function (q) {
+      return q.eq("a", me._id).eq("b", other._id);
+    })
+    .unique();
+  if (mine === null) {
+    await ctx.db.insert("friendships", { a: me._id, b: other._id, status: "requested", createdAt: Date.now() });
+  }
+}
+
 export const request = mutation({
   args: { handle: v.string() },
   returns: v.null(),
@@ -126,29 +153,99 @@ export const request = mutation({
       })
       .unique();
     if (other === null) throw new ConvexError("ain’t nobody with that handle");
-    if (other._id === me._id) throw new ConvexError("That is you.");
-    if (await areFriends(ctx, me._id, other._id)) return null;
-    // A request in the other direction becomes an acceptance.
-    const theirs = await ctx.db
-      .query("friendships")
-      .withIndex("by_a_b", function (q) {
-        return q.eq("a", other._id).eq("b", me._id);
-      })
-      .unique();
-    if (theirs !== null) {
-      await ctx.db.patch("friendships", theirs._id, { status: "accepted" });
-      return null;
-    }
-    const mine = await ctx.db
-      .query("friendships")
-      .withIndex("by_a_b", function (q) {
-        return q.eq("a", me._id).eq("b", other._id);
-      })
-      .unique();
-    if (mine === null) {
-      await ctx.db.insert("friendships", { a: me._id, b: other._id, status: "requested", createdAt: Date.now() });
-    }
+    await askToBeFriends(ctx, me, other);
     return null;
+  },
+});
+
+// Someone on soopdoop with this handle, or who linked this Superset handle: asks them. Null when there is nobody.
+export const askByHandle = internalMutation({
+  args: { supersetUserId: v.string(), handle: v.string() },
+  returns: v.union(v.null(), v.object({ handle: v.string(), viaSuperset: v.boolean() })),
+  handler: async function (ctx, args) {
+    const me = await hackerFor(ctx, args.supersetUserId);
+    if (me === null) throw new ConvexError("Pick a handle first.");
+    const byHandle = await ctx.db
+      .query("hackers")
+      .withIndex("by_handle", function (q) {
+        return q.eq("handle", args.handle);
+      })
+      .unique();
+    if (byHandle !== null) {
+      await askToBeFriends(ctx, me, byHandle);
+      return { handle: byHandle.handle, viaSuperset: false };
+    }
+    const linked = await ctx.db
+      .query("supersetProfiles")
+      .withIndex("by_handle", function (q) {
+        return q.eq("handle", args.handle);
+      })
+      .first();
+    const bySuperset = linked === null ? null : await ctx.db.get("hackers", linked.hackerId);
+    if (bySuperset === null) return null;
+    await askToBeFriends(ctx, me, bySuperset);
+    return { handle: bySuperset.handle, viaSuperset: true };
+  },
+});
+
+async function newInvite(ctx: MutationCtx, from: Id<"hackers">, forWhom: { handle?: string; name?: string } = {}): Promise<string> {
+  const token = crypto.randomUUID().replace(/-/g, "");
+  await ctx.db.insert("invites", {
+    fromHackerId: from,
+    token,
+    expiresAt: Date.now() + INVITE_TTL_MS,
+    forHandle: forWhom.handle,
+    forName: forWhom.name,
+  });
+  return token;
+}
+
+export const inviteFor = internalMutation({
+  args: { supersetUserId: v.string(), forHandle: v.optional(v.string()), forName: v.optional(v.string()) },
+  returns: v.string(),
+  handler: async function (ctx, args) {
+    const me = await hackerFor(ctx, args.supersetUserId);
+    if (me === null) throw new ConvexError("Pick a handle first.");
+    return await newInvite(ctx, me._id, { handle: args.forHandle, name: args.forName });
+  },
+});
+
+type Added =
+  | { kind: "asked"; handle: string; viaSuperset: boolean }
+  | { kind: "invited"; token: string; handle: string; onSuperset: boolean; name?: string };
+
+// Adds a friend by handle. Someone on soopdoop, found by their handle or by the Superset handle they linked, is asked
+// to be friends. Anyone else gets an invite to send. When Superset has a public profile for the handle, the invite
+// names it, so it also works without the link: they join the crew when they link that profile.
+export const addByHandle = action({
+  args: { handle: v.string() },
+  returns: v.union(
+    v.object({ kind: v.literal("asked"), handle: v.string(), viaSuperset: v.boolean() }),
+    v.object({ kind: v.literal("invited"), token: v.string(), handle: v.string(), onSuperset: v.boolean(), name: v.optional(v.string()) }),
+  ),
+  handler: async function (ctx, args): Promise<Added> {
+    const identity = await requireIdentity(ctx);
+    const handle = normalizeHandle(args.handle);
+    if (handle === null) throw new ConvexError("A handle is 2 to 39 lowercase letters, digits and single hyphens.");
+    const asked: { handle: string; viaSuperset: boolean } | null = await ctx.runMutation(internal.friends.askByHandle, {
+      supersetUserId: identity.subject,
+      handle,
+    });
+    if (asked !== null) return { kind: "asked", handle: asked.handle, viaSuperset: asked.viaSuperset };
+    let profile: SupersetProfile | null = null;
+    try {
+      profile = await fetchProfile(handle);
+    } catch {
+      // Superset is down or its page changed: a plain invite still works.
+      profile = null;
+    }
+    const token: string = await ctx.runMutation(internal.friends.inviteFor, {
+      supersetUserId: identity.subject,
+      forHandle: profile?.handle,
+      forName: profile?.name,
+    });
+    if (profile === null) return { kind: "invited", token, handle, onSuperset: false };
+    return { kind: "invited", token, handle: profile.handle, onSuperset: true, name: profile.name };
   },
 });
 
@@ -190,9 +287,7 @@ export const createInvite = mutation({
   returns: v.string(),
   handler: async function (ctx) {
     const me = await requireHacker(ctx);
-    const token = crypto.randomUUID().replace(/-/g, "");
-    await ctx.db.insert("invites", { fromHackerId: me._id, token, expiresAt: Date.now() + INVITE_TTL_MS });
-    return token;
+    return await newInvite(ctx, me._id);
   },
 });
 

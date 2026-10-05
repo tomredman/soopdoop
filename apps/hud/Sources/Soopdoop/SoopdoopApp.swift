@@ -108,7 +108,7 @@ struct MenuContent: View {
                 guard let message = try await client.act("invite") as? String else { return }
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(message, forType: .string)
-                client.toast = "Invite copied. Send it to one person; it works once, for 7 days."
+                client.toast = "Invite link copied. Send it to one person; it works once, for 7 days."
             } catch {
                 client.toast = (error as? AgentError)?.message ?? error.localizedDescription
             }
