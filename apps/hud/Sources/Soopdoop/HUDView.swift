@@ -1,5 +1,5 @@
 // ABOUTME: The HUD's content: sign-in and handle screens, then you (rank, XP), the knock on screen, friend requests, the crew,
-// ABOUTME: the Operator (ask, and the wire of answers), the board, and this Mac. Every action goes through the agent.
+// ABOUTME: the Operator (how many answers today), the board, and this Mac. Every action goes through the agent.
 import AppKit
 import SwiftUI
 
@@ -400,7 +400,7 @@ struct FriendRow: View {
     }
 
     private var stateLine: String {
-        if friend.relaying { return "the Operator is reading…" }
+        if friend.relaying { return "answering the Operator…" }
         if friend.inFocus { return "in focus" }
         if friend.led == "x" { return "offline" }
         let agents = friend.agentCount == 0 ? "∅ empty subset" : "\(friend.agentCount) agent\(friend.agentCount == 1 ? "" : "s")"
@@ -472,68 +472,24 @@ struct KnockComposer: View {
     }
 }
 
+// One line: how many questions the Operator answered today, the ones your agents asked and the ones your agents answered.
+// Agents ask with the ask_operator tool, so there is nothing to type or read here.
 struct OperatorSection: View {
-    @EnvironmentObject var client: AgentClient
     let state: AppState
-    @State private var question = ""
 
     var body: some View {
-        SectionHeader(title: "Operator")
-        HStack(spacing: 6) {
-            TextField("Ask your crew's agents…", text: $question)
-                .textFieldStyle(.roundedBorder)
-                .font(Theme.mono(11))
-                .onSubmit(ask)
-            Button("Ask", action: ask).buttonStyle(HUDButtonStyle(primary: true)).disabled(question.isEmpty)
-        }
-        if state.wire.isEmpty {
-            Text("Questions to the Operator and the answers show up here. Agents ask it with the ask_operator tool.")
-                .font(Theme.mono(10)).foregroundStyle(Theme.dim).fixedSize(horizontal: false, vertical: true)
-        }
-        ForEach(state.wire.prefix(6)) { relay in RelayRow(relay: relay) }
+        SectionHeader(title: "Operator", trailing: OperatorSection.count(state.wire, now: Date()))
     }
 
-    private func ask() {
-        let q = question.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return }
-        client.run("ask", ["question": q], done: "Asked the Operator.")
-        question = ""
-    }
-}
+    // The agent sends the newest 20 questions (operator.log). When all 20 are from today, there may be more: "20+".
+    static let wireLimit = 20
 
-struct RelayRow: View {
-    let relay: Relay
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                LED(color: relay.inFlight ? Theme.purple : (relay.status == "answered" ? Theme.green : nil), size: 6, pulse: relay.inFlight)
-                Text(relay.question).font(Theme.mono(11, .semibold)).foregroundStyle(Theme.text).lineLimit(2)
-            }
-            Text(detail(for: relay)).font(.system(size: 11)).foregroundStyle(relay.status == "answered" ? Theme.text : Theme.muted)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(footer).font(Theme.mono(9.5)).foregroundStyle(relay.role == "answered" && relay.status == "answered" ? Theme.green : Theme.dim)
-        }
-        .padding(7)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 7).fill(Theme.ground.opacity(0.55)))
-    }
-
-    private func detail(for relay: Relay) -> String {
-        switch relay.status {
-        case "routing": return "Finding the agent that knows…"
-        case "reading": return "Reading @\(relay.targetHandle ?? "a crewmate")'s agent…"
-        case "answered": return relay.answer ?? ""
-        default: return relay.note ?? "No answer."
-        }
-    }
-
-    private var footer: String {
-        let agent = relay.targetAgentName.map { "'s \($0)" } ?? "'s agent"
-        if relay.role == "answered" { return relay.status == "answered" ? "+1 assist · your agent answered @\(relay.askerHandle)" : "asked of your agent by @\(relay.askerHandle)" }
-        guard let target = relay.targetHandle else { return "you asked" }
-        let tokens = relay.tokensRead.map { " · read \(Int($0 / 1000))k tokens" } ?? ""
-        return "from @\(target)\(agent)\(tokens)"
+    static func count(_ wire: [Relay], now: Date) -> String {
+        let midnight = Calendar.current.startOfDay(for: now).timeIntervalSince1970 * 1000
+        let today = wire.filter { $0.createdAt >= midnight }
+        let answered = today.filter { $0.status == "answered" }.count
+        let more = wire.count >= wireLimit && today.count == wire.count ? "+" : ""
+        return "\(answered)\(more) answered today"
     }
 }
 
