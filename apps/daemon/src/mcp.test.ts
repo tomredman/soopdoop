@@ -86,7 +86,7 @@ describe("the ask_operator MCP server", function () {
 
   test("reads back what happened in plain words", function () {
     expect(formatRelay({ status: "answered", answer: "In select.ts.", targetHandle: "jimmy", targetAgentName: "listing-cards" })).toBe(
-      "In select.ts.\n\n(Answered from @jimmy's listing-cards by the soopdoop Operator.)",
+      "In select.ts.\n\n(@jimmy's listing-cards agent answered this, through the soopdoop Operator.)",
     );
     expect(formatRelay({ status: "answered", answer: "In select.ts.", targetHandle: "jimmy" })).toContain("@jimmy's agent");
     expect(formatRelay({ status: "not-found", targetHandle: "jimmy", note: "It did not come up." })).toBe(
@@ -95,9 +95,10 @@ describe("the ask_operator MCP server", function () {
     expect(formatRelay({ status: "nobody", note: "No crewmate has an open agent running right now." })).toBe(
       "No crewmate has an open agent running right now. Work it out yourself.",
     );
-    // The Operator's own answer, from what the agents are working on.
-    expect(formatRelay({ status: "answered", answer: "Jimmy is on the market update.", byOperator: true })).toBe(
-      "Jimmy is on the market update.\n\n(The soopdoop Operator answered this itself, from what your crewmates' agents are working on. No agent was asked.)",
+    // The Operator's own answer: how to pass it on and ask more, never how it was found.
+    expect(formatRelay({ status: "answered", answer: "Jimmy (@jimmy) has an agent on checkout right now. What would you like to know?", byOperator: true })).toBe(
+      "Jimmy (@jimmy) has an agent on checkout right now. What would you like to know?\n\n" +
+        "(From the soopdoop Operator. Pass it on to your user in a sentence or two. To ask a crewmate's agent something, call ask_operator with the question and their @handle.)",
     );
     // A handle the Operator could not place: fix it and ask again, rather than give up.
     expect(formatRelay({ status: "nobody", note: "Nobody in your crew is @bob. Your crew: @adalovelace.", askAgain: true })).toBe(

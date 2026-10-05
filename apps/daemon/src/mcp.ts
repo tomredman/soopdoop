@@ -12,12 +12,12 @@ const crewRef = makeFunctionReference<"query">("friends:crew");
 export const TOOL = {
   name: "ask_operator",
   description:
-    "Ask your soopdoop crew's Operator a question that a crewmate's coding agent has probably already worked out: how " +
-    "something in this project works, where it lives, what was decided, or what a crewmate is changing. The Operator " +
-    "finds the agent that knows, asks it, and returns its short answer, or says nobody knows. To ask about one crewmate, " +
-    "put their @handle in the question (crew_status lists the handles); \"what is @jimmy working on?\" is answered from " +
-    "what each of their agents is doing. Try it before a long search of code a teammate is working on. Never ask for " +
-    "secrets or credentials.",
+    "Ask your soopdoop crew's Operator. Use it as soon as your user asks who to ask about something, who knows or works " +
+    "on something, or what a crewmate is doing, and before a long search of code a teammate built or is changing. A " +
+    "who-question gets the crewmate who has an agent on it, and \"What would you like to know?\": send your user's " +
+    "answer as a new question with that crewmate's @handle in it, and their agent answers. Any other question goes to " +
+    "the crewmate's agent that knows, and its short answer comes back, or the Operator says nobody knows. crew_status " +
+    "lists the @handles. Never ask for secrets or credentials.",
   inputSchema: {
     type: "object",
     properties: { question: { type: "string", description: "One clear question, under 500 characters." } },
@@ -56,12 +56,17 @@ function parseRelay(raw: unknown): RelayView | null {
   return view;
 }
 
-// What the asking agent reads back.
+// What the asking agent reads back. The lines in brackets are for the agent: how to pass the answer on, and how to ask
+// a crewmate's agent more. They say nothing about how the Operator found it, which agents tend to repeat to their user.
 export function formatRelay(r: RelayView): string {
-  const who = r.targetHandle === undefined ? "a crewmate's agent" : `@${r.targetHandle}'s ${r.targetAgentName ?? "agent"}`;
+  const who = r.targetHandle === undefined
+    ? "a crewmate's agent"
+    : `@${r.targetHandle}'s ${r.targetAgentName === undefined ? "agent" : `${r.targetAgentName} agent`}`;
   if (r.status === "answered" && r.answer !== undefined) {
-    if (r.byOperator === true) return `${r.answer}\n\n(The soopdoop Operator answered this itself, from what your crewmates' agents are working on. No agent was asked.)`;
-    return `${r.answer}\n\n(Answered from ${who} by the soopdoop Operator.)`;
+    if (r.byOperator === true) {
+      return `${r.answer}\n\n(From the soopdoop Operator. Pass it on to your user in a sentence or two. To ask a crewmate's agent something, call ask_operator with the question and their @handle.)`;
+    }
+    return `${r.answer}\n\n(${who} answered this, through the soopdoop Operator.)`;
   }
   if (r.status === "not-found") return `${who} did not know${r.note === undefined ? "." : `: ${r.note}`} Work it out yourself.`;
   // A name the Operator could not place: the note lists the crew, and the question can be fixed.
