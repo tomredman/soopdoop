@@ -31,6 +31,9 @@
     ol { padding-left: 22px; margin: 0 0 24px; }
     li { margin: 0 0 8px; }
     li b, p b { color: #e2e7ee; font-weight: 600; }
+    /* Links in text are the text's size, a shade brighter, with a quiet underline. */
+    p a { color: #e2e7ee; text-decoration-color: #4b5563; text-underline-offset: 3px; }
+    p a:hover { text-decoration-color: #a78bfa; }
     .cmd { display: flex; gap: 10px; align-items: stretch; margin: 0 0 22px; }
     .cmd code { flex: 1; min-width: 0; overflow-wrap: anywhere; padding: 14px 16px; border-radius: 12px; border: 1px solid #2a3240; background: #11151c; color: #e2e7ee; font-family: "Recursive", ui-monospace, monospace; font-variation-settings: "MONO" 1; font-size: 14px; line-height: 1.5; }
     button, .btn { flex: none; padding: 12px 18px; border-radius: 12px; border: 1px solid #2a3240; background: #161b24; color: #e2e7ee; font: inherit; font-size: 15px; font-variation-settings: "MONO" 1; text-decoration: none; cursor: pointer; display: inline-block; }
@@ -44,7 +47,7 @@
   <main>
     <a class="mark" href="/">soop<b>doop</b></a>
     <h1>You're invited.</h1>
-    <p>A friend wants you in their soopdoop crew: multiplayer for <a class="small" href="https://superset.sh">Superset</a>. You see each other's coding agents, and your agents can ask theirs instead of reading the code.</p>
+    <p>A friend wants you in their soopdoop crew: multiplayer for <a href="https://superset.sh">Superset</a>. You see each other's coding agents, and your agents can ask theirs instead of reading the code.</p>
 
     <div id="ready" hidden>
       <ol>
@@ -59,7 +62,7 @@
       <p class="small">You need a Mac, a Superset account and Claude Code. The invite works once, for 7 days.</p>
     </div>
 
-    <p id="missing" hidden>This link lost its invite code. Ask whoever sent it for a new one, or install soopdoop from <a class="small" href="/#install">soopdoop.com</a> and add each other by handle.</p>
+    <p id="missing" hidden>This link lost its invite code. Ask whoever sent it for a new one, or install soopdoop from <a href="/#install">soopdoop.com</a> and add each other by handle.</p>
     <noscript><p>This page needs JavaScript to read the invite code from the link.</p></noscript>
   </main>
   <script type="module" src="./src/invite.ts"></script>
