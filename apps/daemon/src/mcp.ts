@@ -12,9 +12,9 @@ export const TOOL = {
   name: "ask_operator",
   description:
     "Ask your soopdoop crew's Operator a question that a crewmate's coding agent has probably already worked out: how " +
-    "something in this project works, where it lives, or what was decided. The Operator finds the agent that knows, reads " +
-    "its recent conversation, and returns a short answer, or says nobody knows. Try it before a long search of code a " +
-    "teammate is working on. Never ask for secrets or credentials.",
+    "something in this project works, where it lives, what was decided, or what a crewmate is changing. The Operator " +
+    "finds the agent that knows, asks it, and returns its short answer, or says nobody knows. Try it before a long search " +
+    "of code a teammate is working on. Never ask for secrets or credentials.",
   inputSchema: {
     type: "object",
     properties: { question: { type: "string", description: "One clear question, under 500 characters." } },

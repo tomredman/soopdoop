@@ -1,5 +1,5 @@
-// ABOUTME: The Operator. A question goes to the crewmate agent most likely to know; its owner's daemon then sends a slice
-// ABOUTME: of that agent's conversation once, straight into the answer call (http.ts). Only the question and answer are kept.
+// ABOUTME: The Operator. A question goes to the crewmate agent most likely to know; its owner's daemon asks that agent and
+// ABOUTME: sends back the agent's own answer once (http.ts). The Operator never reads the conversation. Only the question and answer are kept.
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -108,10 +108,11 @@ export const relay = query({
   },
 });
 
-// What this machine's daemon must read now: which of its agents, for which relay. The question is not sent.
+// What this machine's daemon must answer now: which of its agents, for which relay, and the question to ask that agent.
+// Daemons before the question was sent ignore it and send a slice of the conversation instead (http.ts).
 export const readsFor = query({
   args: { token: v.string() },
-  returns: v.array(v.object({ relayId: v.id("relays"), agentId: v.string() })),
+  returns: v.array(v.object({ relayId: v.id("relays"), agentId: v.string(), question: v.string() })),
   handler: async function (ctx, args) {
     const { hacker, daemon } = await requireDaemon(ctx, args.token);
     const rows = await ctx.db
@@ -121,7 +122,9 @@ export const readsFor = query({
       })
       .collect();
     return rows.flatMap(function (r) {
-      return r.targetMachine === daemon.machineName && r.targetAgentId !== undefined ? [{ relayId: r._id, agentId: r.targetAgentId }] : [];
+      return r.targetMachine === daemon.machineName && r.targetAgentId !== undefined
+        ? [{ relayId: r._id, agentId: r.targetAgentId, question: r.question }]
+        : [];
     });
   },
 });

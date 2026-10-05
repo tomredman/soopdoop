@@ -1,5 +1,5 @@
 // ABOUTME: Reads Claude Code transcripts (JSONL) on this machine: the tail of the file, the conversation in it, and the
-// ABOUTME: one-line routing summary. Pure parsing, so it is tested. Only the Operator's reads and summaries use it.
+// ABOUTME: one-line routing summary. Pure parsing, so it is tested. Only the routing summaries use it.
 import { homedir } from "node:os";
 import path from "node:path";
 import { isRecord } from "./state";
@@ -67,21 +67,6 @@ export function parseTranscript(text: string): Parsed {
     }
   }
   return parsed;
-}
-
-// The newest turns that fit in maxChars, oldest first, one "role: text" line each. What the Operator reads.
-export function conversationSlice(parsed: Parsed, maxChars: number): string {
-  const lines: string[] = [];
-  let used = 0;
-  for (let i = parsed.turns.length - 1; i >= 0; i--) {
-    const turn = parsed.turns[i];
-    if (turn === undefined) continue;
-    const line = `${turn.role}: ${turn.text}`;
-    if (used + line.length + 1 > maxChars) break;
-    lines.push(line);
-    used += line.length + 1;
-  }
-  return lines.reverse().join("\n");
 }
 
 // Inside the agent's folder: the path from there. Anywhere else: only its last three parts, so a home folder or a user

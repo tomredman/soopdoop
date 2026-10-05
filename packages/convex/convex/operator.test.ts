@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { answerFrom, candidateLine, mentionedHandles, NOT_CONFIGURED } from "./lib/claude";
+import { agentAnswer, answerFrom, candidateLine, mentionedHandles, NOT_CONFIGURED } from "./lib/claude";
 import { rankFor } from "./play";
 import { type Actor, befriend, hackerNamed, harness, type Harness, must } from "./testing.helpers";
 
@@ -52,8 +52,8 @@ describe("the Operator", function () {
 
     const relayId = await tom.mutation(api.operator.askAsHacker, { question: "Where are expired listings filtered?" });
     await t.action(internal.operator.route, { relayId });
-    // Jimmy's daemon is told which agent to read, and nothing else.
-    expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([{ relayId, agentId: "a1" }]);
+    // Jimmy's daemon is told which agent to ask, and the question.
+    expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([{ relayId, agentId: "a1", question: "Where are expired listings filtered?" }]);
 
     const res = await answer(t, { token: jimmyToken, relayId, context: CONTEXT });
     expect(res.status).toBe(200);
@@ -131,13 +131,41 @@ describe("the Operator", function () {
     // A question about @jimmy goes to Jimmy's agent.
     const aboutJimmy = await tom.mutation(api.operator.askAsHacker, { question: "what is @Jimmy working on" });
     await t.action(internal.operator.route, { relayId: aboutJimmy });
-    expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([{ relayId: aboutJimmy, agentId: "a1" }]);
+    expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([{ relayId: aboutJimmy, agentId: "a1", question: "what is @Jimmy working on" }]);
+  });
+
+  test("the crewmate's daemon asks its own agent and sends back that agent's answer, which is all that is kept", async function () {
+    const t = harness();
+    const { tom, jimmy, jimmyToken } = await crew(t);
+    const relayId = await tom.mutation(api.operator.askAsHacker, { question: "Where are expired listings filtered?" });
+    await t.action(internal.operator.route, { relayId });
+    const said = "Expired listings are dropped in convex/marketUpdate/select.ts, by listDate, before the closest six are picked.";
+    expect((await answer(t, { token: jimmyToken, relayId, answer: `  ${said}\n`, tokensRead: 52_310.4 })).status).toBe(200);
+    expect((await tom.query(api.operator.log, {}))[0]).toMatchObject({
+      _id: relayId, status: "answered", answer: said, tokensRead: 52_310, tokensSent: Math.ceil(said.length / 4), targetHandle: "jimmy",
+    });
+    expect((await jimmy.query(api.play.board, {})).find(function (r) { return r.handle === "jimmy"; })).toMatchObject({ xp: 10, assists: 1 });
+    // Answered once: a second answer is refused.
+    expect((await answer(t, { token: jimmyToken, relayId, answer: "again" })).status).toBe(404);
+  });
+
+  test("an agent that does not know, or an answer that is too long, gives no answer", async function () {
+    const t = harness();
+    const { tom, jimmyToken } = await crew(t);
+    const relayId = await tom.mutation(api.operator.askAsHacker, { question: "Where are expired listings filtered?" });
+    await t.action(internal.operator.route, { relayId });
+    expect((await answer(t, { token: jimmyToken, relayId, answer: "x".repeat(4_001) })).status).toBe(413);
+    expect((await answer(t, { token: jimmyToken, relayId, answer: "NOT_FOUND", tokensRead: 900 })).status).toBe(200);
+    expect((await tom.query(api.operator.log, {}))[0]).toMatchObject({ status: "not-found", note: "It has not worked on this.", tokensRead: 900 });
   });
 
   test("an answer is never about anyone but the agent's owner", async function () {
     // Jimmy's agent, asked about Vlad: nothing is answered and nothing is spent.
     expect(await answerFrom("What is @vlad doing?", CONTEXT, { handle: "jimmy" })).toEqual({ text: null, tokensRead: 0, tokensSent: 0 });
     expect((await answerFrom("Where are expired listings filtered, @jimmy?", CONTEXT, { handle: "jimmy" })).text).toContain("select.ts");
+    // The same for an answer Jimmy's agent wrote itself.
+    expect(agentAnswer("What is @vlad doing?", "Fixing the HUD.", { handle: "jimmy" }, 800)).toEqual({ text: null, tokensRead: 800, tokensSent: 0 });
+    expect(agentAnswer("What is @jimmy doing?", "Fixing the HUD.", { handle: "jimmy" }, 800)).toEqual({ text: "Fixing the HUD.", tokensRead: 800, tokensSent: 4 });
   });
 
   test("@mentions are found, and the router sees each owner's name", function () {

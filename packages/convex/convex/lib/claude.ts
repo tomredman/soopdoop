@@ -1,5 +1,5 @@
-// ABOUTME: The Operator's two Claude calls: pick the crewmate agent most likely to know, and answer from what it read.
-// ABOUTME: Claude Opus 5.5 with server-side fallbacks. OPERATOR_FAKE=1 answers without Claude, so tests and dry runs are free.
+// ABOUTME: The Operator's Claude calls: pick the crewmate agent most likely to know, and (for daemons that still send a slice)
+// ABOUTME: answer from what it read; plus the check on an agent's own answer. OPERATOR_FAKE=1 answers without Claude, for tests.
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "../_generated/server";
 
@@ -129,8 +129,19 @@ export async function pickAgent(question: string, candidates: Candidate[]): Prom
   return Number.isInteger(n) && n >= 1 && n <= listed.length ? (pool[n - 1] ?? null) : null;
 }
 
-// Answers the question from part of one crewmate's agent conversation, owner's work credited to the owner. The
-// conversation is used for this call only.
+// The answer a crewmate's agent wrote itself: its daemon asked a fork of the agent's session. The Operator reads no
+// conversation; it keeps the answer only when the question is about the agent's owner and the agent knew.
+export function agentAnswer(question: string, text: string, owner: { handle: string }, tokensRead: number): Answer {
+  const mentioned = mentionedHandles(question);
+  const clean = text.trim();
+  if ((mentioned.length > 0 && !mentioned.includes(owner.handle)) || clean === "" || clean.startsWith(NOT_FOUND)) {
+    return { text: null, tokensRead, tokensSent: 0 };
+  }
+  return { text: clean, tokensRead, tokensSent: Math.ceil(clean.length / 4) };
+}
+
+// For daemons that still send a slice: answers the question from part of one crewmate's agent conversation, owner's
+// work credited to the owner. The conversation is used for this call only.
 export async function answerFrom(question: string, context: string, owner: { handle: string; name?: string }): Promise<Answer> {
   const mentioned = mentionedHandles(question);
   if (mentioned.length > 0 && !mentioned.includes(owner.handle)) return { text: null, tokensRead: 0, tokensSent: 0 };

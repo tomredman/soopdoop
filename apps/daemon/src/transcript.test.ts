@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { conversationSlice, parseTranscript, readTail, routingSummary, shortPath } from "./transcript";
+import { parseTranscript, readTail, routingSummary, shortPath } from "./transcript";
 
 // Lines in the shape Claude Code writes them.
 function row(type: string, content: unknown, extra: Record<string, unknown> = {}): string {
@@ -72,14 +72,6 @@ describe("transcripts", function () {
     const summary = routingSummary(elsewhere, "/Users/me");
     expect(summary).toContain("files: …/apps/web/page.tsx");
     expect(summary).not.toContain("/Users/");
-  });
-
-  test("the slice keeps the newest turns that fit, oldest first, one line each", function () {
-    const parsed = parseTranscript(TRANSCRIPT);
-    expect(conversationSlice(parsed, 10_000).split("\n")[0]).toBe("user: fix the coupon rounding in checkout");
-    const small = conversationSlice(parsed, 60);
-    expect(small).toBe("assistant: Coupons now round half up in src/coupon.ts.");
-    expect(conversationSlice(parsed, 5)).toBe("");
   });
 
   test("a tail read cuts the first line, which is skipped", async function () {

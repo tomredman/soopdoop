@@ -11,6 +11,8 @@ export interface AgentRecord {
   status: AgentStatus;
   open: boolean;
   transcriptPath?: string;
+  // The folder the session runs in. Stays on this machine, like the transcript path.
+  cwd?: string;
   lastTurnAt: number;
 }
 
@@ -72,6 +74,7 @@ export function apply(subset: Subset, ev: HookEvent, now: number, privateDirs: s
     lastTurnAt: now,
   };
   if (ev.transcript_path !== undefined) base.transcriptPath = ev.transcript_path;
+  if (ev.cwd !== undefined) base.cwd = ev.cwd;
 
   switch (ev.hook_event_name) {
     case "SessionStart":
@@ -110,7 +113,7 @@ export function sweep(subset: Subset, now: number, staleMs: number): boolean {
   return changed;
 }
 
-// What leaves the machine: never the transcript path.
+// What leaves the machine: never the transcript path or the folder.
 export function toReport(subset: Subset) {
   return Array.from(subset.values(), function (a) {
     return {

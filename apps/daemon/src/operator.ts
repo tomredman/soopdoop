@@ -1,23 +1,22 @@
-// ABOUTME: The daemon's side of the Operator: a routing summary for each open agent after its turns, and answers to read
-// ABOUTME: requests with a bounded slice of that agent's conversation, once per relay. Every read is logged on this machine.
+// ABOUTME: The daemon's side of the Operator: a routing summary for each open agent after its turns, and answers to the
+// ABOUTME: questions routed to this machine's agents, asked of the agent itself (ask.ts), once per relay. Every ask is logged here.
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { ConvexClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
+import { askAgent, type Asked } from "./ask";
 import { soopdoopHome } from "./config";
-import { isRecord, type Subset } from "./state";
-import { conversationSlice, parseTranscript, readTail, routingSummary } from "./transcript";
+import { isRecord, type AgentRecord, type Subset } from "./state";
+import { parseTranscript, readTail, routingSummary } from "./transcript";
 
 export const updateRouting = makeFunctionReference<"mutation">("routing:update");
 const readsFor = makeFunctionReference<"query">("operator:readsFor");
 
-const TAIL_BYTES = 1_000_000;
-// About 15k tokens: enough recent conversation to answer from, bounded so one question costs little.
-export const SLICE_CHARS = 60_000;
-
 export interface ReadRequest {
   relayId: string;
   agentId: string;
+  // The crewmate's question, which the agent is asked. Older backends did not send it.
+  question?: string;
 }
 
 // HTTP actions live on the .site host of a deployment.
@@ -28,18 +27,23 @@ export function siteUrl(convexUrl: string): string {
 export function parseReads(raw: unknown): ReadRequest[] {
   if (!Array.isArray(raw)) return [];
   return raw.flatMap(function (r) {
-    return isRecord(r) && typeof r.relayId === "string" && typeof r.agentId === "string" ? [{ relayId: r.relayId, agentId: r.agentId }] : [];
+    if (!isRecord(r) || typeof r.relayId !== "string" || typeof r.agentId !== "string") return [];
+    return [typeof r.question === "string" ? { relayId: r.relayId, agentId: r.agentId, question: r.question } : { relayId: r.relayId, agentId: r.agentId }];
   });
 }
 
-// What to send for one read: the slice, or why there is none. Only open agents are ever read.
-export async function prepareRead(subset: Subset, agentId: string): Promise<{ context: string } | { refused: string }> {
-  const agent = subset.get(agentId);
+// What to send for one question: the agent's own answer, or why there is none. Only open agents are ever asked.
+export async function prepareAnswer(
+  subset: Subset,
+  read: ReadRequest,
+  ask: (agent: AgentRecord, question: string) => Promise<Asked> = askAgent,
+): Promise<Asked> {
+  const agent = subset.get(read.agentId);
   if (agent === undefined) return { refused: "That agent is no longer running." };
   if (!agent.open) return { refused: "That agent is private." };
   if (agent.transcriptPath === undefined) return { refused: "That agent's conversation is not available yet." };
-  const slice = conversationSlice(parseTranscript(await readTail(agent.transcriptPath, TAIL_BYTES)), SLICE_CHARS);
-  return slice === "" ? { refused: "That agent's conversation is empty." } : { context: slice };
+  if (read.question === undefined) return { refused: "The Operator did not send the question." };
+  return await ask(agent, read.question);
 }
 
 // The one-line summary the Operator routes with, for an open agent with a transcript. Null otherwise.
@@ -50,34 +54,38 @@ export async function summaryFor(subset: Subset, agentId: string): Promise<strin
   return summary === "" ? null : summary;
 }
 
-// Every read leaves a line here: which relay, which agent, how much was sent. Never what was sent.
+// Every ask leaves a line here: which relay, which agent, how long the answer was and what it read. Never the question or the answer.
 export async function logRead(entry: Record<string, unknown>, home: string = soopdoopHome()): Promise<void> {
   const dir = path.join(home, "logs");
   await mkdir(dir, { recursive: true });
   await appendFile(path.join(dir, "reads.log"), JSON.stringify({ at: new Date().toISOString(), ...entry }) + "\n");
 }
 
-// Follows this machine's read requests and answers each once. Returns a function that stops following.
+// Follows this machine's questions and answers each once. Returns a function that stops following.
 export function answerReads(client: ConvexClient, token: string, convexUrl: string, subset: Subset): () => void {
   const handled = new Set<string>();
   const site = siteUrl(convexUrl);
 
   async function serve(read: ReadRequest): Promise<void> {
-    const prepared = await prepareRead(subset, read.agentId);
-    const sent = "context" in prepared ? prepared.context.length : 0;
+    const asked = await prepareAnswer(subset, read);
     await logRead({
       relayId: read.relayId,
       agentId: read.agentId,
       agent: subset.get(read.agentId)?.name,
-      sentChars: sent,
-      refused: "refused" in prepared ? prepared.refused : undefined,
+      sentChars: "answer" in asked ? asked.answer.length : 0,
+      tokensRead: asked.tokensRead,
+      costUsd: asked.costUsd,
+      refused: "refused" in asked ? asked.refused : undefined,
     });
+    const body = "answer" in asked
+      ? { token, relayId: read.relayId, answer: asked.answer, tokensRead: asked.tokensRead ?? 0 }
+      : { token, relayId: read.relayId, refused: asked.refused };
     try {
       const res = await fetch(`${site}/operator/answer`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token, relayId: read.relayId, ...prepared }),
-        signal: AbortSignal.timeout(120_000),
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30_000),
       });
       if (!res.ok) console.error(`operator answer for ${read.relayId}: ${res.status}`);
     } catch (e) {

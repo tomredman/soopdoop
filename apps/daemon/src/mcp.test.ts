@@ -1,9 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { Asked } from "./ask";
 import { cleanError, formatRelay, handle, TOOL } from "./mcp";
-import { logRead, parseReads, prepareRead, siteUrl, SLICE_CHARS } from "./operator";
+import { logRead, parseReads, prepareAnswer, siteUrl } from "./operator";
 import type { AgentRecord, Subset } from "./state";
 
 const dirs: string[] = [];
@@ -80,36 +81,40 @@ describe("the daemon's side of the Operator", function () {
     return { agentId: "a1", harness: "claude-code", name: "listing-cards", status: "idle", open: true, lastTurnAt: 0, ...over };
   }
 
-  test("reads only open agents with a transcript, and sends a bounded slice", async function () {
-    const dir = await tempDir();
-    const file = path.join(dir, "t.jsonl");
-    const turn = JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "x".repeat(3_000) }] } });
-    await writeFile(file, Array.from({ length: 40 }, function () { return turn; }).join("\n"));
+  test("asks only open agents with a conversation, and only with the question", async function () {
+    const asked: [string, string][] = [];
+    async function ask(agent: AgentRecord, question: string): Promise<Asked> {
+      asked.push([agent.agentId, question]);
+      return { answer: "In select.ts.", tokensRead: 1200 };
+    }
     const subset: Subset = new Map([
-      ["a1", agentRecord({ transcriptPath: file })],
-      ["a2", agentRecord({ agentId: "a2", open: false, transcriptPath: file })],
+      ["a1", agentRecord({ transcriptPath: "/t.jsonl" })],
+      ["a2", agentRecord({ agentId: "a2", open: false, transcriptPath: "/t.jsonl" })],
       ["a3", agentRecord({ agentId: "a3" })],
     ]);
-    const read = await prepareRead(subset, "a1");
-    if (!("context" in read)) throw new Error("expected a slice");
-    expect(read.context.length).toBeLessThanOrEqual(SLICE_CHARS);
-    expect(read.context.startsWith("assistant: xxx")).toBe(true);
-    expect(await prepareRead(subset, "a2")).toEqual({ refused: "That agent is private." });
-    expect(await prepareRead(subset, "a3")).toEqual({ refused: "That agent's conversation is not available yet." });
-    expect(await prepareRead(subset, "gone")).toEqual({ refused: "That agent is no longer running." });
+    const question = "Where are expired listings filtered?";
+    expect(await prepareAnswer(subset, { relayId: "r1", agentId: "a1", question }, ask)).toEqual({ answer: "In select.ts.", tokensRead: 1200 });
+    expect(await prepareAnswer(subset, { relayId: "r2", agentId: "a2", question }, ask)).toEqual({ refused: "That agent is private." });
+    expect(await prepareAnswer(subset, { relayId: "r3", agentId: "a3", question }, ask)).toEqual({ refused: "That agent's conversation is not available yet." });
+    expect(await prepareAnswer(subset, { relayId: "r4", agentId: "gone", question }, ask)).toEqual({ refused: "That agent is no longer running." });
+    expect(await prepareAnswer(subset, { relayId: "r5", agentId: "a1" }, ask)).toEqual({ refused: "The Operator did not send the question." });
+    expect(asked).toEqual([["a1", question]]);
   });
 
-  test("logs every read on this machine, without what was read", async function () {
+  test("logs every ask on this machine, without the question or the answer", async function () {
     const home = await tempDir();
-    await logRead({ relayId: "r1", agentId: "a1", sentChars: 1234 }, home);
+    await logRead({ relayId: "r1", agentId: "a1", sentChars: 1234, tokensRead: 50_000 }, home);
     const line = JSON.parse((await readFile(path.join(home, "logs", "reads.log"), "utf8")).trim());
-    expect(line).toMatchObject({ relayId: "r1", agentId: "a1", sentChars: 1234 });
+    expect(line).toMatchObject({ relayId: "r1", agentId: "a1", sentChars: 1234, tokensRead: 50_000 });
     expect(typeof line.at).toBe("string");
   });
 
-  test("finds the HTTP host and reads read requests defensively", function () {
+  test("finds the HTTP host and reads questions defensively", function () {
     expect(siteUrl("https://fleet-skunk-723.convex.cloud")).toBe("https://fleet-skunk-723.convex.site");
-    expect(parseReads([{ relayId: "r1", agentId: "a1" }, { relayId: 2 }, "x"])).toEqual([{ relayId: "r1", agentId: "a1" }]);
+    expect(parseReads([{ relayId: "r1", agentId: "a1", question: "where?" }, { relayId: "r2", agentId: "a2" }, { relayId: 2 }, "x"])).toEqual([
+      { relayId: "r1", agentId: "a1", question: "where?" },
+      { relayId: "r2", agentId: "a2" },
+    ]);
     expect(parseReads(null)).toEqual([]);
   });
 });
