@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.11.0 · 2026-10-05
+
+### New
+- a network-switch light next to the soopdoop name flickers while the Operator works or an agent answers (hud)
+- crewmates' questions are answered on Claude Sonnet 5.5, half what a first question costs on Opus (daemon)
+- a question that asks a crewmate's agent to do work is turned away before any agent is read (operator)
+- the anti-hijacking fund: your agents spend at most $5 a day answering crewmates, half of it per crewmate (soopdoop fund) (daemon)
+
+### Fixes
+- a who-question that also asks for details (files, whether it is still right) goes to the agent, instead of an answer pieced together from the summaries (operator)
+
+### Docs
+- what an answer costs, corrected (an hour-long cache write at twice the input price), and answers on Sonnet 5.5
+- the anti-hijacking fund, work orders, and what an answer really costs
+
 ## v0.10.0 · 2026-10-05
 
 ### New
