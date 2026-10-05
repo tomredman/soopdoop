@@ -18,6 +18,20 @@ enum Snapshot {
                 draw(state, height: name == "ready" ? 1260 : 420, on: backdrop, style: style, to: file)
             }
         }
+        // The Operator chat, with a reply of its own, an answer from a crewmate's agent, and a question on its way.
+        var chatting = AppState()
+        chatting.phase = "ready"
+        let now = Date().timeIntervalSince1970 * 1000
+        chatting.chat = [
+            Relay(id: "c1", question: "who's around?", status: "answered", answer: "Jimmy's two agents are on the market update, and Mira is fixing checkout. Dev is offline.",
+                  askerHandle: "tom", createdAt: now - 120_000, role: "asked", via: "chat", byOperator: true),
+            Relay(id: "c2", question: "where does jimmy filter expired listings?", status: "answered",
+                  answer: "In convex/marketUpdate/select.ts: expired listings are dropped by listDate before the closest six are picked.",
+                  askerHandle: "tom", targetHandle: "jimmy", targetAgentName: "listing-cards", createdAt: now - 60_000, role: "asked", via: "chat"),
+            Relay(id: "c3", question: "and is that tested?", status: "reading", askerHandle: "tom", targetHandle: "jimmy", createdAt: now - 2_000, role: "asked", via: "chat"),
+        ]
+        let chat = OperatorChat().environmentObject(AgentClient(preview: chatting)).environmentObject(style)
+        render(chat, size: NSSize(width: 380, height: 520), to: URL(fileURLWithPath: dir).appendingPathComponent("chat.png"))
         // Settings → HUD: the sections, which can be hidden and put in order.
         let look = LookSettings().environmentObject(style)
         render(look, size: NSSize(width: 460, height: 520), to: URL(fileURLWithPath: dir).appendingPathComponent("settings-hud.png"))

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { agentAnswer, answerFrom, candidateLine, mentionedHandles, NOT_CONFIGURED } from "./lib/claude";
+import { agentAnswer, answerFrom, candidateLine, mentionedHandles, NOT_CONFIGURED, parseChatTurn } from "./lib/claude";
 import { rankFor } from "./play";
 import { type Actor, befriend, hackerNamed, harness, type Harness, must, settleScheduled } from "./testing.helpers";
 
@@ -236,6 +236,53 @@ describe("the Operator", function () {
     await expect(tom.mutation(api.operator.askAsHacker, { question: "x".repeat(501) })).rejects.toThrow("under 500");
     for (let i = 0; i < 6; i++) await tom.mutation(api.operator.askAsHacker, { question: `question ${i}` });
     await expect(tom.mutation(api.operator.askAsHacker, { question: "one more" })).rejects.toThrow("Wait a minute");
+  });
+});
+
+describe("the Operator chat", function () {
+  test("the Operator answers small talk itself: no agent is asked, and it earns no XP", async function () {
+    const t = harness();
+    const tom = await hackerNamed(t, "tom");
+    const relayId = await tom.mutation(api.operator.chat, { text: "hey operator, anyone around?" });
+    await t.action(internal.operator.route, { relayId });
+    const [turn] = await tom.query(api.operator.chatLog, {});
+    expect(turn).toMatchObject({ _id: relayId, via: "chat", status: "answered", byOperator: true, answer: "Nobody's agents are around right now. Just me." });
+    expect(turn?.targetHandle).toBeUndefined();
+    expect((await tom.query(api.play.board, {}))[0]).toMatchObject({ handle: "tom", xp: 0, asks: 0 });
+  });
+
+  test("a message that needs an agent's knowledge goes to it, as a question that stands alone, and the chat shows the answer", async function () {
+    const t = harness();
+    const { tom, jimmyToken } = await crew(t);
+    const relayId = await tom.mutation(api.operator.chat, { text: "Where are expired listings filtered in the market update?" });
+    await t.action(internal.operator.route, { relayId });
+    expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([
+      { relayId, agentId: "a1", question: "Where are expired listings filtered in the market update?" },
+    ]);
+    await answer(t, { token: jimmyToken, relayId, answer: "In convex/marketUpdate/select.ts, by listDate." });
+    expect((await tom.query(api.operator.chatLog, {}))[0]).toMatchObject({ status: "answered", targetHandle: "jimmy", answer: "In convex/marketUpdate/select.ts, by listDate." });
+    // A real question to the crew still counts.
+    expect((await tom.query(api.play.board, {})).find(function (r) { return r.handle === "tom"; })?.asks).toBe(1);
+    // Chat messages are not on the wire of agents' questions only: the log still has it, marked.
+    expect((await tom.query(api.operator.log, {}))[0]).toMatchObject({ _id: relayId, via: "chat" });
+  });
+
+  test("a follow-up sees the chat so far", async function () {
+    const t = harness();
+    const tom = await hackerNamed(t, "tom");
+    const first = await tom.mutation(api.operator.chat, { text: "who is around?" });
+    await t.action(internal.operator.route, { relayId: first });
+    const second = await tom.mutation(api.operator.chat, { text: "and later?" });
+    const seen = must(await t.query(internal.operator.candidates, { relayId: second }));
+    expect(seen).toMatchObject({ via: "chat", asker: "tom", history: [{ you: "who is around?", operator: "Nobody's agents are around right now. Just me." }] });
+  });
+
+  test("the Operator's chat answer is read as JSON, and anything else as a plain reply", function () {
+    expect(parseChatTurn('{"reply": "Jimmy is on checkout."}', 2)).toEqual({ reply: "Jimmy is on checkout." });
+    expect(parseChatTurn('Sure. {"ask": 2, "question": "Where is the retry limit set?"}', 2)).toEqual({ ask: 1, question: "Where is the retry limit set?" });
+    expect(parseChatTurn('{"ask": 3, "question": "x"}', 2)).toEqual({ reply: '{"ask": 3, "question": "x"}' });
+    expect(parseChatTurn("Just me here.", 0)).toEqual({ reply: "Just me here." });
+    expect(parseChatTurn("", 0)).toEqual({ reply: "Hmm. Say that again?" });
   });
 });
 

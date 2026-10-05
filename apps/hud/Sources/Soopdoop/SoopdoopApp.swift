@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         client.connect()
         let controller = HUDController(client: client, style: style)
         hud = controller
+        ChatWindow.shared = ChatWindow(client: client, style: style)
         // Notifications need a real app bundle; a bare build (swift run) has none.
         if Bundle.main.bundleIdentifier != nil {
             let notifier = Notifier(client: client, style: style)
@@ -86,6 +87,7 @@ struct MenuContent: View {
                 Button("90 minutes") { client.run("setFocus", ["minutes": 90], done: "Focus on for 90 minutes.") }
                 Button("Off") { client.run("setFocus", [:], done: "Focus off. Friends can knock again.") }
             }
+            Button("Chat with the Operator…") { ChatWindow.shared?.show() }
             Button("Invite someone new") { invite() }
         }
         Divider()

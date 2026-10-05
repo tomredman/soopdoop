@@ -152,6 +152,12 @@ export default defineSchema({
     tokensSent: v.optional(v.number()),
     createdAt: v.number(),
     finishedAt: v.optional(v.number()),
+    // Typed in the Operator chat (the app), not asked by an agent's tool.
+    via: v.optional(v.literal("chat")),
+    // What the Operator asked the agent: a chat message rewritten to stand alone. The daemon asks this one.
+    routedQuestion: v.optional(v.string()),
+    // The Operator answered itself (crew news, small talk): no agent was asked.
+    byOperator: v.optional(v.boolean()),
   })
     .index("by_asker", ["askerHackerId"])
     .index("by_target_status", ["targetHackerId", "status"]),

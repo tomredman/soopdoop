@@ -67,7 +67,9 @@ async function countsFor(ctx: QueryCtx, id: Id<"hackers">): Promise<Counts> {
   let flickXp = 0;
   for (const f of sent) flickXp += (f.superXp ?? 0) - (f.caughtXp ?? 0);
   for (const f of got) flickXp += (f.caughtXp ?? 0) - (f.superXp ?? 0);
-  return { assists: assists.length, asks: asks.length, flickXp };
+  // A message the Operator answered itself is a chat, not a question to the crew: it earns nothing.
+  const questions = asks.filter(function (r) { return r.byOperator !== true; });
+  return { assists: assists.length, asks: questions.length, flickXp };
 }
 
 // Never below zero: a flick only takes what is there.

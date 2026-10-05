@@ -171,6 +171,10 @@ struct Relay: Decodable, Identifiable {
     var createdAt: Double = 0
     // "asked" or "answered"
     var role = "asked"
+    // "chat" when typed in the Operator chat.
+    var via: String?
+    // The Operator answered itself: no agent was asked.
+    var byOperator = false
 
     var inFlight: Bool { status == "routing" || status == "reading" }
 }
@@ -205,6 +209,8 @@ struct AppState: Decodable {
     var local: LocalInfo?
     var inviteWaiting = false
     var flicks = Flicks()
+    // The Operator chat, oldest first.
+    var chat: [Relay] = []
 
     var myRow: BoardRow? { board.first { $0.me } }
 }
@@ -366,7 +372,7 @@ extension Machine {
 
 extension Relay {
     enum CodingKeys: String, CodingKey {
-        case id = "_id", question, status, answer, note, askerHandle, targetHandle, targetAgentName, tokensRead, createdAt, role
+        case id = "_id", question, status, answer, note, askerHandle, targetHandle, targetAgentName, tokensRead, createdAt, role, via, byOperator
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -374,6 +380,7 @@ extension Relay {
         answer = c.maybe(.answer); note = c.maybe(.note); askerHandle = c.value(.askerHandle, "")
         targetHandle = c.maybe(.targetHandle); targetAgentName = c.maybe(.targetAgentName)
         tokensRead = c.maybe(.tokensRead); createdAt = c.value(.createdAt, 0); role = c.value(.role, "asked")
+        via = c.maybe(.via); byOperator = c.value(.byOperator, false)
     }
 }
 
@@ -392,7 +399,7 @@ extension LocalInfo {
 
 extension AppState {
     enum CodingKeys: String, CodingKey {
-        case version, phase, message, me, board, crew, requests, incoming, sent, subset, routing, wire, local, inviteWaiting, flicks
+        case version, phase, message, me, board, crew, requests, incoming, sent, subset, routing, wire, local, inviteWaiting, flicks, chat
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -400,6 +407,6 @@ extension AppState {
         me = c.maybe(.me); board = c.value(.board, []); crew = c.value(.crew, []); requests = c.value(.requests, [])
         incoming = c.value(.incoming, Incoming()); sent = c.value(.sent, []); subset = c.value(.subset, [])
         routing = c.value(.routing, []); wire = c.value(.wire, []); local = c.maybe(.local); inviteWaiting = c.value(.inviteWaiting, false)
-        flicks = c.value(.flicks, Flicks())
+        flicks = c.value(.flicks, Flicks()); chat = c.value(.chat, [])
     }
 }

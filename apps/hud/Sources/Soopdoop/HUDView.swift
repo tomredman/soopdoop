@@ -646,13 +646,20 @@ struct KnockComposer: View {
     }
 }
 
-// One line: how many questions the Operator answered today, the ones your agents asked and the ones your agents answered.
-// Agents ask with the ask_operator tool, so there is nothing to type or read here.
+// One line: how many questions the Operator answered today, the ones your agents asked and the ones your agents answered,
+// and a chat button: the Operator chat (OperatorChat.swift) is where you ask it things yourself.
 struct OperatorSection: View {
     let state: AppState
 
     var body: some View {
-        SectionHeader(title: "Operator", trailing: OperatorSection.count(state.wire, now: Date()))
+        // The section header, with a way into the chat.
+        HStack(alignment: .firstTextBaseline) {
+            Text("OPERATOR").font(Theme.mono(9.5, .medium)).tracking(1).foregroundStyle(Theme.dim)
+            Text(OperatorSection.count(state.wire, now: Date())).font(Theme.mono(9.5)).foregroundStyle(Theme.dim)
+            Spacer()
+            Button("chat") { ChatWindow.shared?.show() }.buttonStyle(HUDButtonStyle())
+        }
+        .padding(.top, 6)
     }
 
     // The agent sends the newest 20 questions (operator.log). When all 20 are from today, there may be more: "20+".

@@ -7,7 +7,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { acceptedFriendIds } from "./friends";
 import { requireDaemon, requireHacker } from "./lib/auth";
-import { answerFrom, describeError, NOT_CONFIGURED, operatorMode, pickAgent } from "./lib/claude";
+import { answerFrom, chatTurn, type ChatTurn, describeError, NOT_CONFIGURED, operatorMode, pickAgent } from "./lib/claude";
 import { relayStatus } from "./schema";
 
 const TIMEOUT_MS = 90_000;
@@ -16,7 +16,7 @@ const MAX_QUESTION = 500;
 // Questions cost the crew money: at most this many per hacker per minute.
 const PER_MINUTE = 6;
 
-async function startRelay(ctx: MutationCtx, asker: Doc<"hackers">, question: string): Promise<Id<"relays">> {
+async function startRelay(ctx: MutationCtx, asker: Doc<"hackers">, question: string, via?: "chat"): Promise<Id<"relays">> {
   const q = question.trim();
   if (q === "") throw new ConvexError("Ask a question.");
   if (q.length > MAX_QUESTION) throw new ConvexError(`Keep the question under ${MAX_QUESTION} characters.`);
@@ -30,7 +30,7 @@ async function startRelay(ctx: MutationCtx, asker: Doc<"hackers">, question: str
     .take(PER_MINUTE);
   const oldest = recent[PER_MINUTE - 1];
   if (oldest !== undefined && now - oldest.createdAt < 60_000) throw new ConvexError("That is a lot of questions. Wait a minute.");
-  const id = await ctx.db.insert("relays", { askerHackerId: asker._id, question: q, status: "routing", createdAt: now });
+  const id = await ctx.db.insert("relays", { askerHackerId: asker._id, question: q, status: "routing", createdAt: now, via });
   await ctx.scheduler.runAfter(0, internal.operator.route, { relayId: id });
   await ctx.scheduler.runAfter(TIMEOUT_MS, internal.operator.expire, { relayId: id });
   return id;
@@ -46,13 +46,23 @@ export const ask = mutation({
   },
 });
 
-// From the HUD.
+// From the HUD of apps before the chat.
 export const askAsHacker = mutation({
   args: { question: v.string() },
   returns: v.id("relays"),
   handler: async function (ctx, args) {
     const me = await requireHacker(ctx);
     return await startRelay(ctx, me, args.question);
+  },
+});
+
+// A message in the Operator chat (the app). The Operator answers it itself, or asks a crewmate's agent (route).
+export const chat = mutation({
+  args: { text: v.string() },
+  returns: v.id("relays"),
+  handler: async function (ctx, args) {
+    const me = await requireHacker(ctx);
+    return await startRelay(ctx, me, args.text, "chat");
   },
 });
 
@@ -71,6 +81,8 @@ const relayView = v.object({
   finishedAt: v.optional(v.number()),
   // Whether the viewer asked it or their agent answered it.
   role: v.union(v.literal("asked"), v.literal("answered")),
+  via: v.optional(v.literal("chat")),
+  byOperator: v.optional(v.boolean()),
 });
 
 async function handleOf(ctx: QueryCtx, id: Id<"hackers"> | undefined): Promise<string | undefined> {
@@ -93,6 +105,8 @@ async function view(ctx: QueryCtx, r: Doc<"relays">, role: "asked" | "answered")
     createdAt: r.createdAt,
     finishedAt: r.finishedAt,
     role,
+    via: r.via,
+    byOperator: r.byOperator,
   };
 }
 
@@ -123,7 +137,7 @@ export const readsFor = query({
       .collect();
     return rows.flatMap(function (r) {
       return r.targetMachine === daemon.machineName && r.targetAgentId !== undefined
-        ? [{ relayId: r._id, agentId: r.targetAgentId, question: r.question }]
+        ? [{ relayId: r._id, agentId: r.targetAgentId, question: r.routedQuestion ?? r.question }]
         : [];
     });
   },
@@ -159,6 +173,25 @@ export const log = query({
   },
 });
 
+// The Operator chat: my messages and its replies, oldest first, the last 30.
+export const chatLog = query({
+  args: {},
+  returns: v.array(relayView),
+  handler: async function (ctx) {
+    const me = await requireHacker(ctx);
+    const mine = await ctx.db
+      .query("relays")
+      .withIndex("by_asker", function (r) {
+        return r.eq("askerHackerId", me._id);
+      })
+      .order("desc")
+      .take(200);
+    const out = [];
+    for (const r of mine.filter(function (x) { return x.via === "chat"; }).slice(0, 30).reverse()) out.push(await view(ctx, r, "asked"));
+    return out;
+  },
+});
+
 const candidate = v.object({
   hackerId: v.id("hackers"),
   handle: v.string(),
@@ -186,10 +219,37 @@ async function linkedName(ctx: QueryCtx, hackerId: Id<"hackers">): Promise<strin
 // The open, live agents of the asker's crewmates, with their routing summaries. For now the crew is the asker's friends.
 export const candidates = internalQuery({
   args: { relayId: v.id("relays") },
-  returns: v.union(v.null(), v.object({ question: v.string(), candidates: v.array(candidate) })),
+  returns: v.union(v.null(), v.object({
+    question: v.string(),
+    via: v.optional(v.literal("chat")),
+    asker: v.string(),
+    // For a chat message: the chat so far (the last few finished turns), so a follow-up makes sense.
+    history: v.array(v.object({ you: v.string(), operator: v.string() })),
+    candidates: v.array(candidate),
+  })),
   handler: async function (ctx, args) {
     const relay = await ctx.db.get("relays", args.relayId);
     if (relay === null || relay.status !== "routing") return null;
+    const history: { you: string; operator: string }[] = [];
+    if (relay.via === "chat") {
+      const earlier = await ctx.db
+        .query("relays")
+        .withIndex("by_asker", function (r) {
+          return r.eq("askerHackerId", relay.askerHackerId);
+        })
+        .order("desc")
+        .take(40);
+      const turns = earlier
+        .filter(function (r) { return r.via === "chat" && r._id !== relay._id && r.status !== "routing" && r.status !== "reading"; })
+        .slice(0, 6)
+        .reverse();
+      for (const r of turns) {
+        const target = r.byOperator === true ? undefined : await handleOf(ctx, r.targetHackerId);
+        const said = r.answer ?? r.note ?? "No answer.";
+        history.push({ you: r.question, operator: target === undefined ? said : `(asked @${target}'s agent) ${said}` });
+      }
+    }
+    const asker = (await handleOf(ctx, relay.askerHackerId)) ?? "";
     const now = Date.now();
     const out = [];
     for (const id of await acceptedFriendIds(ctx, relay.askerHackerId)) {
@@ -227,7 +287,7 @@ export const candidates = internalQuery({
         }
       }
     }
-    return { question: relay.question, candidates: out };
+    return { question: relay.question, via: relay.via, asker, history, candidates: out };
   },
 });
 
@@ -239,6 +299,31 @@ export const route = internalAction({
     if (found === null) return null;
     async function end(status: "nobody" | "error", note: string): Promise<null> {
       await ctx.runMutation(internal.operator.finish, { relayId: args.relayId, status, note });
+      return null;
+    }
+    // A chat message: the Operator answers it itself, or asks one agent a question that stands alone.
+    if (found.via === "chat") {
+      if (operatorMode() === null) return await end("error", NOT_CONFIGURED);
+      let turn: ChatTurn;
+      try {
+        turn = await chatTurn(found.question, found.history, found.candidates, found.asker);
+      } catch (e) {
+        return await end("error", describeError(e));
+      }
+      if ("reply" in turn) {
+        await ctx.runMutation(internal.operator.finish, { relayId: args.relayId, status: "answered", answer: turn.reply, byOperator: true });
+        return null;
+      }
+      const picked = found.candidates[turn.ask];
+      if (picked === undefined) return await end("nobody", "I couldn't find the right agent for that.");
+      await ctx.runMutation(internal.operator.setTarget, {
+        relayId: args.relayId,
+        targetHackerId: picked.hackerId,
+        targetMachine: picked.machineName,
+        targetAgentId: picked.agentId,
+        targetAgentName: picked.shareAgentNames ? picked.agentName : undefined,
+        routedQuestion: turn.question,
+      });
       return null;
     }
     if (found.candidates.length === 0) return await end("nobody", "No crewmate has an open agent running right now.");
@@ -269,6 +354,7 @@ export const setTarget = internalMutation({
     targetMachine: v.string(),
     targetAgentId: v.string(),
     targetAgentName: v.optional(v.string()),
+    routedQuestion: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async function (ctx, args) {
@@ -289,6 +375,7 @@ export const finish = internalMutation({
     note: v.optional(v.string()),
     tokensRead: v.optional(v.number()),
     tokensSent: v.optional(v.number()),
+    byOperator: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async function (ctx, args) {
@@ -330,7 +417,7 @@ export const relayForDaemon = internalQuery({
     if (relay === null || relay.status !== "reading") return null;
     if (relay.targetHackerId !== hacker._id || relay.targetMachine !== daemon.machineName) return null;
     // Whose agent is read, so the answer credits the work to them and to nobody else.
-    return { relayId: relay._id, question: relay.question, owner: { handle: hacker.handle, name: await linkedName(ctx, hacker._id) } };
+    return { relayId: relay._id, question: relay.routedQuestion ?? relay.question, owner: { handle: hacker.handle, name: await linkedName(ctx, hacker._id) } };
   },
 });
 
@@ -360,18 +447,28 @@ const dryRunCandidate = v.object({
   summary: v.optional(v.string()),
 });
 
-// Tries the Operator's two Claude calls on made-up agents, to check the prompts against the real model:
+// Tries the Operator's Claude calls on made-up agents, to check the prompts against the real model:
 // npx convex run --prod operator:dryRun '{"question": "...", "candidates": [...], "context": "...", "owner": "tom"}'
-// Reads no hacker's data and stores nothing.
+// With "chatAs": "tom" (and "history"), it also runs one turn of the chat. Reads no hacker's data and stores nothing.
 export const dryRun = internalAction({
-  args: { question: v.string(), candidates: v.array(dryRunCandidate), context: v.optional(v.string()), owner: v.optional(v.string()) },
-  returns: v.object({ picked: v.union(v.null(), v.string()), answer: v.union(v.null(), v.string()) }),
+  args: {
+    question: v.string(),
+    candidates: v.array(dryRunCandidate),
+    context: v.optional(v.string()),
+    owner: v.optional(v.string()),
+    chatAs: v.optional(v.string()),
+    history: v.optional(v.array(v.object({ you: v.string(), operator: v.string() }))),
+  },
+  returns: v.object({ picked: v.union(v.null(), v.string()), answer: v.union(v.null(), v.string()), chat: v.optional(v.string()) }),
   handler: async function (_ctx, args) {
     const index = await pickAgent(args.question, args.candidates);
     const picked = index === null ? null : (args.candidates[index]?.handle ?? null);
     const answer = args.context === undefined || args.owner === undefined
       ? null
       : (await answerFrom(args.question, args.context, { handle: args.owner })).text;
-    return { picked, answer };
+    if (args.chatAs === undefined) return { picked, answer };
+    const turn = await chatTurn(args.question, args.history ?? [], args.candidates, args.chatAs);
+    const chat = "reply" in turn ? `reply: ${turn.reply}` : `ask @${args.candidates[turn.ask]?.handle ?? "?"}: ${turn.question}`;
+    return { picked, answer, chat };
   },
 });

@@ -77,7 +77,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             if let knock, knock.id != lastKnock {
                 post(id: "knock-\(knock.id)", title: "@\(knock.fromHandle) wants you to see this", body: knock.item.title, category: "knock")
             }
-            for relay in state.wire where finished.contains(relay.id) && !finishedRelays.contains(relay.id) {
+            // A chat reply in front of you needs no notification.
+            let chatting = ChatWindow.shared?.visible ?? false
+            for relay in state.wire where finished.contains(relay.id) && !finishedRelays.contains(relay.id) && !(chatting && relay.via == "chat") {
                 let body = relay.status == "answered" ? (relay.answer ?? "") : (relay.note ?? "No answer.")
                 post(id: "relay-\(relay.id)", title: "The Operator: \(relay.question)", body: body, category: nil)
             }

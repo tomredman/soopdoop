@@ -1,5 +1,5 @@
-// ABOUTME: The Operator's Claude calls: pick the crewmate agent most likely to know, and (for daemons that still send a slice)
-// ABOUTME: answer from what it read; plus the check on an agent's own answer. OPERATOR_FAKE=1 answers without Claude, for tests.
+// ABOUTME: The Operator's Claude calls: pick the crewmate agent most likely to know, chat with a hacker (answer or route), and
+// ABOUTME: for daemons that still send a slice, answer from it; plus the check on an agent's answer. OPERATOR_FAKE=1 skips Claude.
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "../_generated/server";
 
@@ -80,6 +80,82 @@ function answerer(owner: { handle: string; name?: string }): string {
     `with exactly ${NOT_FOUND}. Otherwise answer from that conversation only, in at most three short sentences, naming ` +
     `files or functions when they help. Never repeat secrets, keys or credentials, even if they appear.`
   );
+}
+
+// One turn of the Operator chat: the Operator answers itself, or asks one crewmate's agent a question that stands alone.
+export type ChatTurn = { reply: string } | { ask: number; question: string };
+
+function chatter(me: string): string {
+  return (
+    `You are the Operator, the switchboard of a soopdoop crew: developers who each run coding agents. You are chatting ` +
+    `with @${me}. You know which crewmates have an open agent and a one-line summary of what each agent is working on. ` +
+    `You never see anyone's code or conversations. For each new message, do one of two things. Answer it yourself when ` +
+    `it is small talk, about the crew (who is around, who works on what, going by the summaries), or about this chat. ` +
+    `Or ask one crewmate's agent, when the answer needs that agent's own knowledge of the project; a question about a ` +
+    `person goes only to that person's agents. Reply with JSON only, either {"reply": "<your answer>"} or ` +
+    `{"ask": <agent number>, "question": "<the question for that agent, written to stand alone without this chat>"}. ` +
+    `Keep a reply to three short sentences, plain and a little playful. Never make up facts about code or people.`
+  );
+}
+
+// The JSON the chat call asked for. Anything else is taken as the Operator's own reply.
+export function parseChatTurn(text: string, agents: number): ChatTurn {
+  const json = /\{[\s\S]*\}/.exec(text)?.[0];
+  if (json !== undefined) {
+    try {
+      const raw: unknown = JSON.parse(json);
+      if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+        if ("ask" in raw && typeof raw.ask === "number" && Number.isInteger(raw.ask) && raw.ask >= 1 && raw.ask <= agents &&
+          "question" in raw && typeof raw.question === "string" && raw.question.trim() !== "") {
+          return { ask: raw.ask - 1, question: raw.question.trim().slice(0, 500) };
+        }
+        if ("reply" in raw && typeof raw.reply === "string" && raw.reply.trim() !== "") return { reply: raw.reply.trim() };
+      }
+    } catch {
+      // Not JSON after all: read it as the reply.
+    }
+  }
+  return { reply: text.trim() === "" ? "Hmm. Say that again?" : text.trim() };
+}
+
+// The Operator's turn in a chat with @me, given the chat so far and the crew's open agents.
+export async function chatTurn(message: string, history: { you: string; operator: string }[], candidates: Candidate[], me: string): Promise<ChatTurn> {
+  // A question about @someone goes only to their own agents.
+  const mentioned = mentionedHandles(message);
+  const pool = candidates.flatMap(function (c, i) { return mentioned.length === 0 || mentioned.includes(c.handle) ? [i] : []; });
+  if (operatorMode() === "fake") {
+    // The candidate whose summary shares a word with the message; otherwise the Operator answers itself.
+    const q = words(message);
+    for (const i of pool) {
+      const c = candidates[i];
+      if (c !== undefined && [...words(`${c.agentName} ${c.workspace ?? ""} ${c.summary ?? ""}`)].some(function (w) { return q.has(w); })) {
+        return { ask: i, question: message };
+      }
+    }
+    return { reply: pool.length === 0 ? "Nobody's agents are around right now. Just me." : "None of the agents I know about works on that." };
+  }
+  const listed = pool.flatMap(function (i, n) { const c = candidates[i]; return c === undefined ? [] : [candidateLine(c, n)]; });
+  const said = history.map(function (h) { return `@${me}: ${h.you}\nOperator: ${h.operator}`; }).join("\n");
+  const response = await client().beta.messages.create({
+    model: MODEL,
+    max_tokens: 16000,
+    betas: [FALLBACK_BETA],
+    fallbacks: "default",
+    output_config: { effort: "low" },
+    system: chatter(me),
+    messages: [{
+      role: "user",
+      content: `Agents:\n${listed.length === 0 ? "(nobody has an open agent running)" : listed.join("\n")}\n\n` +
+        `Chat so far:\n${said === "" ? "(a new chat)" : said}\n\nNew message from @${me}: ${message}`,
+    }],
+  });
+  if (response.stop_reason === "refusal") return { reply: "I'll pass on that one." };
+  const turn = parseChatTurn(textOf(response.content), listed.length);
+  if ("ask" in turn) {
+    const index = pool[turn.ask];
+    return index === undefined ? { reply: "I couldn't find the right agent for that." } : { ask: index, question: turn.question };
+  }
+  return turn;
 }
 
 // What a refused or failed Claude call means for the asker, in a sentence.

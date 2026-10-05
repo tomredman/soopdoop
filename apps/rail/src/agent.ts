@@ -39,6 +39,8 @@ export interface AppState {
   inviteWaiting: boolean;
   // Who flicked me (catchable until catchUntil), whom I flicked and wait on, my flicks caught lately, my superflicks.
   flicks: FunctionReturnType<typeof api.flicks.mine>;
+  // The Operator chat: my messages and its replies, oldest first.
+  chat: Relay[];
 }
 
 export interface Agent {
@@ -59,6 +61,7 @@ const EMPTY = {
   routing: [],
   wire: [],
   flicks: { incoming: [], waitingOn: [], caught: [], superflicks: { ready: 0, clean: 0, every: 5 } },
+  chat: [],
 };
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -161,6 +164,7 @@ export function createAgent(server: LocalServer, open: (url: string) => Promise<
       c.onUpdate(api.routing.mine, {}, function (routing) { set({ routing }); }, logError),
       c.onUpdate(api.operator.log, {}, function (wire) { set({ wire }); }, logError),
       c.onUpdate(api.flicks.mine, {}, function (flicks) { set({ flicks }); }, logError),
+      c.onUpdate(api.operator.chatLog, {}, function (chat) { set({ chat }); }, logError),
     );
   }
 
@@ -341,6 +345,9 @@ export function createAgent(server: LocalServer, open: (url: string) => Promise<
         return null;
       case "ask":
         await live().mutation(api.operator.askAsHacker, { question: text(args, "question") });
+        return null;
+      case "chat":
+        await live().mutation(api.operator.chat, { text: text(args, "text") });
         return null;
       case "setHideFromBoards":
         await live().mutation(api.hackers.setHideFromBoards, { hide: flag(args, "hide") });
