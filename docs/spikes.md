@@ -156,6 +156,24 @@ Checked:
 
 Not checked: production (the prompts ship with the next release). The Operator still does not see the asker's own agents.
 
+## The app icon on Apple's template (5 Oct 2026)
+
+Why: the icon was a 3D render of a tilted tile on a clear background. Its solid part was 823 × 835 px, lower than the middle, with a faint haze in the corners. macOS 26 drew it shrunk on a grey plate, because its shape was not Apple's. macOS 14 and 15 drew it as it was, a little smaller than other apps.
+
+What changed: `apps/hud/icon/build.sh` makes the icon in three steps.
+
+- `icon.py` renders the art in Blender 3.6 with Cycles on the GPU (Metal): the two eyes, face-on, on a dark surface that fills the square, at 2048 px. The settings: up to 2,048 samples, with adaptive sampling (threshold 0.002) and the OpenImageDenoise denoiser guided by the albedo and normal passes; path-traced global illumination with 16 bounces (8 diffuse, 8 glossy), caustics on and no fast-GI shortcut, and an indirect clamp of 10 against fireflies; a Blackman-Harris pixel filter; 16-bit output through Filmic. In the compositor, a denoised ambient occlusion pass darkens the creases by 35%, and a fog glow blooms around the neon. The render takes about 6 minutes on an M1 Max.
+- `template.swift` fits the art to Apple's template at every size an `.icns` holds. The body is an 824 px square with continuous corners (radius 185.4), 100 px in from each edge of the 1024 px canvas. Around it the icon is see-through, with a soft shadow (10 px down, 16 px blur, 30% black), and a thin light rim inside the edge helps it read on a dark Dock. Each size is drawn straight from the 2048 px art.
+- `iconutil` packs `AppIcon.icns`, and `icon-1024.png` is a copy of the 1024 px size to look at.
+
+Checked:
+
+- The body measures 824 × 824 px at 100 to 923, and the corners are fully see-through. The `.icns` holds all 10 sizes, from 16 to 1024 px, in sRGB.
+- macOS 26.6 on this Mac, asked through `NSWorkspace` `icon(forFile:)` with a test bundle: the old icon came back shrunk on a grey plate, and the new one came back as it is, the same size as Terminal, Notes and Xcode.
+- The 1024 px icon, cropped and looked at full size: no noise, smooth gradients, and sharp edges on the rings. The 64 px and 32 px sizes still show both eyes, on light and dark backgrounds.
+
+Not checked: a Mac on macOS 14 or 15 (there is none here), and the icon in the Dock and in notifications, which waits for a release.
+
 ## Spike 1: our hooks beside Superset's (29 Sep 2026)
 
 The installer adds one `soopdoop hook <event>` command per Claude Code event and leaves every other hook alone; reinstalling does not duplicate; uninstalling removes only ours. This is unit-tested (`apps/daemon/src/hooks.test.ts`), including the absolute-path form the installer now writes by default (`<bun> <cli.ts> hook <event>`), so the hook works without anything on PATH.
