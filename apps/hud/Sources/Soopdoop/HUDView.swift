@@ -446,15 +446,15 @@ struct KnockComposer: View {
         VStack(alignment: .leading, spacing: 6) {
             TextField("What is it? e.g. the coupon fix", text: $title).textFieldStyle(.roundedBorder).font(Theme.mono(11))
             TextField("https://… (optional)", text: $url).textFieldStyle(.roundedBorder).font(Theme.mono(11))
+            // The lifetime gets its own row: beside it, the buttons had no room and wrapped ("Cance/l", "Knoc/k").
+            Picker("", selection: $seconds) {
+                Text("10 s").tag(10)
+                Text("30 s").tag(30)
+                Text("2 min").tag(120)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
             HStack {
-                Picker("", selection: $seconds) {
-                    Text("10 s").tag(10)
-                    Text("30 s").tag(30)
-                    Text("2 min").tag(120)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 150)
                 Spacer()
                 Button("Cancel") { composing = nil }.buttonStyle(HUDButtonStyle())
                 Button("Knock", action: send).buttonStyle(HUDButtonStyle(primary: true)).disabled(title.isEmpty)

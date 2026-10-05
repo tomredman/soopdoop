@@ -141,6 +141,9 @@ struct HUDButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(Theme.mono(11))
+            // One line at its own width: in a tight row the text beside it gives way, never the button ("Knoc/k").
+            .lineLimit(1)
+            .fixedSize()
             .foregroundStyle(primary ? Theme.text : Theme.muted)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
