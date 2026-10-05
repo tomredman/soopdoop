@@ -14,6 +14,7 @@ import { answerReads, summaryFor, updateRouting } from "./operator";
 import {
   answers, DAEMON_PORT, isLoaded, load, openInBrowser, plistPath, portOwner, RAIL_URL, restart, serviceSpecs, unload, waitFor, writePlist,
 } from "./service";
+import { installSkill, removeSkill, skillDir, skillInstalled } from "./skill";
 import { apply, parseHookEvent, sweep, toReport, type Subset } from "./state";
 import {
   applyUpdate, checkForUpdate, currentVersion, defaultSteps, installDir, isInstall, isNewer, parseVersion, readUpdateState,
@@ -31,6 +32,8 @@ const ROOT = path.resolve(import.meta.dir, "..", "..", "..");
 const HOOK_FILE = path.join(import.meta.dir, "hook.ts");
 // The MCP server Claude Code starts for the ask_operator tool.
 const MCP_FILE = path.join(import.meta.dir, "mcp.ts");
+// The skill that tells Claude Code sessions when to use that tool. Setup copies it into ~/.claude/skills.
+const SKILL_FILE = path.join(ROOT, "packages", "plugin", "skills", "soopdoop", "SKILL.md");
 // The daemon does not import the backend's generated API; it names the one public mutation it calls.
 const reportSubset = makeFunctionReference<"mutation">("subsets:report");
 
@@ -258,6 +261,9 @@ async function setup(args: string[]): Promise<void> {
     const backup = await backUpClaudeSettings();
     await installClaudeHooks(guardedHook(process.execPath, HOOK_FILE));
     say(`· Claude Code hooks added to ${tilde(claudeSettingsPath())}${backup === null ? "" : ` (your old file: ${tilde(backup)})`}`);
+    // Every setup and update writes it again, so it always matches this version.
+    const skill = await installSkill(SKILL_FILE);
+    say(`· Claude Code sessions get the soopdoop skill, which tells them when to ask the Operator (${tilde(skill)}).`);
   } else {
     say("· Claude Code not found (no ~/.claude). Your agents will not show until you install it and run setup again.");
   }
@@ -388,6 +394,7 @@ async function status(): Promise<void> {
   const ours = (await claude.exists()) && (await claude.text()).includes(HOOK_FILE);
   console.log(`hooks   ${ours ? "installed" : "not installed for this checkout"} · ${tilde(claudeSettingsPath())}`);
   console.log(`operator ${(await mcpRegistered()) ? "ask_operator tool registered in Claude Code" : "ask_operator tool not registered (run soopdoop setup from a terminal)"}`);
+  console.log(`skill   ${(await skillInstalled()) ? "installed" : "not installed (run soopdoop setup)"} · ${tilde(skillDir())}`);
 }
 
 // `soopdoop update` installs the newest release; `--to vX.Y.Z` moves to that release (also back);
@@ -438,6 +445,7 @@ async function uninstall(): Promise<void> {
     Bun.spawnSync([claude, "mcp", "remove", "--scope", "user", "soopdoop"], { stdout: "pipe", stderr: "pipe" });
     console.log("· Removed the ask_operator tool from Claude Code.");
   }
+  if (await removeSkill()) console.log(`· Removed the soopdoop skill from ${tilde(skillDir())}.`);
   if (process.platform === "darwin") {
     for (const spec of serviceSpecs(ROOT, process.execPath, soopdoopHome())) {
       await unload(spec.label);
@@ -467,7 +475,7 @@ soopdoop open | logs                            show the HUD (the web rail if th
 soopdoop update [--to <version>]                install the newest release (or move to one, also back)
 soopdoop auto-update [on|off]                   whether new releases install themselves (on by default)
 soopdoop start | stop | restart                 the background services
-soopdoop uninstall                              remove the hooks, the background services, the app and the ask_operator tool
+soopdoop uninstall                              remove the hooks, the background services, the app, the ask_operator tool and the skill
 soopdoop pair <convex-url> <token>              pair by hand (the rail does this for you)
 soopdoop install-hooks | uninstall-hooks | serve | hook <event>`;
 
