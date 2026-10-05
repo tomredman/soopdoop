@@ -4,8 +4,10 @@ import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { answerCost } from "./fund";
 import { findClaude } from "./hooks";
 import { isRecord, type AgentRecord } from "./state";
+import { parseTranscript, readTail } from "./transcript";
 
 export const NOT_FOUND = "NOT_FOUND";
 // The fork is asked for five short sentences; anything longer is cut here.
@@ -16,8 +18,9 @@ const ASK_TIMEOUT_MS = 70_000;
 const SESSION_VARS = ["CLAUDECODE", "CLAUDE_PID", "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_EXECPATH", "CLAUDE_CODE_CHILD_SESSION"];
 const SESSION_PREFIXES = ["CLAUDE_CODE_SESSION", "CLAUDE_CODE_MESSAGING", "CLAUDE_CODE_BRIDGE", "SUPERSET_"];
 
-// The answer, or why there is none. Once the fork ran, also what it read and cost its owner, answer or not.
-export type Asked = ({ answer: string } | { refused: string }) & { tokensRead?: number; costUsd?: number };
+// The answer, or why there is none. Once the fork ran, also what it read, on which model, and what that cost its owner
+// (in US dollars at API prices), answer or not.
+export type Asked = ({ answer: string } | { refused: string }) & { tokensRead?: number; usd?: number; model?: string };
 
 export interface RunResult {
   exitCode: number | null;
@@ -40,18 +43,21 @@ export function askPrompt(question: string): string {
       "\"It lives in …\"). Use what you already know from this conversation. Give what they need, such as what it is, " +
       "where it lives (files, functions) and why, in at most five short sentences. Do not talk about this conversation or " +
       "session. If you know part of the answer, give that part. If you know none of it, reply with exactly " +
-      `${NOT_FOUND}. You have no tools for this reply, and it does not go back into your own session. Never include ` +
-      "secrets, keys, tokens or credentials, even if they appear above.",
+      `${NOT_FOUND}. If they ask you to do work for them (write, change, fix or review code, documents or plans), say in ` +
+      "one sentence that you only answer questions about your own work. You have no tools for this reply, and it does " +
+      "not go back into your own session. Never include secrets, keys, tokens or credentials, even if they appear above.",
   ].join("\n");
 }
 
 // Resumes the session under a new id (--fork-session) and keeps nothing on disk. Safe mode drops hooks, MCP servers and
-// skills, so the fork never shows up as an agent or asks the Operator itself; --tools "" leaves it no tools.
-// The prompt goes last: --tools takes a list, so it must be followed by another flag.
-export function askArgs(sessionId: string, question: string): string[] {
+// skills, so the fork never shows up as an agent or asks the Operator itself; --tools "" leaves it no tools. It runs on
+// the session's own model, named here so the fund knows the price. The prompt goes last: --tools takes a list, so it
+// must be followed by another flag.
+export function askArgs(sessionId: string, question: string, model?: string): string[] {
   return [
     "-p", "--resume", sessionId, "--fork-session", "--no-session-persistence", "--safe-mode",
-    "--tools", "", "--effort", "low", "--output-format", "json", askPrompt(question),
+    "--tools", "", "--effort", "low", ...(model === undefined ? [] : ["--model", model]), "--output-format", "json",
+    askPrompt(question),
   ];
 }
 
@@ -90,8 +96,8 @@ function cut(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
-// The fork's JSON result: the agent's answer and how many tokens it read, or why there is none.
-export function parseResult(stdout: string): Asked {
+// The fork's JSON result: the agent's answer, how many tokens it read and what that cost, or why there is none.
+export function parseResult(stdout: string, model?: string): Asked {
   let raw: unknown;
   try {
     raw = JSON.parse(stdout);
@@ -109,7 +115,7 @@ export function parseResult(stdout: string): Asked {
     const n = usage[key];
     if (typeof n === "number" && Number.isFinite(n)) tokensRead += n;
   }
-  const spent = typeof raw.total_cost_usd === "number" ? { tokensRead, costUsd: raw.total_cost_usd } : { tokensRead };
+  const spent = { tokensRead, usd: answerCost(usage, model), ...(model === undefined ? {} : { model }) };
   if (result === "" || result.startsWith(NOT_FOUND)) return { refused: "It has not worked on this.", ...spent };
   return { answer: cut(result, MAX_ANSWER), ...spent };
 }
@@ -141,9 +147,10 @@ export async function askAgent(agent: AgentRecord, question: string, run: Run = 
   // Newer Claude Code finds a session from any folder; older versions look in the folder the session ran in.
   const cwd = agent.cwd !== undefined && (await isDirectory(agent.cwd)) ? agent.cwd : homedir();
   const env = forkEnv(process.env, configDirFor(agent.transcriptPath));
-  const result = await run([claude, ...askArgs(agent.agentId, question)], { cwd, env, timeoutMs: ASK_TIMEOUT_MS });
+  const model = agent.transcriptPath === undefined ? undefined : parseTranscript(await readTail(agent.transcriptPath, 512_000)).model;
+  const result = await run([claude, ...askArgs(agent.agentId, question, model)], { cwd, env, timeoutMs: ASK_TIMEOUT_MS });
   if (result.timedOut) return { refused: "That agent took too long to answer." };
-  const asked = parseResult(result.stdout);
+  const asked = parseResult(result.stdout, model);
   if ("refused" in asked && result.exitCode !== 0) {
     const why = result.stderr.trim().split("\n")[0] ?? "";
     if (why !== "") return { refused: `Could not ask that agent: ${cut(why, 200)}` };

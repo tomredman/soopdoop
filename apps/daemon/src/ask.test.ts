@@ -35,6 +35,11 @@ function result(text: string, over: Record<string, unknown> = {}): string {
 describe("asking an agent", function () {
   test("forks the session without saving it, with no tools, hooks or MCP servers, and puts the question last", function () {
     const args = askArgs("s1", "where is the retry limit?");
+    // On the session's own model when it is known, so the fund knows the price.
+    const onModel = askArgs("s1", "where is the retry limit?", "claude-opus-5-5");
+    expect(onModel.slice(onModel.indexOf("--model"), onModel.indexOf("--model") + 2)).toEqual(["--model", "claude-opus-5-5"]);
+    expect(onModel.at(-1)).toBe(askPrompt("where is the retry limit?"));
+    expect(args).not.toContain("--model");
     expect(args.slice(0, 3)).toEqual(["-p", "--resume", "s1"]);
     for (const flag of ["--fork-session", "--no-session-persistence", "--safe-mode"]) expect(args).toContain(flag);
     // --tools takes a list: its empty value must be followed by another flag, never by the prompt.
@@ -44,6 +49,8 @@ describe("asking an agent", function () {
     expect(args.at(-1)).toBe(askPrompt("where is the retry limit?"));
     expect(askPrompt("where is the retry limit?")).toContain("<question>\nwhere is the retry limit?\n</question>");
     expect(askPrompt("x")).toContain(NOT_FOUND);
+    // It answers questions; it does not take work orders.
+    expect(askPrompt("x")).toContain("you only answer questions about your own work");
   });
 
   test("resumes a session kept outside ~/.claude from its own config folder", function () {
@@ -84,10 +91,16 @@ describe("asking an agent", function () {
   });
 
   test("reads the answer and what it cost to read; NOT_FOUND and failures become reasons", function () {
-    expect(parseResult(result("It is MAX_RETRIES in src/retry.ts."))).toEqual({ answer: "It is MAX_RETRIES in src/retry.ts.", tokensRead: 6_510, costUsd: 0.03 });
+    // The cost comes from the copy's own usage at the model's prices: 10 input, 6,000 cache writes, 500 cache reads and
+    // 90 output tokens on Claude Opus 5.5. total_cost_usd (0.03 here) is not used: it counts the session's past too.
+    const usd = (10 * 4 + 6_000 * 5 + 500 * 0.2 + 90 * 20) / 1_000_000;
+    expect(parseResult(result("It is MAX_RETRIES in src/retry.ts."), "claude-opus-5-5")).toEqual({
+      answer: "It is MAX_RETRIES in src/retry.ts.", tokensRead: 6_510, usd, model: "claude-opus-5-5",
+    });
     // Not knowing still cost the owner a read; the log on their machine says so.
-    expect(parseResult(result(`${NOT_FOUND}`))).toEqual({ refused: "It has not worked on this.", tokensRead: 6_510, costUsd: 0.03 });
-    expect(parseResult(result("  ", { total_cost_usd: undefined }))).toEqual({ refused: "It has not worked on this.", tokensRead: 6_510 });
+    expect(parseResult(result(`${NOT_FOUND}`), "claude-opus-5-5")).toEqual({ refused: "It has not worked on this.", tokensRead: 6_510, usd, model: "claude-opus-5-5" });
+    // An unknown model is priced like the dearest one.
+    expect(parseResult(result("  "))).toEqual({ refused: "It has not worked on this.", tokensRead: 6_510, usd: (10 * 10 + 6_000 * 12.5 + 500 * 1 + 90 * 50) / 1_000_000 });
     expect(parseResult(result("Prompt is too long", { subtype: "error_during_execution", is_error: true }))).toEqual({
       refused: "Could not ask that agent: Prompt is too long",
     });
@@ -126,5 +139,24 @@ describe("asking an agent", function () {
     expect(await askAgent(agent, "where?", fake({ exitCode: 0, stdout: "", stderr: "", timedOut: false }), null)).toEqual({
       refused: "Claude Code is not installed where soopdoop can find it on that machine.",
     });
+  });
+
+  test("asks on the model of the agent's last reply, and prices the answer at that model's rates", async function () {
+    const dir = await tempDir();
+    const transcript = path.join(dir, "s1.jsonl");
+    await writeFile(transcript, [
+      JSON.stringify({ type: "assistant", message: { model: "claude-opus-5-5", content: [{ type: "text", text: "first" }] } }),
+      JSON.stringify({ type: "assistant", message: { model: "claude-sonnet-5-5", content: [{ type: "text", text: "then" }] } }),
+      // A reply Claude Code wrote itself has no real model.
+      JSON.stringify({ type: "assistant", message: { model: "<synthetic>", content: [{ type: "text", text: "cancelled" }] } }),
+    ].join("\n") + "\n");
+    const calls: string[][] = [];
+    async function run(cmd: string[]) {
+      calls.push(cmd);
+      return { exitCode: 0, stdout: result("Here."), stderr: "", timedOut: false };
+    }
+    const asked = await askAgent(agentRecord({ cwd: dir, transcriptPath: transcript }), "where?", run, "/bin/claude");
+    expect(calls[0]?.slice(calls[0].indexOf("--model"), calls[0].indexOf("--model") + 2)).toEqual(["--model", "claude-sonnet-5-5"]);
+    expect(asked).toMatchObject({ answer: "Here.", model: "claude-sonnet-5-5", usd: (10 * 2 + 6_000 * 2.5 + 500 * 0.2 + 90 * 10) / 1_000_000 });
   });
 });

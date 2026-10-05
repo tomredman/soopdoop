@@ -1,5 +1,5 @@
-// ABOUTME: Reads Claude Code transcripts (JSONL) on this machine: the tail of the file, the conversation in it, and the
-// ABOUTME: one-line routing summary. Pure parsing, so it is tested. Only the routing summaries use it.
+// ABOUTME: Reads Claude Code transcripts (JSONL) on this machine: the tail of the file, the conversation in it, the agent's
+// ABOUTME: model and the one-line routing summary. Pure parsing, so it is tested. The summaries and the answering copy use it.
 import { homedir } from "node:os";
 import path from "node:path";
 import { isRecord } from "./state";
@@ -16,6 +16,8 @@ export interface Parsed {
   lastPrompt?: string;
   cwd?: string;
   branch?: string;
+  // The model of the agent's last reply, which an answering copy of the session uses too.
+  model?: string;
 }
 
 const FILE_TOOLS = new Set(["Edit", "MultiEdit", "Write", "Read", "NotebookEdit"]);
@@ -42,6 +44,8 @@ export function parseTranscript(text: string): Parsed {
     if (typeof row.gitBranch === "string" && row.gitBranch !== "" && row.gitBranch !== "HEAD") parsed.branch = row.gitBranch;
     const message = row.message;
     if (!isRecord(message)) continue;
+    // "<synthetic>" marks a reply Claude Code wrote itself (an error, a cancelled turn), not a model's.
+    if (role === "assistant" && typeof message.model === "string" && message.model !== "<synthetic>") parsed.model = message.model;
     const texts: string[] = [];
     if (typeof message.content === "string") texts.push(message.content);
     else if (Array.isArray(message.content)) {

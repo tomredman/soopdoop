@@ -80,7 +80,7 @@ describe("the Operator", function () {
     const relayId = await tom.mutation(api.operator.askAsHacker, { question: "Where are expired listings filtered?" });
     await t.action(internal.operator.route, { relayId });
     // Jimmy's daemon is told which agent to ask, and the question.
-    expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([{ relayId, agentId: "a1", question: "Where are expired listings filtered?" }]);
+    expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([{ relayId, agentId: "a1", question: "Where are expired listings filtered?", asker: "tom" }]);
 
     const res = await answer(t, { token: jimmyToken, relayId, context: CONTEXT });
     expect(res.status).toBe(200);
@@ -161,7 +161,7 @@ describe("the Operator", function () {
     const aboutJimmy = await tom.mutation(api.operator.askAsHacker, { question: "where does @Jimmy filter expired listings?" });
     await t.action(internal.operator.route, { relayId: aboutJimmy });
     expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([
-      { relayId: aboutJimmy, agentId: "a1", question: "where does @Jimmy filter expired listings?" },
+      { relayId: aboutJimmy, agentId: "a1", question: "where does @Jimmy filter expired listings?", asker: "tom" },
     ]);
   });
 
@@ -200,7 +200,7 @@ describe("the Operator", function () {
     const followUp = await t.mutation(api.operator.ask, { token: tomToken, question: "@jimmy: where are expired listings filtered?" });
     await t.action(internal.operator.route, { relayId: followUp });
     expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([
-      { relayId: followUp, agentId: "a1", question: "@jimmy: where are expired listings filtered?" },
+      { relayId: followUp, agentId: "a1", question: "@jimmy: where are expired listings filtered?", asker: "tom" },
     ]);
 
     // Nobody's agent is on it: nobody is named.
@@ -227,7 +227,7 @@ describe("the Operator", function () {
     for (const [asked, routed] of cases) {
       const relayId = await tom.mutation(api.operator.askAsHacker, { question: asked });
       await t.action(internal.operator.route, { relayId });
-      expect(await t.query(api.operator.readsFor, { token: adaToken })).toEqual([{ relayId, agentId: "a1", question: routed }]);
+      expect(await t.query(api.operator.readsFor, { token: adaToken })).toEqual([{ relayId, agentId: "a1", question: routed, asker: "tom" }]);
       // Her agent's answer is about the person the question now names, so it is kept.
       await answer(t, { token: adaToken, relayId, answer: "They start in convex/segments/send.ts." });
       expect(await logged(tom, relayId)).toMatchObject({ status: "answered", question: asked, targetHandle: "adalovelace" });
@@ -277,6 +277,27 @@ describe("the Operator", function () {
     expect((await jimmy.query(api.play.board, {})).find(function (r) { return r.handle === "jimmy"; })).toMatchObject({ xp: 10, assists: 1 });
     // Answered once: a second answer is refused.
     expect((await answer(t, { token: jimmyToken, relayId, answer: "again" })).status).toBe(404);
+  });
+
+  test("when the answering Mac's anti-hijacking fund says no, the asker reads whose fund it was", async function () {
+    const t = harness();
+    const { tom, jimmyToken } = await crew(t);
+    const notes: [string, string][] = [
+      ["fund", "@jimmy's agents have spent today's answering fund."],
+      ["share", "You have used your share of @jimmy's answering fund for today."],
+      ["off", "@jimmy has turned off answering questions."],
+    ];
+    for (const [limit, note] of notes) {
+      const relayId = await tom.mutation(api.operator.askAsHacker, { question: "Where are expired listings filtered?" });
+      await t.action(internal.operator.route, { relayId });
+      expect((await answer(t, { token: jimmyToken, relayId, refused: "This crewmate's agents have spent today's answering fund.", limit })).status).toBe(200);
+      expect(await logged(tom, relayId)).toMatchObject({ status: "nobody", note, targetHandle: "jimmy" });
+    }
+    // Any other refusal is still the agent not knowing, in the daemon's words.
+    const relayId = await tom.mutation(api.operator.askAsHacker, { question: "Where are expired listings filtered?" });
+    await t.action(internal.operator.route, { relayId });
+    await answer(t, { token: jimmyToken, relayId, refused: "That agent is private.", limit: "something else" });
+    expect(await logged(tom, relayId)).toMatchObject({ status: "not-found", note: "That agent is private." });
   });
 
   test("an agent that does not know, or an answer that is too long, gives no answer", async function () {
@@ -430,7 +451,7 @@ describe("the Operator chat", function () {
     const relayId = await tom.mutation(api.operator.chat, { text: "Where are expired listings filtered in the market update?" });
     await t.action(internal.operator.route, { relayId });
     expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([
-      { relayId, agentId: "a1", question: "Where are expired listings filtered in the market update?" },
+      { relayId, agentId: "a1", question: "Where are expired listings filtered in the market update?", asker: "tom" },
     ]);
     await answer(t, { token: jimmyToken, relayId, answer: "In convex/marketUpdate/select.ts, by listDate." });
     expect((await tom.query(api.operator.chatLog, {}))[0]).toMatchObject({ status: "answered", targetHandle: "jimmy", answer: "In convex/marketUpdate/select.ts, by listDate." });
@@ -461,7 +482,7 @@ describe("the Operator chat", function () {
     const relayId = await tom.mutation(api.operator.chat, { text: "where does @jim filter expired listings for the market update?" });
     await t.action(internal.operator.route, { relayId });
     expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([
-      { relayId, agentId: "a1", question: "where does @jimmy filter expired listings for the market update?" },
+      { relayId, agentId: "a1", question: "where does @jimmy filter expired listings for the market update?", asker: "tom" },
     ]);
   });
 

@@ -19,6 +19,14 @@ function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
 }
 
+// What the asker reads when the answering Mac's anti-hijacking fund stops a question. Null for any other refusal.
+function limitNote(limit: unknown, owner: string): string | null {
+  if (limit === "off") return `@${owner} has turned off answering questions.`;
+  if (limit === "fund") return `@${owner}'s agents have spent today's answering fund.`;
+  if (limit === "share") return `You have used your share of @${owner}'s answering fund for today.`;
+  return null;
+}
+
 const http = httpRouter();
 
 http.route({
@@ -61,7 +69,11 @@ http.route({
       return json(200, { ok: true });
     }
     if (context === null) {
-      await ctx.runMutation(internal.operator.finish, { relayId, status: "not-found", note: refused ?? undefined });
+      // The daemon's anti-hijacking fund said no: nobody could answer, and the note names whose fund it was.
+      const limit = limitNote(body.limit, found.owner.handle);
+      await ctx.runMutation(internal.operator.finish, limit === null
+        ? { relayId, status: "not-found", note: refused ?? undefined }
+        : { relayId, status: "nobody", note: limit });
       return json(200, { ok: true });
     }
     try {

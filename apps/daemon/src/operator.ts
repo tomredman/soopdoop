@@ -1,11 +1,12 @@
 // ABOUTME: The daemon's side of the Operator: a routing summary for each open agent after its turns, and answers to the
-// ABOUTME: questions routed to this machine's agents, asked of the agent itself (ask.ts), once per relay. Every ask is logged here.
+// ABOUTME: questions routed to this machine's agents, asked of the agent itself (ask.ts), once per relay, within the fund. Every ask is logged.
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { ConvexClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { askAgent, type Asked } from "./ask";
 import { soopdoopHome } from "./config";
+import { estimateCost, fundLimit, readFund, readsLogPath, readSpends } from "./fund";
 import { isRecord, type AgentRecord, type Subset } from "./state";
 import { parseTranscript, readTail, routingSummary } from "./transcript";
 
@@ -17,6 +18,8 @@ export interface ReadRequest {
   agentId: string;
   // The crewmate's question, which the agent is asked. Older backends did not send it.
   question?: string;
+  // The crewmate who asked, by handle, for their share of the fund. Older backends did not send it.
+  asker?: string;
 }
 
 // HTTP actions live on the .site host of a deployment.
@@ -28,7 +31,10 @@ export function parseReads(raw: unknown): ReadRequest[] {
   if (!Array.isArray(raw)) return [];
   return raw.flatMap(function (r) {
     if (!isRecord(r) || typeof r.relayId !== "string" || typeof r.agentId !== "string") return [];
-    return [typeof r.question === "string" ? { relayId: r.relayId, agentId: r.agentId, question: r.question } : { relayId: r.relayId, agentId: r.agentId }];
+    const read: ReadRequest = { relayId: r.relayId, agentId: r.agentId };
+    if (typeof r.question === "string") read.question = r.question;
+    if (typeof r.asker === "string") read.asker = r.asker;
+    return [read];
   });
 }
 
@@ -54,32 +60,48 @@ export async function summaryFor(subset: Subset, agentId: string): Promise<strin
   return summary === "" ? null : summary;
 }
 
-// Every ask leaves a line here: which relay, which agent, how long the answer was and what it read. Never the question or the answer.
+// Every ask leaves a line here: which relay, which agent, who asked, how long the answer was, what it read and what that
+// cost. Never the question or the answer. The fund adds up the "usd" of the last 24 hours.
 export async function logRead(entry: Record<string, unknown>, home: string = soopdoopHome()): Promise<void> {
-  const dir = path.join(home, "logs");
-  await mkdir(dir, { recursive: true });
-  await appendFile(path.join(dir, "reads.log"), JSON.stringify({ at: new Date().toISOString(), ...entry }) + "\n");
+  const file = readsLogPath(home);
+  await mkdir(path.dirname(file), { recursive: true });
+  await appendFile(file, JSON.stringify({ at: new Date().toISOString(), ...entry }) + "\n");
 }
 
 // Follows this machine's questions and answers each once. Returns a function that stops following.
 export function answerReads(client: ConvexClient, token: string, convexUrl: string, subset: Subset): () => void {
   const handled = new Set<string>();
   const site = siteUrl(convexUrl);
+  // What answers still running are expected to cost, so two questions at once cannot both slip under the fund.
+  let pending = 0;
 
   async function serve(read: ReadRequest): Promise<void> {
-    const asked = await prepareAnswer(subset, read);
-    await logRead({
-      relayId: read.relayId,
-      agentId: read.agentId,
-      agent: subset.get(read.agentId)?.name,
-      sentChars: "answer" in asked ? asked.answer.length : 0,
-      tokensRead: asked.tokensRead,
-      costUsd: asked.costUsd,
-      refused: "refused" in asked ? asked.refused : undefined,
-    });
+    const spends = await readSpends();
+    const limit = fundLimit(await readFund(), spends, read, Date.now(), pending);
+    const reserved = limit === null ? estimateCost(spends, read.agentId) : 0;
+    pending += reserved;
+    let asked: Asked;
+    try {
+      asked = limit === null ? await prepareAnswer(subset, read) : { refused: limit.note };
+      await logRead({
+        relayId: read.relayId,
+        agentId: read.agentId,
+        agent: subset.get(read.agentId)?.name,
+        asker: read.asker,
+        model: asked.model,
+        sentChars: "answer" in asked ? asked.answer.length : 0,
+        tokensRead: asked.tokensRead,
+        usd: asked.usd,
+        refused: "refused" in asked ? asked.refused : undefined,
+        limit: limit?.kind,
+      });
+    } finally {
+      pending -= reserved;
+    }
+    // A refusal by the fund says which limit, so the backend can name this crewmate in its note.
     const body = "answer" in asked
       ? { token, relayId: read.relayId, answer: asked.answer, tokensRead: asked.tokensRead ?? 0 }
-      : { token, relayId: read.relayId, refused: asked.refused };
+      : { token, relayId: read.relayId, refused: asked.refused, ...(limit === null ? {} : { limit: limit.kind }) };
     try {
       const res = await fetch(`${site}/operator/answer`, {
         method: "POST",

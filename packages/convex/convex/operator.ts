@@ -138,9 +138,10 @@ export const relay = query({
 
 // What this machine's daemon must answer now: which of its agents, for which relay, and the question to ask that agent.
 // Daemons before the question was sent ignore it and send a slice of the conversation instead (http.ts).
+// The asker's handle comes along for the daemon's anti-hijacking fund, which gives each crewmate a share.
 export const readsFor = query({
   args: { token: v.string() },
-  returns: v.array(v.object({ relayId: v.id("relays"), agentId: v.string(), question: v.string() })),
+  returns: v.array(v.object({ relayId: v.id("relays"), agentId: v.string(), question: v.string(), asker: v.optional(v.string()) })),
   handler: async function (ctx, args) {
     const { hacker, daemon } = await requireDaemon(ctx, args.token);
     const rows = await ctx.db
@@ -149,11 +150,12 @@ export const readsFor = query({
         return r.eq("targetHackerId", hacker._id).eq("status", "reading");
       })
       .collect();
-    return rows.flatMap(function (r) {
-      return r.targetMachine === daemon.machineName && r.targetAgentId !== undefined
-        ? [{ relayId: r._id, agentId: r.targetAgentId, question: r.routedQuestion ?? r.question }]
-        : [];
-    });
+    const out = [];
+    for (const r of rows) {
+      if (r.targetMachine !== daemon.machineName || r.targetAgentId === undefined) continue;
+      out.push({ relayId: r._id, agentId: r.targetAgentId, question: r.routedQuestion ?? r.question, asker: await handleOf(ctx, r.askerHackerId) });
+    }
+    return out;
   },
 });
 

@@ -8,6 +8,7 @@ import { ConvexClient, ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { appBinaryPath, appBundlePath, buildApp, removeApp } from "./app";
 import { configPath, configStamp, invitePath, readConfig, readSettings, soopdoopHome, writeConfig, writeSettings, type Config } from "./config";
+import { readFund, readSpends, spentToday, writeFund } from "./fund";
 import { forwardHook } from "./hook";
 import { claudeSettingsPath, findClaude, guardedHook, installClaudeHooks, prefixedHook, uninstallClaudeHooks } from "./hooks";
 import { answerReads, summaryFor, updateRouting } from "./operator";
@@ -427,6 +428,31 @@ async function status(): Promise<void> {
   console.log(`hooks   ${ours ? "installed" : "not installed for this checkout"} · ${tilde(claudeSettingsPath())}`);
   console.log(`operator ${(await mcpRegistered()) ? "ask_operator tool registered in Claude Code" : "ask_operator tool not registered (run soopdoop setup from a terminal)"}`);
   console.log(`skill   ${(await skillInstalled()) ? "installed" : "not installed (run soopdoop setup)"} · ${tilde(skillDir())}`);
+  const fund = await readFund();
+  const spent = spentToday(await readSpends(), Date.now()).total;
+  console.log(`fund    $${spent.toFixed(2)} of $${fund.dailyUsd.toFixed(2)} spent answering crewmates in the last 24 hours · soopdoop fund`);
+}
+
+// `soopdoop fund` shows the anti-hijacking fund and what it paid for in the last 24 hours. `soopdoop fund <dollars>
+// [share]` sets how much this Mac's agents may spend answering crewmates in any 24 hours, and the part one crewmate may use.
+async function fundCommand(args: string[]): Promise<void> {
+  const [dollars, share] = args;
+  if (dollars !== undefined) {
+    const current = await readFund();
+    const daily = Number(dollars);
+    const part = share === undefined ? current.askerShare : Number(share);
+    if (!Number.isFinite(daily) || daily < 0) throw new Error("usage: soopdoop fund <dollars a day> [share per crewmate, above 0 and up to 1]");
+    if (!Number.isFinite(part) || part <= 0 || part > 1) throw new Error("The share per crewmate is above 0 and up to 1, like 0.5 for half.");
+    await writeFund({ dailyUsd: daily, askerShare: part });
+  }
+  const fund = await readFund();
+  const { total, byAsker } = spentToday(await readSpends(), Date.now());
+  console.log(fund.dailyUsd === 0
+    ? "Anti-hijacking fund: $0, so this Mac's agents answer no crewmate's questions."
+    : `Anti-hijacking fund: $${fund.dailyUsd.toFixed(2)} in any 24 hours for answering crewmates' questions; one crewmate can use up to ${Math.round(fund.askerShare * 100)}% of it.`);
+  const who = [...byAsker].map(function ([asker, usd]) { return `${asker === "?" ? "someone" : `@${asker}`} $${usd.toFixed(2)}`; });
+  console.log(`Spent in the last 24 hours: $${total.toFixed(2)}${who.length === 0 ? "" : ` (${who.join(", ")})`}.`);
+  if (dollars === undefined) console.log("Change it with: soopdoop fund <dollars a day> [share per crewmate, like 0.5]");
 }
 
 // `soopdoop update` installs the newest release; `--to vX.Y.Z` moves to that release (also back);
@@ -506,6 +532,7 @@ soopdoop status | version                       what is running, paired, hooked,
 soopdoop open | logs                            show the HUD (the web rail if there is no app) · follow the logs
 soopdoop update [--to <version>]                install the newest release (or move to one, also back)
 soopdoop auto-update [on|off]                   whether new releases install themselves (on by default)
+soopdoop fund [<dollars> [share]]               what this Mac's agents may spend answering crewmates in 24 hours ($5, half each)
 soopdoop start | stop | restart                 the background services
 soopdoop uninstall                              remove the hooks, the background services, the app, the ask_operator tool and the skill
 soopdoop pair <convex-url> <token>              pair by hand (the rail does this for you)
@@ -558,6 +585,9 @@ try {
         : "Auto-update off. The rail says when a release is out; `soopdoop update` installs it.");
       break;
     }
+    case "fund":
+      await fundCommand(rest);
+      break;
     case "uninstall":
       await uninstall();
       break;
