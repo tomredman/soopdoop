@@ -54,26 +54,34 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let flickIds = Set(state.flicks.incoming.map(\.id))
         let caughtIds = Set(state.flicks.caught.map(\.id))
         if seeded {
-            // Someone caught one of my flicks: a notification while the HUD is hidden, a toast while it shows.
+            // Flicks, with a line to go with them: a notification while the HUD is hidden, the green toast while it shows.
             for c in state.flicks.caught where !caught.contains(c.id) {
+                let shame = Quips.pick(Quips.caught)
                 if wanted {
-                    post(id: "caught-\(c.id)", title: "@\(c.byHandle) caught your flick", body: c.xp > 0 ? "They took \(c.xp) XP. What a shame." : "You had no XP to lose.", category: nil)
+                    post(id: "caught-\(c.id)", title: "@\(c.byHandle) caught your flick", body: c.xp > 0 ? "They took \(c.xp) XP. \(shame)" : "You had no XP to lose. Lucky.", category: nil)
                 } else {
-                    client.toast = c.xp > 0 ? "@\(c.byHandle) caught your flick and took \(c.xp) XP. What a shame." : "@\(c.byHandle) caught your flick. You had no XP to lose."
+                    client.toast = c.xp > 0 ? "@\(c.byHandle) caught your flick and took \(c.xp) XP. \(shame)" : "@\(c.byHandle) caught your flick. You had no XP to lose. Lucky."
+                }
+            }
+            let now = Date().timeIntervalSince1970 * 1000
+            for flick in state.flicks.incoming where !flicks.contains(flick.id) {
+                if flick.superflick {
+                    let line = Quips.pick(Quips.superflicked)
+                    let took = flick.xp > 0 ? "They took \(flick.xp) XP." : "You had no XP to take."
+                    if wanted { post(id: "flick-\(flick.id)", title: "@\(flick.fromHandle) superflicked you", body: "\(took) \(line)", category: nil) }
+                    else { client.toast = "⚡ @\(flick.fromHandle) superflicked you. \(took) \(line)" }
+                } else {
+                    let line = Quips.pick(Quips.flicked)
+                    let catchable = flick.catchUntil > now
+                    if wanted {
+                        post(id: "flick-\(flick.id)", title: "@\(flick.fromHandle) flicked you", body: catchable ? "\(line) Catch it in 10 seconds and their XP is yours." : line, category: catchable ? "flick" : nil)
+                    } else {
+                        client.toast = "@\(flick.fromHandle) flicked you. \(line)\(catchable ? " Catch it!" : "")"
+                    }
                 }
             }
         }
         if seeded && wanted {
-            let now = Date().timeIntervalSince1970 * 1000
-            for flick in state.flicks.incoming where !flicks.contains(flick.id) {
-                if flick.superflick {
-                    post(id: "flick-\(flick.id)", title: "@\(flick.fromHandle) superflicked you", body: "They took \(flick.xp) XP. Nobody catches a superflick.", category: nil)
-                } else if flick.catchUntil > now {
-                    post(id: "flick-\(flick.id)", title: "@\(flick.fromHandle) flicked you", body: "Catch it in 10 seconds and their XP is yours.", category: "flick")
-                } else {
-                    post(id: "flick-\(flick.id)", title: "@\(flick.fromHandle) flicked you", body: "Flick back from the soopdoop HUD.", category: nil)
-                }
-            }
             if let knock, knock.id != lastKnock {
                 post(id: "knock-\(knock.id)", title: "@\(knock.fromHandle) wants you to see this", body: knock.item.title, category: "knock")
             }

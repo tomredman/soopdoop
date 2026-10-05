@@ -18,12 +18,15 @@ struct HUDRoot: View {
                 .padding(style.pad + 2)
             }
             .scrollIndicators(.never)
-            if let toast = client.toast { ToastView(text: toast) }
+            if let toast = client.toast {
+                ToastView(text: toast).transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .background(Background())
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.line2.opacity(0.9), lineWidth: 1))
         .environment(\.colorScheme, .dark)
+        .animation(.spring(duration: 0.3), value: client.toast)
     }
 
     @ViewBuilder private var content: some View {
@@ -86,21 +89,22 @@ struct TitleBar: View {
     }
 }
 
+// The HUD's message line, in soopdoop green: what just happened (a flick, a catch, an invite copied), for 6 seconds.
 struct ToastView: View {
     @EnvironmentObject var client: AgentClient
     let text: String
 
     var body: some View {
         HStack(alignment: .top) {
-            Text(text).font(Theme.mono(11)).foregroundStyle(Theme.text).fixedSize(horizontal: false, vertical: true)
+            Text(text).font(Theme.mono(11, .semibold)).foregroundStyle(Theme.ground).fixedSize(horizontal: false, vertical: true)
             Spacer()
-            Button { client.toast = nil } label: { Image(systemName: "xmark").font(.system(size: 9)) }
+            Button { client.toast = nil } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
                 .buttonStyle(.plain)
-                .foregroundStyle(Theme.dim)
+                .foregroundStyle(Theme.ground.opacity(0.6))
         }
-        .padding(8)
-        .background(Theme.panel2)
-        .overlay(Rectangle().fill(Theme.line).frame(height: 1), alignment: .top)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(Theme.green)
         .task(id: text) {
             try? await Task.sleep(nanoseconds: 6_000_000_000)
             if client.toast == text { client.toast = nil }

@@ -15,7 +15,8 @@ enum Snapshot {
         for (name, state) in samples() {
             for (suffix, backdrop) in backdrops {
                 let file = URL(fileURLWithPath: dir).appendingPathComponent("hud-\(name)\(suffix).png")
-                draw(state, height: name == "ready" ? 1260 : 420, on: backdrop, style: style, to: file)
+                draw(state, height: name == "ready" ? 1260 : 420, on: backdrop, style: style, to: file,
+                     toast: name == "ready" ? "@mira flicked you. You gonna just take that? Catch it!" : nil)
             }
         }
         // The Operator chat, with a reply of its own, an answer from a crewmate's agent, and a question on its way.
@@ -47,8 +48,9 @@ enum Snapshot {
         }
     }
 
-    private static func draw(_ state: AppState, height: CGFloat, on backdrop: Color, style: HUDStyle, to file: URL) {
+    private static func draw(_ state: AppState, height: CGFloat, on backdrop: Color, style: HUDStyle, to file: URL, toast: String? = nil) {
         let client = AgentClient(preview: state)
+        client.toast = toast
         let root = ZStack {
             backdrop
             HUDRoot().environmentObject(client).environmentObject(style)
