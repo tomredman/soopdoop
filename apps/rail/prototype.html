@@ -709,7 +709,7 @@
       '<span class="m">tests         </span> tests for both',
       '<span class="m">taxes-2026    </span> <span class="am">private · never seen</span>',
       '',
-      '<span class="m">That is all it keeps. It reads more only to answer a question, then forgets.</span>'
+      '<span class="m">That is all it keeps. It reads more only to answer a question, and that read is ephemeral.</span>'
     ], true);
   });
 
@@ -954,7 +954,7 @@
     return (path ? '<div class="path">' + path + '</div>' : "") +
       '<div class="ans">' + ans + '</div>' +
       '<div class="foot"><span class="assist">+1 assist · ' + who + '</span>' +
-      '<details class="receipt"><summary>receipt</summary>read ' + read + ' · sent ' + sent + ' · then forgot</details></div>';
+      '<details class="receipt"><summary>receipt</summary>read ' + read + ' tokens ephemerally · sent ' + sent + '</details></div>';
   }
   var routes = [
     { keys: ["market", "listing", "selector"],

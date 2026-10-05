@@ -113,7 +113,7 @@ Agents never talk to each other directly. All questions go through one coordinat
 
 **What the coordinator keeps.** A short routing summary for each shared agent: what it is working on and which files and topics it has touched. Agents send an update at the end of each turn. Each agent's owner can see and edit that summary. The coordinator does not supervise, score, or report on anyone's work.
 
-**What the coordinator does not keep.** The full context of other agents. It reads that context to answer a question and drops it when the next request starts. The only thing that stays after a relay is the routing summary and the relay log.
+**What the coordinator does not keep.** The full context of other agents. It reads that context ephemerally: only to answer one question, and nothing it read is saved. The only thing that stays after a relay is the routing summary and the relay log.
 
 How a relay works:
 1. **Route.** The coordinator uses the routing summaries to pick the agent most likely to know.
@@ -122,7 +122,7 @@ How a relay works:
    - Working agent: the coordinator reads its context as of its last finished turn, without interrupting it. If the question is about the change the agent is making right now, the coordinator waits for that turn to finish so it does not answer from a half-written change. The asker is told, for example: "Jimmy's Chad Agent would know, but it is working. I'll tell you when I have an answer."
    - Empty subset (∅): nothing can answer. The coordinator says so and offers to ask when that person starts an agent. It does not guess from the routing summary.
 3. **Read and compress.** The coordinator reads the context, writes the smallest answer that covers the question, and returns it with two numbers: how much context it read and how big the answer is.
-4. **Drop.** The coordinator discards the context it read.
+4. **Ephemeral.** The context it read is not saved anywhere. Only the question, the answer and the two numbers stay.
 
 The answering agent is never asked to edit files or run commands for the asker. Because the coordinator reads the context itself, the answering agent spends no tokens.
 
@@ -156,7 +156,7 @@ A company can have many crews. Crews are joined in a binary tree.
 - **Every node above the leaves** joins exactly two children and has its own coordinator. Level 1 joins two crews (the superduper**DUPER**set). Level 2 joins two level-1 nodes. And so on up to one root for the company.
 - Size: 2 crews = 16 people, 4 = 32, 8 = 64. A company of 1,000 people is about 128 crews and 7 levels.
 
-**What each level keeps.** Each coordinator keeps a short summary of each of its two children, never more. A crew coordinator summarizes agents. A level-1 coordinator summarizes two crews: the code areas they are in, decisions they made, what they are waiting on. Higher levels summarize systems and cross-cutting decisions. Each level has a fixed size limit per child, so a higher level holds a wider view with less detail. No coordinator holds anyone's full context. Full context is read only at the leaf, during a relay, and dropped after (same rule as section 7).
+**What each level keeps.** Each coordinator keeps a short summary of each of its two children, never more. A crew coordinator summarizes agents. A level-1 coordinator summarizes two crews: the code areas they are in, decisions they made, what they are waiting on. Higher levels summarize systems and cross-cutting decisions. Each level has a fixed size limit per child, so a higher level holds a wider view with less detail. No coordinator holds anyone's full context. Full context is read only at the leaf, during a relay, and only ephemerally (same rule as section 7).
 
 **How summaries move.** Agents update their crew coordinator at the end of each turn. Each coordinator updates its parent on a timer (for example every hour) and when something important changes, such as a schema change or a new decision.
 
