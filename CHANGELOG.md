@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.0 · 2026-10-05
+
+### New
+- a new app icon, two eyes in white ceramic and violet neon, rendered in Blender (hud)
+- chat with the Operator: it answers crew questions itself, or asks the agent that knows (operator)
+
+### Docs
+- the Operator chat, the icon, what was checked
+
 ## v0.5.0 · 2026-10-05
 
 ### New
