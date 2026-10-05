@@ -67,4 +67,24 @@ describe("soopdoop serve", function () {
     expect(after?.paired).toBe(true);
     expect(after?.agents).toHaveLength(1);
   }, 15_000);
+
+  test("the private switch keeps an agent's folder private at once, and the config keeps it", async function () {
+    async function setPrivate(agentId: string, on: boolean, headers: Record<string, string> = {}): Promise<Response> {
+      return await fetch(`http://127.0.0.1:${PORT}/private`, { method: "POST", headers, body: JSON.stringify({ agentId, private: on }) });
+    }
+    async function open(): Promise<unknown> {
+      const s = await status();
+      return s === null ? null : (s.agents[0] as { open: boolean }).open;
+    }
+    expect((await setPrivate("s1", true, { origin: "https://evil.example" })).status).toBe(403);
+    expect((await setPrivate("nobody", true)).status).toBe(404);
+
+    expect(await (await setPrivate("s1", true)).json()).toEqual({ private: true, folder: "/r/vibes" });
+    expect(await open()).toBe(false);
+    expect((await Bun.file(path.join(home, "config.json")).json()).privateDirs).toEqual(["/r/vibes"]);
+
+    expect(await (await setPrivate("s1", false)).json()).toEqual({ private: false, folder: "/r/vibes" });
+    expect(await eventually(open, function (o) { return o === true; })).toBe(true);
+    expect((await Bun.file(path.join(home, "config.json")).json()).privateDirs).toEqual([]);
+  }, 15_000);
 });

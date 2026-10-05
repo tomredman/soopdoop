@@ -15,7 +15,8 @@ import {
   answers, DAEMON_PORT, isLoaded, load, openInBrowser, plistPath, portOwner, RAIL_URL, restart, serviceSpecs, unload, waitFor, writePlist,
 } from "./service";
 import { installSkill, removeSkill, skillDir, skillInstalled } from "./skill";
-import { apply, parseHookEvent, sweep, toReport, type Subset } from "./state";
+import { isPrivate, repoRoot, withPrivacy } from "./privacy";
+import { apply, isRecord, parseHookEvent, reapplyPrivacy, sweep, toReport, type Subset } from "./state";
 import {
   applyUpdate, checkForUpdate, currentVersion, defaultSteps, installDir, isInstall, isNewer, parseVersion, readUpdateState,
   releasePage, tagFor, takeUpdateRequest,
@@ -62,6 +63,12 @@ async function serve(): Promise<void> {
   let stamp = -1;
   // Open agents that finished a turn since the last report: their routing summaries go out after it.
   const summariesDue = new Set<string>();
+  // The repository each folder belongs to, asked of git once per folder.
+  const repos = new Map<string, string | null>();
+  function repoOf(cwd: string): string | undefined {
+    if (!repos.has(cwd)) repos.set(cwd, repoRoot(cwd));
+    return repos.get(cwd) ?? undefined;
+  }
 
   function unpair(): void {
     if (paired === null) return;
@@ -77,6 +84,12 @@ async function serve(): Promise<void> {
     stamp = next;
     try {
       const config = await readConfig();
+      // Only privateDirs changed (the HUD's private switch, or a hand edit): no need to connect again.
+      if (config !== null && paired !== null && config.convexUrl === paired.config.convexUrl && config.token === paired.config.token) {
+        paired.config = config;
+        if (reapplyPrivacy(subset, config.privateDirs)) dirty = true;
+        return;
+      }
       unpair();
       if (config !== null) {
         const live = new ConvexClient(config.convexUrl);
@@ -85,6 +98,7 @@ async function serve(): Promise<void> {
       if (paired === null) console.log(`Not paired yet. Sign in on the rail (${RAIL_URL}) and it pairs this machine.`);
       else {
         console.log(`Paired. Reporting to ${paired.config.convexUrl}`);
+        reapplyPrivacy(subset, paired.config.privateDirs);
         dirty = true;
       }
     } catch (e) {
@@ -134,9 +148,27 @@ async function serve(): Promise<void> {
         const raw: unknown = await req.json().catch(function () { return null; });
         const ev = parseHookEvent(raw);
         if (ev === null) return new Response("bad hook payload", { status: 400 });
-        if (apply(subset, ev, Date.now(), paired?.config.privateDirs ?? [])) dirty = true;
+        if (apply(subset, ev, Date.now(), paired?.config.privateDirs ?? [], repoOf)) dirty = true;
         if (ev.hook_event_name === "Stop" && subset.get(ev.session_id)?.open === true) summariesDue.add(ev.session_id);
         return new Response("ok");
+      }
+      // The HUD's private switch, through the local agent: keep an agent's repository private, or stop.
+      if (req.method === "POST" && url.pathname === "/private") {
+        if (req.headers.get("origin") !== null) return new Response("forbidden", { status: 403 });
+        const raw: unknown = await req.json().catch(function () { return null; });
+        if (!isRecord(raw) || typeof raw.agentId !== "string" || typeof raw.private !== "boolean") {
+          return new Response("Expected { agentId, private }.", { status: 400 });
+        }
+        const agent = subset.get(raw.agentId);
+        if (agent === undefined) return new Response("That agent is not running on this Mac.", { status: 404 });
+        const config = await readConfig();
+        if (config === null) return new Response("This Mac is not paired yet.", { status: 409 });
+        const privateDirs = withPrivacy(config.privateDirs, agent.cwd, agent.repo, raw.private);
+        await writeConfig({ ...config, privateDirs });
+        // At once, so the HUD sees it; the config watcher then finds the same list.
+        if (paired !== null) paired.config = { ...paired.config, privateDirs };
+        if (reapplyPrivacy(subset, privateDirs)) dirty = true;
+        return Response.json({ private: isPrivate(agent.cwd, agent.repo, privateDirs), folder: agent.repo ?? agent.cwd ?? null });
       }
       if (url.pathname === "/status") {
         return Response.json({ machine: hostname(), paired: paired !== null, agents: toReport(subset) });

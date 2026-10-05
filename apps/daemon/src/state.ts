@@ -1,5 +1,6 @@
 // ABOUTME: The daemon's in-memory picture of this machine's agents, built from harness hook events.
 // ABOUTME: Pure functions so the state transitions are testable without a harness.
+import { isPrivate } from "./privacy";
 
 export type AgentStatus = "working" | "idle" | "waiting";
 
@@ -11,8 +12,9 @@ export interface AgentRecord {
   status: AgentStatus;
   open: boolean;
   transcriptPath?: string;
-  // The folder the session runs in. Stays on this machine, like the transcript path.
+  // The folder the session runs in, and the repository it belongs to. Both stay on this machine.
   cwd?: string;
+  repo?: string;
   lastTurnAt: number;
 }
 
@@ -53,26 +55,28 @@ function nameFromCwd(cwd: string | undefined): string {
   return parts[parts.length - 1] ?? "agent";
 }
 
-function isPrivate(cwd: string | undefined, privateDirs: string[]): boolean {
-  if (cwd === undefined) return false;
-  return privateDirs.some(function (d) {
-    return cwd === d || cwd.startsWith(d + "/");
-  });
-}
-
-// Applies one hook event. Returns true when the subset changed in a way worth reporting.
-export function apply(subset: Subset, ev: HookEvent, now: number, privateDirs: string[] = []): boolean {
+// Applies one hook event. Returns true when the subset changed in a way worth reporting. `repoOf` names the repository a
+// new agent's folder belongs to (git, in the daemon), so a private repository covers its worktrees too.
+export function apply(
+  subset: Subset,
+  ev: HookEvent,
+  now: number,
+  privateDirs: string[] = [],
+  repoOf: (cwd: string) => string | undefined = function () { return undefined; },
+): boolean {
   const existing = subset.get(ev.session_id);
   const name = existing?.name ?? nameFromCwd(ev.cwd);
+  const repo = existing === undefined && ev.cwd !== undefined ? repoOf(ev.cwd) : existing?.repo;
   const base: AgentRecord = existing ?? {
     agentId: ev.session_id,
     harness: "claude-code",
     name,
     workspace: nameFromCwd(ev.cwd),
     status: "idle",
-    open: !isPrivate(ev.cwd, privateDirs),
+    open: !isPrivate(ev.cwd, repo, privateDirs),
     lastTurnAt: now,
   };
+  if (repo !== undefined) base.repo = repo;
   if (ev.transcript_path !== undefined) base.transcriptPath = ev.transcript_path;
   if (ev.cwd !== undefined) base.cwd = ev.cwd;
 
@@ -101,6 +105,19 @@ export function apply(subset: Subset, ev: HookEvent, now: number, privateDirs: s
   }
 }
 
+// Checks every agent against a changed privateDirs. Returns true when one turned private or open.
+export function reapplyPrivacy(subset: Subset, privateDirs: string[]): boolean {
+  let changed = false;
+  for (const [id, a] of subset) {
+    const open = !isPrivate(a.cwd, a.repo, privateDirs);
+    if (open !== a.open) {
+      subset.set(id, { ...a, open });
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 // Drops agents that have not spoken for `staleMs`; a crashed harness never sends SessionEnd.
 export function sweep(subset: Subset, now: number, staleMs: number): boolean {
   let changed = false;
@@ -113,7 +130,7 @@ export function sweep(subset: Subset, now: number, staleMs: number): boolean {
   return changed;
 }
 
-// What leaves the machine: never the transcript path or the folder.
+// What leaves the machine: never the transcript path, the folder or the repository.
 export function toReport(subset: Subset) {
   return Array.from(subset.values(), function (a) {
     return {
