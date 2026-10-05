@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.4.0 · 2026-10-05
+
+### New
+- flick a friend, a pointless poke; each flick back adds one to the rally (flicks)
+- add a friend by soopdoop or Superset handle; anyone not on soopdoop gets an invite link to send (friends)
+
+### Fixes
+- the knock composer's Cancel and Knock buttons no longer wrap (hud)
+
+### Docs
+- invites by handle, the invite page, flicks, what was checked
+
 ## v0.3.0 · 2026-10-05
 
 ### New
