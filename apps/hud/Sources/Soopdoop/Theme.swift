@@ -64,6 +64,21 @@ enum NotifyMode: String, CaseIterable, Identifiable {
     }
 }
 
+// The HUD's sections under the alerts (knocks, friend requests, flicks), which the hacker can hide and put in order.
+enum HUDSection: String, CaseIterable, Identifiable {
+    case crew, operatorLine = "operator", board, machine
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .crew: return "Crew"
+        case .operatorLine: return "Operator"
+        case .board: return "Board"
+        case .machine: return "This Mac"
+        }
+    }
+}
+
 // What the hacker chose in Settings. Kept in this app's defaults; the HUD redraws when it changes.
 final class HUDStyle: ObservableObject {
     @AppStorage("hud.mode") var modeRaw = HUDMode.withSuperset.rawValue
@@ -73,7 +88,10 @@ final class HUDStyle: ObservableObject {
     @AppStorage("hud.showCrew") var showCrew = true
     @AppStorage("hud.showOperator") var showOperator = true
     @AppStorage("hud.showBoard") var showBoard = true
-    @AppStorage("hud.showMachine") var showMachine = true
+    // Off until the hacker wants it: it is about this Mac, not the crew.
+    @AppStorage("hud.showMachine") var showMachine = false
+    // The section order, "crew,operator,board,machine"; empty until the hacker moves one.
+    @AppStorage("hud.order") var orderRaw = ""
     @AppStorage("hud.notify") var notifyRaw = NotifyMode.whenHidden.rawValue
 
     var mode: HUDMode {
@@ -87,6 +105,37 @@ final class HUDStyle: ObservableObject {
     var notify: NotifyMode {
         get { NotifyMode(rawValue: notifyRaw) ?? .whenHidden }
         set { notifyRaw = newValue.rawValue }
+    }
+
+    // The chosen order. Sections it does not name (all of them at first, or one added later) follow in the default order.
+    var order: [HUDSection] {
+        let chosen = orderRaw.split(separator: ",").compactMap { HUDSection(rawValue: String($0)) }
+        return chosen + HUDSection.allCases.filter { !chosen.contains($0) }
+    }
+
+    func move(_ section: HUDSection, by offset: Int) {
+        var list = order
+        guard let i = list.firstIndex(of: section), list.indices.contains(i + offset) else { return }
+        list.swapAt(i, i + offset)
+        orderRaw = list.map(\.rawValue).joined(separator: ",")
+    }
+
+    func shows(_ section: HUDSection) -> Bool {
+        switch section {
+        case .crew: return showCrew
+        case .operatorLine: return showOperator
+        case .board: return showBoard
+        case .machine: return showMachine
+        }
+    }
+
+    func setShows(_ section: HUDSection, _ on: Bool) {
+        switch section {
+        case .crew: showCrew = on
+        case .operatorLine: showOperator = on
+        case .board: showBoard = on
+        case .machine: showMachine = on
+        }
     }
 
     var bodySize: CGFloat { compact ? 11 : 12 }

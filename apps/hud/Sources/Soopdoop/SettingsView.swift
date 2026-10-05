@@ -35,10 +35,20 @@ struct LookSettings: View {
             }
             Toggle("Compact", isOn: $style.compact)
             Section("Sections") {
-                Toggle("Crew", isOn: $style.showCrew)
-                Toggle("Operator", isOn: $style.showOperator)
-                Toggle("Board", isOn: $style.showBoard)
-                Toggle("This Mac", isOn: $style.showMachine)
+                ForEach(Array(style.order.enumerated()), id: \.element) { index, section in
+                    HStack {
+                        Toggle(section.label, isOn: Binding(get: { style.shows(section) }, set: { style.setShows(section, $0) }))
+                        Button { style.move(section, by: -1) } label: { Image(systemName: "chevron.up") }
+                            .buttonStyle(.borderless)
+                            .disabled(index == 0)
+                            .help("Move \(section.label) up")
+                        Button { style.move(section, by: 1) } label: { Image(systemName: "chevron.down") }
+                            .buttonStyle(.borderless)
+                            .disabled(index == style.order.count - 1)
+                            .help("Move \(section.label) down")
+                    }
+                }
+                Text("Knocks, friend requests and flicks always show at the top.").font(.caption).foregroundStyle(.secondary)
             }
             Picker("Notifications", selection: Binding(get: { style.notify }, set: { style.notify = $0 })) {
                 ForEach(NotifyMode.allCases) { Text($0.label).tag($0) }
