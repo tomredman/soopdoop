@@ -49,10 +49,18 @@ export function askPrompt(question: string): string {
   ].join("\n");
 }
 
+// Crewmates' questions are answered on Claude Sonnet 5.5: it reads the conversation for half what Opus 5.5 does, and
+// answering from what the agent already knows needs no more. A session on a cheaper model (Haiku) keeps its own.
+export const ANSWER_MODEL = "claude-sonnet-5-5";
+
+export function answerModel(sessionModel: string | undefined): string {
+  return sessionModel?.startsWith("claude-haiku") === true ? sessionModel : ANSWER_MODEL;
+}
+
 // Resumes the session under a new id (--fork-session) and keeps nothing on disk. Safe mode drops hooks, MCP servers and
-// skills, so the fork never shows up as an agent or asks the Operator itself; --tools "" leaves it no tools. It runs on
-// the session's own model, named here so the fund knows the price. The prompt goes last: --tools takes a list, so it
-// must be followed by another flag.
+// skills, so the fork never shows up as an agent or asks the Operator itself; --tools "" leaves it no tools. The model
+// is named, so the fund knows the price. The prompt goes last: --tools takes a list, so it must be followed by another
+// flag.
 export function askArgs(sessionId: string, question: string, model?: string): string[] {
   return [
     "-p", "--resume", sessionId, "--fork-session", "--no-session-persistence", "--safe-mode",
@@ -147,7 +155,7 @@ export async function askAgent(agent: AgentRecord, question: string, run: Run = 
   // Newer Claude Code finds a session from any folder; older versions look in the folder the session ran in.
   const cwd = agent.cwd !== undefined && (await isDirectory(agent.cwd)) ? agent.cwd : homedir();
   const env = forkEnv(process.env, configDirFor(agent.transcriptPath));
-  const model = agent.transcriptPath === undefined ? undefined : parseTranscript(await readTail(agent.transcriptPath, 512_000)).model;
+  const model = answerModel(agent.transcriptPath === undefined ? undefined : parseTranscript(await readTail(agent.transcriptPath, 512_000)).model);
   const result = await run([claude, ...askArgs(agent.agentId, question, model)], { cwd, env, timeoutMs: ASK_TIMEOUT_MS });
   if (result.timedOut) return { refused: "That agent took too long to answer." };
   const asked = parseResult(result.stdout, model);

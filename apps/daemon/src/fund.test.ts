@@ -45,16 +45,19 @@ describe("what one answer costs", function () {
     expect(priceFor(undefined).input).toBe(10);
   });
 
-  test("matches what Claude Code charged for real forks of a 72,000-token session on Claude Opus 5.5", function () {
-    // The first question writes the conversation to the prompt cache (1.25 times input) ...
+  test("matches what Claude Code charged for real forks of a 72,000-token session", function () {
+    // The first question writes the conversation to an hour-long prompt cache, at twice the input price ...
     const cold = { input_tokens: 2, cache_creation_input_tokens: 72_063, cache_read_input_tokens: 540, output_tokens: 1_431,
-      cache_creation: { ephemeral_5m_input_tokens: 72_063, ephemeral_1h_input_tokens: 0 } };
-    expect(answerCost(cold, "claude-opus-5-5")).toBeCloseTo(0.389, 3);
-    // ... and a question within 5 minutes reads it back at $0.20 a million.
+      cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 72_063 } };
+    expect(answerCost(cold, "claude-opus-5-5")).toBeCloseTo(0.605, 3);
+    // ... and a question within the hour reads it back at $0.20 a million.
     const warm = { input_tokens: 2, cache_creation_input_tokens: 0, cache_read_input_tokens: 72_603, output_tokens: 1_057 };
     expect(answerCost(warm, "claude-opus-5-5")).toBeCloseTo(0.0357, 4);
-    // A one-hour cache write costs twice input.
-    expect(answerCost({ cache_creation_input_tokens: 1_000, cache_creation: { ephemeral_1h_input_tokens: 1_000 } }, "claude-opus-5-5")).toBeCloseTo(0.008, 6);
+    // The same first question on Sonnet 5.5 costs half.
+    expect(answerCost(cold, "claude-sonnet-5-5")).toBeCloseTo((2 * 2 + 72_063 * 4 + 540 * 0.2 + 1_431 * 10) / 1_000_000, 6);
+    expect(answerCost(cold, "claude-sonnet-5-5") / answerCost(cold, "claude-opus-5-5")).toBeCloseTo(0.5, 1);
+    // A 5-minute cache write costs 1.25 times input.
+    expect(answerCost({ cache_creation_input_tokens: 1_000 }, "claude-opus-5-5")).toBeCloseTo(0.005, 6);
     expect(answerCost({}, "claude-opus-5-5")).toBe(0);
   });
 });
@@ -97,8 +100,8 @@ describe("the fund's limits", function () {
       spend({ at: NOW - HOUR, tokensRead: 400_000, model: "claude-opus-5-5" }),
       spend({ agentId: "a2", tokensRead: 900_000 }),
     ];
-    // The latest read of a1: 400,000 tokens at $5 a million to write, plus room for the answer at $20 a million.
-    expect(estimateCost(spends, "a1")).toBeCloseTo((400_000 * 5 + 2_000 * 20) / 1_000_000, 6);
+    // The latest read of a1: 400,000 tokens at $8 a million to write to the hour-long cache, plus room for the answer.
+    expect(estimateCost(spends, "a1")).toBeCloseTo((400_000 * 8 + 2_000 * 20) / 1_000_000, 6);
     expect(estimateCost(spends, "never-read")).toBe(0);
   });
 
@@ -106,7 +109,7 @@ describe("the fund's limits", function () {
     expect(fundLimit(fund, [], { agentId: "a1", asker: "vlad" }, NOW)).toBeNull();
     const spent = [spend({ usd: 2, asker: "vlad" }), spend({ usd: 2.5, asker: "mira" })];
     expect(fundLimit(fund, spent, { agentId: "a1", asker: "jimmy" }, NOW)).toBeNull();
-    // $4.50 spent: an answer expected to cost $1 would pass $5.
+    // $4.50 spent: an answer expected to cost $1.64 would pass $5.
     const big = [...spent, spend({ usd: 0, tokensRead: 200_000, model: "claude-opus-5-5" })];
     expect(fundLimit(fund, big, { agentId: "a1", asker: "jimmy" }, NOW)?.kind).toBe("fund");
     // A day later, the same answers no longer count.
@@ -117,7 +120,7 @@ describe("the fund's limits", function () {
 
   test("one crewmate can use only their share, and the others can still ask", function () {
     const spent = [spend({ usd: 2.4, asker: "vlad", tokensRead: 50_000, model: "claude-opus-5-5" })];
-    // Vlad: $2.40 of his $2.50, and the next read is expected to cost about $0.29.
+    // Vlad: $2.40 of his $2.50, and the next read is expected to cost about $0.44.
     expect(fundLimit(fund, spent, { agentId: "a1", asker: "vlad" }, NOW)).toEqual({
       kind: "share", note: "You have used your share of this crewmate's answering fund for today.",
     });

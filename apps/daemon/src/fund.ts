@@ -135,14 +135,15 @@ const WINDOW_MS = 24 * 60 * 60 * 1000;
 // Room for the answer itself: the copy is asked for five short sentences, and it thinks a little first.
 const ANSWER_TOKENS = 2_000;
 
-// What reading this agent's conversation will cost with nothing cached, judged from the last time it was read. Zero
-// when it has not been read yet, so the fund can run over by that one answer.
+// What reading this agent's conversation will cost with nothing cached, judged from the last time it was read: Claude
+// Code writes the conversation to an hour-long prompt cache, at twice the input price. Zero when it has not been read
+// yet, so the fund can run over by that one answer.
 export function estimateCost(spends: Spend[], agentId: string): number {
   let last: Spend | undefined;
   for (const s of spends) if (s.agentId === agentId && s.tokensRead !== undefined && (last === undefined || s.at > last.at)) last = s;
   if (last?.tokensRead === undefined) return 0;
   const price = priceFor(last.model);
-  return (last.tokensRead * price.input * 1.25 + ANSWER_TOKENS * price.output) / 1_000_000;
+  return (last.tokensRead * price.input * 2 + ANSWER_TOKENS * price.output) / 1_000_000;
 }
 
 // Why the fund stops one more answer, if it does: answering is off, the 24-hour fund is spent, or this crewmate has used

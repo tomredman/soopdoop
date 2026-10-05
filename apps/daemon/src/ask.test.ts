@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
-import { askAgent, askArgs, askPrompt, configDirFor, findRealClaude, forkEnv, MAX_ANSWER, NOT_FOUND, parseResult, type Run } from "./ask";
+import { ANSWER_MODEL, answerModel, askAgent, askArgs, askPrompt, configDirFor, findRealClaude, forkEnv, MAX_ANSWER, NOT_FOUND, parseResult, type Run } from "./ask";
 import type { AgentRecord } from "./state";
 
 const dirs: string[] = [];
@@ -141,22 +141,37 @@ describe("asking an agent", function () {
     });
   });
 
-  test("asks on the model of the agent's last reply, and prices the answer at that model's rates", async function () {
+  test("answers on Claude Sonnet 5.5, or on Haiku when the session runs on it, and prices the answer at that model's rates", async function () {
+    expect(answerModel("claude-opus-5-5")).toBe(ANSWER_MODEL);
+    expect(answerModel("claude-fable-5-1")).toBe("claude-sonnet-5-5");
+    expect(answerModel(undefined)).toBe("claude-sonnet-5-5");
+    expect(answerModel("claude-haiku-4-5-20251001")).toBe("claude-haiku-4-5-20251001");
+
     const dir = await tempDir();
-    const transcript = path.join(dir, "s1.jsonl");
-    await writeFile(transcript, [
-      JSON.stringify({ type: "assistant", message: { model: "claude-opus-5-5", content: [{ type: "text", text: "first" }] } }),
-      JSON.stringify({ type: "assistant", message: { model: "claude-sonnet-5-5", content: [{ type: "text", text: "then" }] } }),
-      // A reply Claude Code wrote itself has no real model.
-      JSON.stringify({ type: "assistant", message: { model: "<synthetic>", content: [{ type: "text", text: "cancelled" }] } }),
-    ].join("\n") + "\n");
-    const calls: string[][] = [];
-    async function run(cmd: string[]) {
-      calls.push(cmd);
-      return { exitCode: 0, stdout: result("Here."), stderr: "", timedOut: false };
+    async function modelFor(lines: Record<string, unknown>[]): Promise<{ args: string[]; asked: Awaited<ReturnType<typeof askAgent>> }> {
+      const transcript = path.join(dir, "s1.jsonl");
+      await writeFile(transcript, lines.map(function (l) { return JSON.stringify(l); }).join("\n") + "\n");
+      const calls: string[][] = [];
+      async function run(cmd: string[]) {
+        calls.push(cmd);
+        return { exitCode: 0, stdout: result("Here."), stderr: "", timedOut: false };
+      }
+      const asked = await askAgent(agentRecord({ cwd: dir, transcriptPath: transcript }), "where?", run, "/bin/claude");
+      return { args: calls[0] ?? [], asked };
     }
-    const asked = await askAgent(agentRecord({ cwd: dir, transcriptPath: transcript }), "where?", run, "/bin/claude");
-    expect(calls[0]?.slice(calls[0].indexOf("--model"), calls[0].indexOf("--model") + 2)).toEqual(["--model", "claude-sonnet-5-5"]);
-    expect(asked).toMatchObject({ answer: "Here.", model: "claude-sonnet-5-5", usd: (10 * 2 + 6_000 * 2.5 + 500 * 0.2 + 90 * 10) / 1_000_000 });
+    function flag(args: string[]): string | undefined {
+      return args[args.indexOf("--model") + 1];
+    }
+    // An Opus session is answered on Sonnet 5.5, at Sonnet's prices.
+    const opus = await modelFor([{ type: "assistant", message: { model: "claude-opus-5-5", content: [{ type: "text", text: "hi" }] } }]);
+    expect(flag(opus.args)).toBe("claude-sonnet-5-5");
+    expect(opus.asked).toMatchObject({ answer: "Here.", model: "claude-sonnet-5-5", usd: (10 * 2 + 6_000 * 2.5 + 500 * 0.2 + 90 * 10) / 1_000_000 });
+    // The model of the last real reply counts: one Claude Code wrote itself ("<synthetic>") does not.
+    const haiku = await modelFor([
+      { type: "assistant", message: { model: "claude-opus-5-5", content: [{ type: "text", text: "first" }] } },
+      { type: "assistant", message: { model: "claude-haiku-4-5", content: [{ type: "text", text: "then" }] } },
+      { type: "assistant", message: { model: "<synthetic>", content: [{ type: "text", text: "cancelled" }] } },
+    ]);
+    expect(flag(haiku.args)).toBe("claude-haiku-4-5");
   });
 });
