@@ -96,7 +96,7 @@ export function startStage(): void {
           el.className = "relay answered";
           led.className = "led led-green";
           a.textContent = ANSWER;
-          f.textContent = "from @mira’s checkout · read 14k tokens";
+          f.textContent = "from @mira · 14k tokens read ephemerally";
         }
       },
     };
@@ -179,7 +179,7 @@ export function startStage(): void {
     stop = spinner(spin, "the Operator is reading @mira’s agent…");
     await beat(2300);
     stop();
-    spin.textContent = "  ⎿ the Operator read @mira’s agent once, and forgot it";
+    spin.textContent = "  ⎿ the Operator read @mira’s agent ephemerally";
     r.set("answered");
     crew("mira", "green", "working · +10 XP");
     mood.emit("normal");

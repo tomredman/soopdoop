@@ -117,7 +117,7 @@
               </ul>
               <p class="hud-h">Operator</p>
               <div class="wire" data-wire>
-                <div class="relay answered"><p class="relay-q"><i class="led led-green"></i>How does checkout pick a coupon?</p><p class="relay-a">Drops expired coupons, then picks the biggest discount. New kinds go in COUPON_KINDS.</p><p class="relay-f">from @mira’s checkout · read 14k tokens</p></div>
+                <div class="relay answered"><p class="relay-q"><i class="led led-green"></i>How does checkout pick a coupon?</p><p class="relay-a">Drops expired coupons, then picks the biggest discount. New kinds go in COUPON_KINDS.</p><p class="relay-f">from @mira · 14k tokens read ephemerally</p></div>
               </div>
             </div>
           </aside>
@@ -133,7 +133,7 @@
         <span><i class="led led-blue"></i>@zed jacked in</span>
         <span><i class="led led-off"></i>a knock self-destructed · nobody cried</span>
         <span><i class="led led-green"></i>@juno hit wizard</span>
-        <span><i class="led led-purple"></i>14k tokens read, all of them forgotten</span>
+        <span><i class="led led-purple"></i>14k tokens read ephemerally</span>
         <span><i class="led led-blue"></i>@kit is in focus · knocks bounce</span>
         <span><i class="led led-green"></i>@you skipped reading 40 files</span>
       </div>
@@ -174,7 +174,7 @@
               </svg>
             </div>
             <h3>Ask the Operator</h3>
-            <p>Your agent asks a question. The Operator finds the crewmate’s agent that already knows, reads it once, answers in one line, and forgets what it read.</p>
+            <p>Your agent asks a question. The Operator finds the crewmate’s agent that already knows, reads it ephemerally, and answers in one line.</p>
             <a class="btn-small" href="#operator">Try it ↓</a>
           </article>
           <article class="card" data-reveal data-spot>
@@ -194,7 +194,7 @@
       <div class="wrap">
         <p class="kicker" data-reveal>// the operator</p>
         <h2 data-reveal>Stop reading your teammate’s code.<br><span class="grad">Ask their agent.</span></h2>
-        <p class="lede" data-reveal>Your crewmate’s agent already worked out how checkout picks a coupon. The Operator finds that agent, reads the last part of its conversation once, and hands you the answer in one line. Your agent skips the 40 files.</p>
+        <p class="lede" data-reveal>Your crewmate’s agent already worked out how checkout picks a coupon. The Operator finds that agent, reads it ephemerally, and hands you the answer in one line. Your agent skips the 40 files.</p>
         <div class="op-grid" data-reveal>
           <div class="op-console">
             <form class="op-form" data-ask>
@@ -232,8 +232,8 @@
           </div>
         </div>
         <ul class="facts">
-          <li data-reveal><b>Reads once.</b> One slice of one conversation, at most 60,000 characters, for one answer.</li>
-          <li data-reveal><b>Forgets.</b> The slice is never stored. Only the question and the answer are.</li>
+          <li data-reveal><b>Reads ephemerally.</b> A throwaway copy of the agent’s session writes the answer. The copy is never saved.</li>
+          <li data-reveal><b>Keeps only the answer.</b> The question and the answer are stored. What was read never reaches soopdoop’s servers.</li>
           <li data-reveal><b>Tells you.</b> Your light turns purple while it reads, and every read is logged on your Mac.</li>
           <li data-reveal><b>Private stays home.</b> Folders you mark private are never read, never summarized, never shown.</li>
         </ul>
@@ -246,7 +246,7 @@
         <h2 data-reveal>The fine print, in big print.</h2>
         <div class="rules">
           <div class="rule" data-reveal><span class="rule-n">01</span><h3>Agents never talk to each other.</h3><p>Every question goes through the Operator. No agent DMs. No swarm.</p></div>
-          <div class="rule" data-reveal><span class="rule-n">02</span><h3>Read once, then forget.</h3><p>One slice, one answer, gone. The question and the answer stay; the conversation does not.</p></div>
+          <div class="rule" data-reveal><span class="rule-n">02</span><h3>Every read is ephemeral.</h3><p>One question, one answer. The question and the answer stay; what was read does not.</p></div>
           <div class="rule" data-reveal><span class="rule-n">03</span><h3>Private means private.</h3><p>Mark a folder private and its agents are never read, never summarized, and never shown to friends.</p></div>
           <div class="rule" data-reveal><span class="rule-n">04</span><h3>Purple means reading.</h3><p>If the Operator is reading your agent, your light is purple. Always. There are no silent reads.</p></div>
           <div class="rule" data-reveal><span class="rule-n">05</span><h3>Everything expires.</h3><p>Knocks last seconds. Questions last 90. The server enforces it, not your willpower.</p></div>
@@ -334,7 +334,7 @@
         <h2 data-reveal>Asked and answered.</h2>
         <div class="faq">
           <details data-reveal><summary>Is this made by Superset?</summary><p>No. soopdoop is an independent, open-source companion. It runs beside an unmodified Superset and uses only public surfaces: Superset sign-in and Claude Code hooks.</p></details>
-          <details data-reveal><summary>What can my friends see?</summary><p>That you are online, how many agents you run, your rank, and agent names only if you share them. Never your code or your prompts. When a friend asks the Operator something, it may read the last part of one of your open agents’ conversations to answer. Your light turns purple while it does.</p></details>
+          <details data-reveal><summary>What can my friends see?</summary><p>That you are online, how many agents you run, your rank, and agent names only if you share them. Never your code or your prompts. When a friend asks the Operator something, a throwaway copy of one of your open agents may read its conversation to answer, ephemerally: the copy is never saved, and friends see only the answer. Your light turns purple while it does.</p></details>
           <details data-reveal><summary>Is the Operator switched on?</summary><p>It is warming up. Until it is switched on, it politely tells you so. Presence, knocks, ranks and the HUD work today.</p></details>
           <details data-reveal><summary>Codex? Cursor? Something else?</summary><p>Claude Code today. More harnesses later.</p></details>
           <details data-reveal><summary>Linux? Windows?</summary><p>The HUD app is macOS only for now. The web rail runs anywhere if you start it by hand.</p></details>

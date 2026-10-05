@@ -80,7 +80,7 @@ export function startOperator(): void {
 
     if (answer.agent === null) {
       opStatus.textContent = "no match";
-      shown.replaceWith(status("No agent read. Nothing to forget.", "none"));
+      shown.replaceWith(status("No agent read.", "none"));
     } else {
       const agent = find(`[data-node="${answer.agent}"]`, SVGGElement, map);
       const led = find(".m-led", SVGCircleElement, agent);
@@ -127,7 +127,7 @@ export function startOperator(): void {
       return p.code ? make("code", "", p.text) : document.createTextNode(p.text);
     }));
     const receipt = answer.tokens > 0
-      ? `read ${(answer.tokens / 1000).toFixed(1)}k tokens · sent 1 line back · slice forgotten ✓`
+      ? `read ${(answer.tokens / 1000).toFixed(1)}k tokens ephemerally · sent 1 line back ✓`
       : "read nothing · answered from the Operator’s own head";
     out.append(make("p", "ans-receipt", receipt));
   }
