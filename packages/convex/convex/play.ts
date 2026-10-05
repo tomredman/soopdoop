@@ -1,5 +1,5 @@
 // ABOUTME: Play: XP and ranks from what hackers do for each other, and the crew board. No tokens. An assist (your agent
-// ABOUTME: answered a crewmate through the Operator) is worth 10 XP, a question asked 1, and flicks move XP between friends.
+// ABOUTME: answered a crewmate through the Operator) is 10 XP, a question asked 1, a flick sent 1, a knock sent 2; flicks also move XP.
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
@@ -7,7 +7,7 @@ import { query } from "./_generated/server";
 import { acceptedFriendIds } from "./friends";
 import { requireHacker } from "./lib/auth";
 
-export const XP = { assist: 10, ask: 1 };
+export const XP = { assist: 10, ask: 1, flick: 1, knock: 2 };
 
 // The spec's ranks; "n00b" is said with pride.
 export const RANKS: readonly { name: string; at: number }[] = [
@@ -35,6 +35,9 @@ export function rankFor(xp: number): { rank: string; at: number; next: number | 
 interface Counts {
   assists: number;
   asks: number;
+  // Flicks (superflicks too) and knocks sent, caught or not, opened or not.
+  flicks: number;
+  knocks: number;
   // XP flicks moved (flicks.ts): what this hacker caught or superflicked from others, minus what others took from them.
   flickXp: number;
 }
@@ -67,14 +70,20 @@ async function countsFor(ctx: QueryCtx, id: Id<"hackers">): Promise<Counts> {
   let flickXp = 0;
   for (const f of sent) flickXp += (f.superXp ?? 0) - (f.caughtXp ?? 0);
   for (const f of got) flickXp += (f.caughtXp ?? 0) - (f.superXp ?? 0);
+  const knocks = await ctx.db
+    .query("knocks")
+    .withIndex("by_from_to", function (q) {
+      return q.eq("fromHackerId", id);
+    })
+    .collect();
   // A message the Operator answered itself is a chat, not a question to the crew: it earns nothing.
   const questions = asks.filter(function (r) { return r.byOperator !== true; });
-  return { assists: assists.length, asks: questions.length, flickXp };
+  return { assists: assists.length, asks: questions.length, flicks: sent.length, knocks: knocks.length, flickXp };
 }
 
 // Never below zero: a flick only takes what is there.
 function xpFrom(c: Counts): number {
-  return Math.max(0, c.assists * XP.assist + c.asks * XP.ask + c.flickXp);
+  return Math.max(0, c.assists * XP.assist + c.asks * XP.ask + c.flicks * XP.flick + c.knocks * XP.knock + c.flickXp);
 }
 
 export async function xpOf(ctx: QueryCtx, id: Id<"hackers">): Promise<number> {

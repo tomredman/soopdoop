@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { CATCH_XP, SUPER_EVERY, SUPER_XP } from "./flicks";
-import { type Actor, befriend, hackerNamed, harness, type Harness, must } from "./testing.helpers";
+import { type Actor, befriend, hackerNamed, harness, type Harness, link, must } from "./testing.helpers";
 
 async function idOf(t: Harness, handle: string): Promise<Id<"hackers">> {
   const row = await t.run(async function (ctx) {
@@ -92,23 +92,35 @@ describe("flicks", function () {
     const { tom, vlad } = await pair(t);
     await giveAssists(t, "tom", 1);
 
+    // 10 XP, and 1 more for the flick itself.
     await tom.mutation(api.flicks.send, { toHandle: "vlad" });
     const flick = must((await vlad.query(api.flicks.mine, {})).incoming[0]);
     expect(flick.catchUntil).toBeGreaterThan(Date.now());
     expect(await vlad.mutation(api.flicks.catchFlick, { flickId: flick._id })).toEqual({ fromHandle: "tom", xp: CATCH_XP });
-    expect(await xpOfHandle(tom, "tom")).toBe(10 - CATCH_XP);
+    expect(await xpOfHandle(tom, "tom")).toBe(10 + 1 - CATCH_XP);
     expect(await xpOfHandle(vlad, "vlad")).toBe(CATCH_XP);
     expect((await tom.query(api.flicks.mine, {})).caught).toMatchObject([{ byHandle: "vlad", xp: CATCH_XP }]);
     await expect(vlad.mutation(api.flicks.catchFlick, { flickId: flick._id })).rejects.toThrow("Too slow");
 
-    // Tom has 5 left: the next catch takes all 5, and after that there is nothing to take.
+    // 7 after the next flick, 2 after its catch; then 3 after a flick, and the catch takes all 3.
     await tom.mutation(api.flicks.send, { toHandle: "vlad" });
     await vlad.mutation(api.flicks.catchFlick, { flickId: must((await vlad.query(api.flicks.mine, {})).incoming[0])._id });
     await tom.mutation(api.flicks.send, { toHandle: "vlad" });
     expect(await vlad.mutation(api.flicks.catchFlick, { flickId: must((await vlad.query(api.flicks.mine, {})).incoming[0])._id }))
-      .toEqual({ fromHandle: "tom", xp: 0 });
+      .toEqual({ fromHandle: "tom", xp: 3 });
     expect(await xpOfHandle(tom, "tom")).toBe(0);
-    expect(await xpOfHandle(vlad, "vlad")).toBe(10);
+    expect(await xpOfHandle(vlad, "vlad")).toBe(CATCH_XP * 2 + 3);
+  });
+
+  test("every flick sent is 1 XP and every knock sent 2, whatever happens to them", async function () {
+    const t = harness();
+    const { tom, vlad } = await pair(t);
+    await tom.mutation(api.flicks.send, { toHandle: "vlad" });
+    await t.mutation(internal.flicks.expire, { flickId: must((await vlad.query(api.flicks.mine, {})).incoming[0])._id });
+    await tom.mutation(api.flicks.send, { toHandle: "vlad" });
+    await tom.mutation(api.knocks.send, { toHandle: "vlad", item: link });
+    expect(await xpOfHandle(tom, "tom")).toBe(2 * 1 + 2);
+    expect(await xpOfHandle(vlad, "vlad")).toBe(0);
   });
 
   test("once the catch window closes, it can only be flicked back", async function () {
