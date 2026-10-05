@@ -32,6 +32,8 @@ export function infoPlist(version: string): string {
   <string>soopdoop</string>
   <key>CFBundleExecutable</key>
   <string>Soopdoop</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
@@ -76,6 +78,9 @@ export async function buildApp(root: string, version: string): Promise<{ ok: tru
   await Bun.write(binary, Bun.file(path.join(pkg, ".build", "release", "Soopdoop")));
   await chmod(binary, 0o755);
   await Bun.write(path.join(staging, "Contents", "Info.plist"), infoPlist(version));
+  // The icon (apps/hud/icon: rendered in Blender by icon.py). Finder, Settings and notifications show it.
+  const icon = Bun.file(path.join(pkg, "icon", "AppIcon.icns"));
+  if (await icon.exists()) await Bun.write(path.join(staging, "Contents", "Resources", "AppIcon.icns"), icon);
   // Ad-hoc: signed for this Mac. Built here from source, so Gatekeeper has nothing downloaded to check.
   const sign = run(["codesign", "--force", "--sign", "-", staging], root);
   if (sign.code !== 0) return { ok: false, why: `codesign failed: ${sign.output.trim()}` };
