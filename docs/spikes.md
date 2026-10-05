@@ -104,6 +104,16 @@ Checked on the dev deployment: a flick caught at once moved 3 XP (all the flicke
 
 Not checked: a full superflick earned on a deployment (five flicks with their windows), the Catch! button on a macOS notification, and the switch from the installed app.
 
+## The Operator chat and the icon (5 Oct 2026)
+
+A chat message is a relay with `via: "chat"` (`operator.chat`). `route` sends it to one Claude call (`chatTurn`) with the crew's open agents, their routing summaries and the last six turns of the chat; the answer is JSON: the Operator replies itself (stored with `byOperator`, no agent asked, no XP), or names an agent and a question that stands alone (`routedQuestion`, which `readsFor` hands the daemon instead of the message). `operator.chatLog` is the chat, oldest first. The app opens it in a window of its own (`OperatorChat.swift`).
+
+The icon is rendered by `apps/hud/icon/icon.py` in Blender 3.6 (Cycles, Metal): the mark's two eyes, a white ceramic ring and a violet neon ring that lights its iris, on a glossy black tile with a shadow catcher. `AppIcon.icns` is made from the 1024 px render with `sips` and `iconutil`, and `buildApp` copies it into the bundle.
+
+Checked: `bun test` covers a chat answered by the Operator itself (no XP), one routed to an agent with its standalone question, the history a follow-up sees, and the JSON reading. On the dev deployment (routing stand-in), a chat message went through the real scheduler and came back answered by the Operator. The chat window and the HUD's chat button were drawn in snapshot mode.
+
+Not checked: the chat prompt against the real model (dev uses the stand-in; `operator:dryRun` with `chatAs` runs it), and the icon inside an installed app.
+
 ## Spike 1: our hooks beside Superset's (29 Sep 2026)
 
 The installer adds one `soopdoop hook <event>` command per Claude Code event and leaves every other hook alone; reinstalling does not duplicate; uninstalling removes only ours. This is unit-tested (`apps/daemon/src/hooks.test.ts`), including the absolute-path form the installer now writes by default (`<bun> <cli.ts> hook <event>`), so the hook works without anything on PATH.
