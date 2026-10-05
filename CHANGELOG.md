@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.5.0 · 2026-10-05
+
+### New
+- put the HUD's sections in any order in Settings; This Mac starts off (hud)
+- a private switch for each agent under This Mac keeps its whole project private (privacy)
+- catch a flick in its first 10 seconds and take the flicker's XP; 5 clean flicks in a row earn a SUPERFLICK (flicks)
+
+### Fixes
+- links on the invite page are the size of the text around them (site)
+
+### Docs
+- catching flicks, superflicks, the private switch, section order, what was checked
+
 ## v0.4.0 · 2026-10-05
 
 ### New
