@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.3.0 · 2026-10-05
+
+### New
+- the Operator is one line, how many questions were answered today; no Ask box (hud)
+- setup installs the soopdoop skill, so agents know when to ask the Operator (cli)
+- the Operator asks the crewmate's agent itself instead of reading its conversation (operator)
+
+### Docs
+- the Operator asks agents, the skill, the one-line HUD section, what was checked
+
 ## v0.2.5 · 2026-10-03
 
 ### New
