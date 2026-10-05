@@ -1,5 +1,5 @@
-// ABOUTME: The HUD's content: sign-in and handle screens, then you (rank, XP), the knock on screen, friend requests, the crew,
-// ABOUTME: the Operator (how many answers today), the board, and this Mac. Every action goes through the agent.
+// ABOUTME: The HUD's content: sign-in and handle screens, then you (rank, XP), the knock on screen, friend requests, flicks,
+// ABOUTME: the crew, the Operator (how many answers today), the board, and this Mac. Every action goes through the agent.
 import AppKit
 import SwiftUI
 
@@ -192,6 +192,7 @@ struct Main: View {
             .padding(6)
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line2, style: StrokeStyle(lineWidth: 1, dash: [3])))
         }
+        ForEach(state.flicks.incoming) { flick in FlickRow(flick: flick) }
         if style.showCrew { CrewSection(state: state) }
         if style.showOperator { OperatorSection(state: state) }
         if style.showBoard { BoardSection(state: state) }
@@ -300,14 +301,14 @@ struct CrewSection: View {
                 .font(Theme.mono(10)).foregroundStyle(Theme.dim).fixedSize(horizontal: false, vertical: true)
         }
         ForEach(state.crew) { friend in
-            FriendRow(friend: friend, composing: $composing)
+            FriendRow(friend: friend, flicked: state.flicks.waitingOn.contains(friend.handle), composing: $composing)
             if composing == friend.handle { KnockComposer(handle: friend.handle, composing: $composing) }
         }
         SentKnocks(sent: state.sent)
         // For someone who is already on soopdoop. Someone new needs an invite instead.
         if adding {
             HStack(spacing: 6) {
-                TextField("their handle", text: $handle)
+                TextField("their soopdoop or Superset handle", text: $handle)
                     .textFieldStyle(.roundedBorder)
                     .font(Theme.mono(11))
                     .onSubmit(add)
@@ -326,12 +327,93 @@ struct CrewSection: View {
         }
     }
 
+    // Someone on soopdoop gets a friend request. Anyone else gets an invite, and its message goes on the clipboard.
     private func add() {
         let h = handle.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "^@", with: "", options: .regularExpression)
         guard !h.isEmpty else { return }
-        client.run("addFriend", ["handle": h], done: "Asked @\(h) to be friends. They join your crew when they accept.")
         handle = ""
         adding = false
+        Task {
+            do {
+                let result = try await client.act("addOrInvite", ["handle": h]) as? [String: Any] ?? [:]
+                client.toast = AddFriend.outcome(result, typed: h)
+            } catch {
+                client.toast = (error as? AgentError)?.message ?? error.localizedDescription
+            }
+        }
+    }
+}
+
+// What adding a friend by handle did, as one toast. An invite's message goes on the clipboard, ready for Slack.
+enum AddFriend {
+    @MainActor static func outcome(_ result: [String: Any], typed: String) -> String {
+        let handle = result["handle"] as? String ?? typed
+        if result["kind"] as? String == "asked" {
+            let via = result["viaSuperset"] as? Bool == true ? " (@\(typed) on Superset)" : ""
+            return "Asked @\(handle)\(via) to be friends. They join your crew when they accept."
+        }
+        if let message = result["message"] as? String {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(message, forType: .string)
+        }
+        if result["onSuperset"] as? Bool == true {
+            let who = result["name"] as? String ?? "@\(handle)"
+            return "\(who) is on Superset but not soopdoop yet. Invite link copied: send it to them. They join your crew when they sign in."
+        }
+        return "Nobody is @\(handle) on soopdoop or Superset. Invite link copied: send it to them."
+    }
+}
+
+extension AgentClient {
+    // A flick does nothing. The toast says how long the rally is.
+    func flick(_ handle: String) {
+        Task {
+            do {
+                let result = try await act("flick", ["handle": handle]) as? [String: Any]
+                let rally = result?["rally"] as? Int ?? 1
+                toast = rally > 1 ? "Flicked @\(handle) back. Rally: \(rally)." : "Flicked @\(handle)."
+            } catch {
+                toast = (error as? AgentError)?.message ?? error.localizedDescription
+            }
+        }
+    }
+}
+
+// A friend flicked you: pointless on purpose. Flick back and the rally goes on. It goes away by itself after 10 minutes.
+struct FlickRow: View {
+    @EnvironmentObject var client: AgentClient
+    let flick: IncomingFlick
+    @State private var wiggle = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "hand.point.right.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.amber)
+                .rotationEffect(.degrees(wiggle ? -18 : 0), anchor: .leading)
+            // The rally shows only when it fits; "@mira flicked you" always does.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) {
+                    who
+                    if flick.rally > 1 { Text("rally \(flick.rally)").font(Theme.mono(10)).foregroundStyle(Theme.dim).lineLimit(1) }
+                }
+                who
+            }
+            Spacer(minLength: 4)
+            Button("flick back") { client.flick(flick.fromHandle) }.buttonStyle(HUDButtonStyle(primary: true))
+        }
+        .padding(6)
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line2, style: StrokeStyle(lineWidth: 1, dash: [3])))
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.08).repeatCount(6, autoreverses: true)) { wiggle = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { wiggle = false }
+        }
+    }
+
+    private var who: some View {
+        (Text("@\(flick.fromHandle)").font(Theme.mono(11, .semibold)) + Text(" flicked you").font(Theme.mono(11)))
+            .foregroundStyle(Theme.text)
+            .lineLimit(1)
     }
 }
 
@@ -370,8 +452,11 @@ struct SentKnocks: View {
 }
 
 struct FriendRow: View {
+    @EnvironmentObject var client: AgentClient
     @EnvironmentObject var style: HUDStyle
     let friend: Friend
+    // I flicked them and wait for a flick back.
+    let flicked: Bool
     @Binding var composing: String?
     @State private var open = false
 
@@ -386,7 +471,16 @@ struct FriendRow: View {
                     }
                     Text(stateLine).font(Theme.mono(style.smallSize)).foregroundStyle(friend.relaying ? Theme.purple : Theme.muted).lineLimit(1)
                 }
-                Spacer()
+                Spacer(minLength: 4)
+                // A small hand, so names keep their room. Offline is fine for a flick: it waits 10 minutes. Focus bounces it.
+                Button { client.flick(friend.handle) } label: {
+                    Image(systemName: flicked ? "hand.point.right.fill" : "hand.point.right")
+                }
+                .buttonStyle(HUDButtonStyle())
+                .disabled(flicked || friend.inFocus)
+                .opacity(flicked || friend.inFocus ? 0.4 : 1)
+                .help(flicked ? "Flicked. Waiting for @\(friend.handle) to flick back." : "flick: it does nothing, and that is the point")
+                .accessibilityLabel(flicked ? "flicked" : "flick")
                 let reachable = friend.led != "x" && !friend.inFocus
                 Button("knock") { composing = composing == friend.handle ? nil : friend.handle }
                     .buttonStyle(HUDButtonStyle())

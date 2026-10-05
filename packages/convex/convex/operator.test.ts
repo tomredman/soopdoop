@@ -3,7 +3,7 @@ import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { agentAnswer, answerFrom, candidateLine, mentionedHandles, NOT_CONFIGURED } from "./lib/claude";
 import { rankFor } from "./play";
-import { type Actor, befriend, hackerNamed, harness, type Harness, must } from "./testing.helpers";
+import { type Actor, befriend, hackerNamed, harness, type Harness, must, settleScheduled } from "./testing.helpers";
 
 const CONTEXT = [
   "user: where do we filter expired listings for the market update?",
@@ -39,7 +39,9 @@ beforeEach(function () {
   savedFake = process.env.OPERATOR_FAKE;
   process.env.OPERATOR_FAKE = "1";
 });
-afterEach(function () {
+afterEach(async function () {
+  // Every question schedules `route`; it must finish while this test's database and OPERATOR_FAKE are still here.
+  await settleScheduled();
   if (savedFake === undefined) delete process.env.OPERATOR_FAKE;
   else process.env.OPERATOR_FAKE = savedFake;
 });

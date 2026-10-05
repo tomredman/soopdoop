@@ -1,5 +1,5 @@
-// ABOUTME: macOS notifications for what the HUD cannot show right now: a knock, an answer to my question, a friend request.
-// ABOUTME: Off, only while the HUD is hidden (default), or always. A knock's notification has Show me / Not now buttons.
+// ABOUTME: macOS notifications for what the HUD cannot show right now: a knock, a flick, an answer to my question, a friend
+// ABOUTME: request. Off, only while the HUD is hidden (default), or always. A knock's notification has Show me / Not now buttons.
 import AppKit
 import Combine
 import UserNotifications
@@ -14,6 +14,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     private var lastKnock: String?
     private var finishedRelays = Set<String>()
     private var requests = Set<String>()
+    private var flicks = Set<String>()
     private var asked = false
 
     init(client: AgentClient, style: HUDStyle) {
@@ -44,7 +45,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let knock = state.incoming.current
         let finished = Set(state.wire.filter { $0.role == "asked" && !$0.inFlight }.map(\.id))
         let requestHandles = Set(state.requests.map(\.handle))
+        let flickIds = Set(state.flicks.incoming.map(\.id))
         if seeded && wanted {
+            for flick in state.flicks.incoming where !flicks.contains(flick.id) {
+                let rally = flick.rally > 1 ? " Rally: \(flick.rally)." : ""
+                post(id: "flick-\(flick.id)", title: "@\(flick.fromHandle) flicked you", body: "Flick back from the soopdoop HUD.\(rally)", category: nil)
+            }
             if let knock, knock.id != lastKnock {
                 post(id: "knock-\(knock.id)", title: "@\(knock.fromHandle) wants you to see this", body: knock.item.title, category: "knock")
             }
@@ -60,6 +66,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         lastKnock = knock?.id
         finishedRelays = finished
         requests = requestHandles
+        flicks = flickIds
     }
 
     private func post(id: String, title: String, body: String, category: String?) {

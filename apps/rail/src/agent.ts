@@ -9,7 +9,7 @@ import { startNow, UPDATER_LABEL } from "@soopdoop/daemon/src/service";
 import { requestUpdate } from "@soopdoop/daemon/src/update";
 import { RAIL_ORIGIN } from "./config";
 import { cleanError } from "./format";
-import { inviteMessage } from "./invite";
+import { inviteLink, inviteMessage } from "./invite";
 import { readLocalInfo, type LocalInfo, type LocalServer } from "./local";
 import { idToken, readSession, saveSession, signIn } from "./session";
 
@@ -37,6 +37,8 @@ export interface AppState {
   wire: Relay[];
   local: LocalInfo | null;
   inviteWaiting: boolean;
+  // Who flicked me and waits for a flick back, and whom I flicked and wait on.
+  flicks: FunctionReturnType<typeof api.flicks.mine>;
 }
 
 export interface Agent {
@@ -56,6 +58,7 @@ const EMPTY = {
   subset: [],
   routing: [],
   wire: [],
+  flicks: { incoming: [], waitingOn: [] },
 };
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -157,6 +160,7 @@ export function createAgent(server: LocalServer, open: (url: string) => Promise<
       c.onUpdate(api.subsets.mine, {}, function (subset) { set({ subset }); }, logError),
       c.onUpdate(api.routing.mine, {}, function (routing) { set({ routing }); }, logError),
       c.onUpdate(api.operator.log, {}, function (wire) { set({ wire }); }, logError),
+      c.onUpdate(api.flicks.mine, {}, function (flicks) { set({ flicks }); }, logError),
     );
   }
 
@@ -247,8 +251,11 @@ export function createAgent(server: LocalServer, open: (url: string) => Promise<
       case "claimHandle": {
         const handle = text(args, "handle").replace(/^@/, "");
         await live().mutation(api.hackers.claimHandle, { handle });
-        // Superset handles have the same shape; link the profile when the names match. Quiet otherwise.
-        void live().action(api.superset.linkProfile, { handle, auto: true }).catch(function () { /* not theirs */ });
+        // Superset handles have the same shape; link the profile when the names match. Quiet otherwise. Linking also
+        // redeems invites made for that Superset handle, so whoever sent them is a friend now.
+        void live().action(api.superset.linkProfile, { handle, auto: true }).then(function (linked) {
+          if (linked.invitedBy.length > 0) set({ message: `You and ${linked.invitedBy.map(function (h) { return `@${h}`; }).join(", ")} are friends now: they invited you.` });
+        }).catch(function () { /* not theirs */ });
         return null;
       }
       case "knock":
@@ -282,6 +289,21 @@ export function createAgent(server: LocalServer, open: (url: string) => Promise<
       case "addFriend":
         await live().mutation(api.friends.request, { handle: text(args, "handle").replace(/^@/, "") });
         return null;
+      // Newer apps: someone not on soopdoop gets an invite instead of an error, found on Superset when possible.
+      case "addOrInvite": {
+        const added = await live().action(api.friends.addByHandle, { handle: text(args, "handle") });
+        if (added.kind === "asked") return added;
+        return {
+          kind: "invited",
+          handle: added.handle,
+          onSuperset: added.onSuperset,
+          name: added.name,
+          link: inviteLink(added.token),
+          message: inviteMessage(added.token, state.me?.handle ?? "a friend", added.name),
+        };
+      }
+      case "flick":
+        return await live().mutation(api.flicks.send, { toHandle: text(args, "handle") });
       case "acceptFriend": {
         const handle = text(args, "handle");
         const request = state.requests.find(function (r) { return r.handle === handle; });

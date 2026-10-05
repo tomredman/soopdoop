@@ -99,6 +99,20 @@ struct SentKnock: Decodable, Identifiable {
     var expiresAt: Double = 0
 }
 
+// A friend's flick, waiting for a flick back. The backend expires it after 10 minutes.
+struct IncomingFlick: Decodable, Identifiable {
+    var id = ""
+    var fromHandle = ""
+    var rally = 1
+    var expiresAt: Double = 0
+}
+
+// Who flicked me, and whom I flicked and am waiting on.
+struct Flicks: Decodable {
+    var incoming: [IncomingFlick] = []
+    var waitingOn: [String] = []
+}
+
 // The one line the Operator routes questions with, for one of my open agents.
 struct RoutingSummary: Decodable {
     var agentId = ""
@@ -168,6 +182,7 @@ struct AppState: Decodable {
     var wire: [Relay] = []
     var local: LocalInfo?
     var inviteWaiting = false
+    var flicks = Flicks()
 
     var myRow: BoardRow? { board.first { $0.me } }
 }
@@ -268,6 +283,22 @@ extension SentKnock {
     }
 }
 
+extension IncomingFlick {
+    enum CodingKeys: String, CodingKey { case id = "_id", fromHandle, rally, expiresAt }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = c.value(.id, ""); fromHandle = c.value(.fromHandle, ""); rally = c.value(.rally, 1); expiresAt = c.value(.expiresAt, 0)
+    }
+}
+
+extension Flicks {
+    enum CodingKeys: String, CodingKey { case incoming, waitingOn }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        incoming = c.value(.incoming, []); waitingOn = c.value(.waitingOn, [])
+    }
+}
+
 extension RoutingSummary {
     enum CodingKeys: String, CodingKey { case agentId, summary }
     init(from decoder: Decoder) throws {
@@ -321,7 +352,7 @@ extension LocalInfo {
 
 extension AppState {
     enum CodingKeys: String, CodingKey {
-        case version, phase, message, me, board, crew, requests, incoming, sent, subset, routing, wire, local, inviteWaiting
+        case version, phase, message, me, board, crew, requests, incoming, sent, subset, routing, wire, local, inviteWaiting, flicks
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -329,5 +360,6 @@ extension AppState {
         me = c.maybe(.me); board = c.value(.board, []); crew = c.value(.crew, []); requests = c.value(.requests, [])
         incoming = c.value(.incoming, Incoming()); sent = c.value(.sent, []); subset = c.value(.subset, [])
         routing = c.value(.routing, []); wire = c.value(.wire, []); local = c.maybe(.local); inviteWaiting = c.value(.inviteWaiting, false)
+        flicks = c.value(.flicks, Flicks())
     }
 }

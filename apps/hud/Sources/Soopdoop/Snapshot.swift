@@ -13,18 +13,31 @@ enum Snapshot {
         for (name, state) in samples() {
             for (suffix, backdrop) in backdrops {
                 let file = URL(fileURLWithPath: dir).appendingPathComponent("hud-\(name)\(suffix).png")
-                draw(state, height: name == "ready" ? 1180 : 420, on: backdrop, style: style, to: file)
+                draw(state, height: name == "ready" ? 1260 : 420, on: backdrop, style: style, to: file)
             }
+        }
+        // The knock composer at the HUD's default and narrowest widths: its buttons must never wrap.
+        let client = AgentClient(preview: AppState())
+        for width in [300.0, 260.0] {
+            let composer = ZStack(alignment: .top) {
+                Theme.ground
+                KnockComposer(handle: "jimmy", composing: .constant("jimmy")).padding(11)
+            }
+            let file = URL(fileURLWithPath: dir).appendingPathComponent("hud-knock-\(Int(width)).png")
+            render(composer.environmentObject(client).environmentObject(style), size: NSSize(width: width, height: 170), to: file)
         }
     }
 
     private static func draw(_ state: AppState, height: CGFloat, on backdrop: Color, style: HUDStyle, to file: URL) {
         let client = AgentClient(preview: state)
-        let size = NSSize(width: 300, height: height)
         let root = ZStack {
             backdrop
             HUDRoot().environmentObject(client).environmentObject(style)
         }
+        render(root, size: NSSize(width: 300, height: height), to: file)
+    }
+
+    private static func render(_ root: some View, size: NSSize, to file: URL) {
         // A real (off-screen) window, so AppKit-backed views (scrolling, text fields) draw as they do on screen.
         let host = NSHostingView(rootView: root.frame(width: size.width, height: size.height))
         host.frame = NSRect(origin: .zero, size: size)
@@ -76,6 +89,7 @@ enum Snapshot {
             Friend(handle: "dev", led: "x", inFocus: false, agentCount: 0, agents: nil, superset: nil, relaying: false),
         ]
         ready.requests = [FriendRequest(handle: "ada-lovelace")]
+        ready.flicks = Flicks(incoming: [IncomingFlick(id: "f1", fromHandle: "mira", rally: 3, expiresAt: now + 400_000)], waitingOn: ["jimmy"])
         ready.sent = [
             SentKnock(id: "s2", toHandle: "mira", outcome: "open", expiresAt: now + 18_000),
             SentKnock(id: "s1", toHandle: "jimmy", outcome: "opened", expiresAt: now - 60_000),

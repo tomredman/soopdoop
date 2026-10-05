@@ -11,6 +11,9 @@ const modules = {
   "./_generated/server.js": function () {
     return import("./_generated/server.js");
   },
+  "./flicks.ts": function () {
+    return import("./flicks");
+  },
   "./friends.ts": function () {
     return import("./friends");
   },
@@ -31,6 +34,9 @@ const modules = {
   },
   "./lib/claude.ts": function () {
     return import("./lib/claude");
+  },
+  "./lib/friendships.ts": function () {
+    return import("./lib/friendships");
   },
   "./lib/supersetProfile.ts": function () {
     return import("./lib/supersetProfile");
@@ -59,8 +65,21 @@ export type Harness = ReturnType<typeof harness>;
 // What `withIdentity` returns: the same accessor, acting as one hacker.
 export type Actor = ReturnType<Harness["withIdentity"]>;
 
+// Every harness made since the last settleScheduled().
+const made: { finishInProgressScheduledFunctions: () => Promise<void> }[] = [];
+
 export function harness() {
-  return convexTest(schema, modules);
+  const t = convexTest(schema, modules);
+  made.push(t);
+  return t;
+}
+
+// Runs the scheduled functions a test started but did not wait for (the Operator's `route` runs at once). They start on
+// a timer, and a test that only awaits database calls never lets a timer fire, so they would all start during the next
+// test file, against databases that are gone, and fail it.
+export async function settleScheduled(): Promise<void> {
+  await new Promise(function (resolve) { setTimeout(resolve, 0); });
+  for (const t of made.splice(0)) await t.finishInProgressScheduledFunctions();
 }
 
 // A signed-in hacker: claims the handle and returns an accessor that acts as them.
