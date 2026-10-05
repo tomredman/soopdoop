@@ -31,6 +31,44 @@ struct LED: View {
     }
 }
 
+// A network switch's activity light. Steady while the link is up (connected and signed in); flickering while traffic
+// passes: the Operator working on a question, or an agent answering one. Anything that moves on the wire (a question
+// starting, an answer landing) flickers it for a moment too.
+struct ActivityLight: View {
+    let link: Bool
+    let busy: Bool
+    // Changes whenever something moves on the wire.
+    let traffic: String
+    @State private var lit = true
+    @State private var burst = false
+
+    var body: some View {
+        let flickering = link && (busy || burst)
+        RoundedRectangle(cornerRadius: 1.5)
+            .fill(link ? Theme.green : Theme.dim)
+            .frame(width: 8, height: 5)
+            .opacity(!link ? 0.4 : flickering ? (lit ? 1 : 0.2) : 0.5)
+            .shadow(color: Theme.green.opacity(flickering && lit ? 0.9 : 0), radius: 3)
+            // On and off at quick, uneven intervals, like a switch port.
+            .task(id: flickering) {
+                lit = true
+                guard flickering else { return }
+                while !Task.isCancelled {
+                    lit = Double.random(in: 0...1) < 0.6
+                    try? await Task.sleep(for: .milliseconds(Int.random(in: 35...110)))
+                }
+            }
+            // The newest change wins: an earlier burst cannot end a later one.
+            .task(id: traffic) {
+                burst = true
+                try? await Task.sleep(for: .seconds(1.5))
+                if !Task.isCancelled { burst = false }
+            }
+            .help(link ? "Flickers while the Operator works on a question or an agent answers one." : "Not connected")
+            .accessibilityLabel(flickering ? "Operator traffic" : link ? "Connected" : "Not connected")
+    }
+}
+
 // The knock's countdown: a ring that empties as the time the server gave runs out.
 struct CountdownRing: View {
     let expiresAt: Double

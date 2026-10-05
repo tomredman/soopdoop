@@ -91,6 +91,7 @@ Not yet: other harnesses than Claude Code (Codex and the rest do not show up), e
 
 A menu bar icon and the HUD. The HUD is a small floating panel that shows while Superset is in front and hides when you switch to another app. Clicking it does not take you out of Superset. Drag it anywhere; it stays there.
 
+- **The light** next to the soopdoop name: steady green while you are connected. Like a network switch, it flickers while the Operator works on one of your questions or an agent answers one (yours for a crewmate, or theirs for you), and for a moment whenever a question starts or an answer lands.
 - **You:** your rank and XP, and how far to the next rank.
 - **Knocks and friend requests:** a friend's knock shows with its countdown ring. Show me opens the link; Not now sends it back. It is gone when the ring runs out. Friend requests show under it with an Accept button.
 - **Crew:** your friends by @handle (their real names too, if you turn that on in Settings) with their lights (green working, blue idle, purple while their agent answers the Operator, grey offline), their agents and Superset profile (click a row), a flick button (the hand), a superflick button (⚡, when you have one) and a knock button, the knocks you sent and what happened to them, and + add a friend by handle, which invites them when they are not on soopdoop yet. The header shows your progress to the next superflick.

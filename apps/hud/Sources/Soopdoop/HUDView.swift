@@ -64,12 +64,19 @@ struct TitleBar: View {
     @EnvironmentObject var client: AgentClient
 
     var body: some View {
+        // Every question this hacker asked or one of their agents is answering, and the chat.
+        let relays = (client.state?.wire ?? []) + (client.state?.chat ?? [])
         HStack(spacing: 8) {
             HStack(spacing: 0) {
                 Text("soop").foregroundStyle(Theme.text)
                 Text("doop").foregroundStyle(Theme.purple)
             }
             .font(Theme.mono(13, .bold))
+            ActivityLight(
+                link: client.connected && client.state?.phase == "ready",
+                busy: relays.contains { $0.inFlight },
+                traffic: relays.map { "\($0.id):\($0.status)" }.joined(separator: ",")
+            )
             Spacer()
             if let me = client.state?.me {
                 if let until = me.focusUntil, until > Date().timeIntervalSince1970 * 1000 {
