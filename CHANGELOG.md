@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.9.0 · 2026-10-05
+
+### New
+- just @handles unless you turn real names on in Settings; fold This Mac to one line; open the Operator to see its last 3 moves (hud)
+
+### Fixes
+- the Operator reads ephemerally; "forgotten" sounded like what it read went unused (site)
+
+### Docs
+- reads are "ephemeral", not "forgotten", in the spec, the build plan and the rail prototype
+
 ## v0.8.0 · 2026-10-05
 
 ### New
