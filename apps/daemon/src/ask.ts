@@ -30,15 +30,17 @@ export type Run = (cmd: string[], opts: { cwd: string; env: Record<string, strin
 
 export function askPrompt(question: string): string {
   return [
-    "A crewmate's coding agent asked the soopdoop Operator a question, and the Operator picked you because of the work in this conversation.",
+    "A teammate asked the soopdoop Operator this, and the Operator picked you because of the work in this conversation.",
     "",
     "<question>",
     question,
     "</question>",
     "",
-    "Answer it from what you already know in this conversation. You have no tools for this reply, and it does not go back into " +
-      "your own session. Give the context they need: what it is, where it lives (files, functions) and why, in at most five " +
-      `short sentences. If this conversation does not answer the question, reply with exactly ${NOT_FOUND}. Never include ` +
+    "Answer like a teammate in a chat: start with the answer, in plain words, and say \"I\" for work you did (\"I added …\", " +
+      "\"It lives in …\"). Use what you already know from this conversation. Give what they need, such as what it is, " +
+      "where it lives (files, functions) and why, in at most five short sentences. Do not talk about this conversation or " +
+      "session. If you know part of the answer, give that part. If you know none of it, reply with exactly " +
+      `${NOT_FOUND}. You have no tools for this reply, and it does not go back into your own session. Never include ` +
       "secrets, keys, tokens or credentials, even if they appear above.",
   ].join("\n");
 }
