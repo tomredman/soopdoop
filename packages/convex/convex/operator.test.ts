@@ -6,6 +6,7 @@ import {
   answerFrom,
   candidateLine,
   crewmatesFor,
+  firstNameAndHandle,
   mentionedHandles,
   mentionNote,
   NOT_CONFIGURED,
@@ -180,6 +181,34 @@ describe("the Operator", function () {
     expect(board.find(function (r) { return r.handle === "jimmy"; })?.assists).toBe(0);
   });
 
+  test("a who-question names the crewmate with an agent on it and asks what you would like to know; the answer goes to their agent", async function () {
+    const t = harness();
+    const { tom, jimmyToken } = await crew(t);
+    await linkSuperset(t, "jimmy", "jimmy-vibes", "Jimmy Lee");
+    const tomToken = await machine(t, tom, "mbp16", []);
+
+    const who = await t.mutation(api.operator.ask, { token: tomToken, question: "Who should I ask about the market update listings?" });
+    await t.action(internal.operator.route, { relayId: who });
+    expect(await t.query(api.operator.relay, { token: tomToken, relayId: who })).toMatchObject({
+      status: "answered",
+      byOperator: true,
+      answer: "Jimmy (@jimmy) has an agent on that right now. What would you like to know?",
+    });
+    expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([]);
+
+    // Tom's answer, sent with the handle the Operator named, goes to Jimmy's agent.
+    const followUp = await t.mutation(api.operator.ask, { token: tomToken, question: "@jimmy: where are expired listings filtered?" });
+    await t.action(internal.operator.route, { relayId: followUp });
+    expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([
+      { relayId: followUp, agentId: "a1", question: "@jimmy: where are expired listings filtered?" },
+    ]);
+
+    // Nobody's agent is on it: nobody is named.
+    const nobody = await t.mutation(api.operator.ask, { token: tomToken, question: "Who should I ask about billing webhooks?" });
+    await t.action(internal.operator.route, { relayId: nobody });
+    expect(await t.query(api.operator.relay, { token: tomToken, relayId: nobody })).toMatchObject({ status: "nobody" });
+  });
+
   test("an @mention finds the one crewmate it can mean, and their agent is asked with the handle written out", async function () {
     const t = harness();
     const tom = await hackerNamed(t, "tom");
@@ -276,6 +305,8 @@ describe("the Operator", function () {
     // A handle has no letters like "É", so this is a name, not a mention.
     expect(mentionedHandles("what is @Évariste doing?")).toEqual([]);
     expect(candidateLine({ handle: "vladimir", name: "Vlad P", agentName: "api", status: "working" }, 0)).toBe("1. @vladimir (Vlad P) · api · working");
+    expect(firstNameAndHandle({ handle: "adalovelace", name: "Ada Lovelace" })).toBe("Ada (@adalovelace)");
+    expect(firstNameAndHandle({ handle: "zed" })).toBe("@zed");
   });
 
   test("an @mention is matched to the crew: a handle, then a linked Superset handle, then the start of a handle or a name", function () {

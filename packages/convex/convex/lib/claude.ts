@@ -148,18 +148,25 @@ export function absentNote(question: string, candidates: Candidate[], me: string
 }
 
 const ROUTER =
-  "You are the Operator of a soopdoop crew: developers who each run coding agents. A crewmate's coding agent asks you a " +
-  "question. You see the crew's open agents, each with its owner's @handle (and their name, when known) and a one-line " +
-  "summary of what the agent is working on. You never see code or conversations. Do one of three things: answer the " +
-  "question yourself, pick one agent to ask, or say nobody knows. Answer it yourself when it only asks what someone, or " +
-  "the crew, is working on (\"what is jimmy working on?\", \"who is on checkout?\") and the summaries answer it. Pick an " +
-  "agent when the answer needs that agent's own knowledge of the project (how something works, where it lives, why it " +
-  "was done that way, what is left to do): the one most likely to already know. Say nobody knows when no agent is likely " +
-  "to know. A question about a particular person (\"what is jimmy working on\", \"what did Ana change?\") can only be " +
-  "answered from that person's own agents: if none of the agents belongs to that person, say nobody knows, even when the " +
-  "work sounds related. Reply with JSON only, one of {\"reply\": \"<your answer>\"}, {\"ask\": <agent number>} or " +
-  "{\"nobody\": true}. A reply is at most three short sentences, plain, about the work and not the person, naming files " +
-  "when they help. Never make up facts about code or people.";
+  "You are the Operator of a soopdoop crew: developers who each run coding agents. One of their agents asks you a " +
+  "question, often for its user. You see the crew's open agents, each with its owner's @handle (and their name, " +
+  "when known) and a one-line summary of what the agent is working on. You never see code or conversations. Do one " +
+  "of three things. Reply yourself only when the question just asks who knows about or works on something (\"who " +
+  "should I ask about checkout?\", \"who's on enrichment?\") or what someone, or the crew, is working on (\"what is " +
+  "jimmy working on?\"), and the summaries answer every part of it; an agent with no summary does not stop you from " +
+  "answering about the others. Ask an agent when any part needs that agent's own knowledge: how something works, " +
+  "where it lives, why it was done that way, what it changes, which files, what is half done, or whether something " +
+  "is still true. Pick the one most likely to know. When a summary only hints at the answer, ask that agent instead " +
+  "of guessing or saying what the summary leaves out. Say nobody knows when no agent is likely to know. A question " +
+  "about one person can only be answered from that person's own agents. A reply sounds like a teammate in a chat: " +
+  "one or two short sentences, about the people and their work, with the person's first name when you know it and " +
+  "their @handle once. To a who-question, say who has an agent on it and end with \"What would you like to know?\", " +
+  "for example: \"Ada (@adalovelace) has an agent on enrichment right now. What would you like to know?\" To a " +
+  "who-question that no agent fits, say in one sentence that nobody in the crew is on it right now. Never name the " +
+  "agents, never describe the list of agents (how many there are, or whose), and never talk about summaries, " +
+  "statuses or what you can see. Never confirm or deny what the summaries do not say, and never make up facts about " +
+  "code or people. Reply with JSON only, one of {\"reply\": \"<your answer>\"}, {\"ask\": <agent number>} or " +
+  "{\"nobody\": true}.";
 
 function answerer(owner: { handle: string; name?: string }): string {
   const who = `@${owner.handle}`;
@@ -183,9 +190,12 @@ function chatter(me: string): string {
     `You never see anyone's code or conversations. For each new message, do one of two things. Answer it yourself when ` +
     `it is small talk, about the crew (who is around, who works on what, going by the summaries), or about this chat. ` +
     `Or ask one crewmate's agent, when the answer needs that agent's own knowledge of the project; a question about a ` +
-    `person goes only to that person's agents. Reply with JSON only, either {"reply": "<your answer>"} or ` +
-    `{"ask": <agent number>, "question": "<the question for that agent, written to stand alone without this chat>"}. ` +
-    `Keep a reply to three short sentences, plain and a little playful. Never make up facts about code or people.`
+    `person goes only to that person's agents. When @${me} asks who knows about something or who to ask, say who has an ` +
+    `agent on it and ask what they would like to know; their answer goes to that agent. Reply with JSON only, either ` +
+    `{"reply": "<your answer>"} or {"ask": <agent number>, "question": "<the question for that agent, written to stand ` +
+    `alone without this chat>"}. Keep a reply to three short sentences, plain and a little playful, about the people and ` +
+    `their work. Never name the agents, never describe the list of agents, and never talk about summaries or what you ` +
+    `can see. Never make up facts about code or people.`
   );
 }
 
@@ -283,6 +293,25 @@ export function parseRoute(text: string, agents: number): Route {
   return null;
 }
 
+// "Ada (@adalovelace)", or "@adalovelace" without a linked name.
+export function firstNameAndHandle(c: { handle: string; name?: string }): string {
+  const first = c.name?.trim().split(/\s+/)[0];
+  return first === undefined || first === "" ? `@${c.handle}` : `${first} (@${c.handle})`;
+}
+
+// For fake mode: the candidate in `pool` whose agent shares the most words with the question, and how many.
+function bestFit(question: string, pool: number[], candidates: Candidate[]): { index: number; score: number } | null {
+  const q = words(question);
+  let best: { index: number; score: number } | null = null;
+  for (const i of pool) {
+    const c = candidates[i];
+    if (c === undefined) continue;
+    const score = [...words(`${c.agentName} ${c.workspace ?? ""} ${c.summary ?? ""}`)].filter(function (w) { return q.has(w); }).length;
+    if (best === null || score > best.score) best = { index: i, score };
+  }
+  return best;
+}
+
 // Routes an agent's question. A question about @someone goes only to their own agents; if they have none open, nothing
 // is read. Even a lone candidate is checked: reading an agent that cannot answer would show its owner's work to someone
 // who asked about something, or someone, else.
@@ -291,26 +320,20 @@ export async function routeQuestion(question: string, candidates: Candidate[]): 
   const pool = candidates.flatMap(function (c, i) { return mentioned.length === 0 || mentioned.includes(c.handle) ? [i] : []; });
   if (pool.length === 0) return null;
   if (operatorMode() === "fake") {
-    // "What is … working on?" with summaries to go by: those summaries. Otherwise the candidate whose summary shares the
-    // most words with the question, or the first.
+    // "What is … working on?" with summaries to go by: those summaries. "Who …?": the crewmate whose agent fits best,
+    // and what they would like to know. Otherwise the candidate whose summary shares the most words with the question,
+    // or the first.
     const known = pool.flatMap(function (i) {
       const c = candidates[i];
       return c?.summary === undefined ? [] : [`@${c.handle}'s agent: ${c.summary}`];
     });
     if (/\bworking on\b/i.test(question) && known.length > 0) return { reply: known.join(" ") };
-    const q = words(question);
-    let best = pool[0] ?? null;
-    let bestScore = -1;
-    for (const i of pool) {
-      const c = candidates[i];
-      if (c === undefined) continue;
-      const score = [...words(`${c.agentName} ${c.workspace ?? ""} ${c.summary ?? ""}`)].filter(function (w) { return q.has(w); }).length;
-      if (score > bestScore) {
-        best = i;
-        bestScore = score;
-      }
+    const best = bestFit(question, pool, candidates);
+    if (/^\s*who\b/i.test(question)) {
+      const c = best === null || best.score === 0 ? undefined : candidates[best.index];
+      return c === undefined ? null : { reply: `${firstNameAndHandle(c)} has an agent on that right now. What would you like to know?` };
     }
-    return best === null ? null : { ask: best };
+    return best === null ? null : { ask: best.index };
   }
   const listed = pool.flatMap(function (i) { const c = candidates[i]; return c === undefined ? [] : [c]; });
   const response = await client().beta.messages.create({
