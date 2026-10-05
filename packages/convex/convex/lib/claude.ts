@@ -1,5 +1,5 @@
-// ABOUTME: The Operator's Claude calls: pick the crewmate agent most likely to know, chat with a hacker (answer or route), and
-// ABOUTME: for daemons that still send a slice, answer from it; plus the check on an agent's answer. OPERATOR_FAKE=1 skips Claude.
+// ABOUTME: The Operator's Claude calls: route an agent's question (answer from the summaries, or pick the agent that knows),
+// ABOUTME: chat with a hacker, answer from a slice for older daemons; plus @handle matching and answer checks. OPERATOR_FAKE=1 skips Claude.
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "../_generated/server";
 
@@ -7,6 +7,8 @@ const MODEL = "claude-opus-5-5";
 const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 export const NOT_FOUND = "NOT_FOUND";
 export const NOT_CONFIGURED = "The Operator has no Claude API key yet. The crew leader sets ANTHROPIC_API_KEY on the deployment.";
+// The Operator's own answer to an agent is cut here, like an agent's answer on its owner's machine.
+const MAX_REPLY = 2_000;
 
 export interface Candidate {
   handle: string;
@@ -54,21 +56,110 @@ export function candidateLine(c: Candidate, i: number): string {
 }
 
 // The @handles a question mentions ("what is @vlad working on"), lowercased. Bare names are left to Claude: a handle
-// can be an everyday word (@dev), so matching words would send ordinary questions to one person's agents.
+// can be an everyday word (@dev), so matching words would send ordinary questions to one person's agents. "@Évariste" is
+// not a mention: a handle has no letters like "É".
 export function mentionedHandles(question: string): string[] {
   const out: string[] = [];
-  for (const m of question.toLowerCase().matchAll(/(?:^|[^a-z0-9])@([a-z0-9]+(?:-[a-z0-9]+)*)/g)) {
+  for (const m of question.toLowerCase().matchAll(/(?:^|[^a-z0-9])@([a-z0-9]+(?:-[a-z0-9]+)*)(?![\p{L}\p{N}])/gu)) {
     if (m[1] !== undefined && !out.includes(m[1])) out.push(m[1]);
   }
   return out;
 }
 
+// A crewmate as a question may name them: their soopdoop handle, and the Superset handle and name they linked, if any.
+export interface Crewmate {
+  handle: string;
+  name?: string;
+  supersetHandle?: string;
+}
+
+// Lowercase and without accents, so "Évariste" reads as "evariste".
+function plain(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+// The crewmates an @mention can mean: the one with that handle; else the one who linked that Superset handle; else each
+// one whose handle, Superset handle, or a word of whose name starts with it ("@ada" finds @adalovelace). Exactly one is
+// a match. None, or more than one, is for the asker to sort out.
+export function crewmatesFor(mention: string, crew: Crewmate[]): Crewmate[] {
+  const m = plain(mention);
+  const exact = crew.filter(function (c) { return c.handle === m; });
+  if (exact.length > 0) return exact;
+  const linked = crew.filter(function (c) { return c.supersetHandle !== undefined && plain(c.supersetHandle) === m; });
+  if (linked.length > 0) return linked;
+  if (m.length < 2) return [];
+  return crew.filter(function (c) {
+    const names = [c.handle, plain(c.supersetHandle ?? ""), ...plain(c.name ?? "").split(/[^a-z0-9]+/)];
+    return names.some(function (n) { return n !== "" && n.startsWith(m); });
+  });
+}
+
+// A question with each @mention written as the handle it means, and the mentions that mean nobody in the crew, or more
+// than one crewmate.
+export interface Mentions {
+  question: string;
+  unknown: string[];
+  unclear: { mention: string; handles: string[] }[];
+}
+
+// The same mentions as mentionedHandles, in any case.
+const MENTION = /(^|[^A-Za-z0-9])@([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)(?![\p{L}\p{N}])/gu;
+
+// "@ada" becomes "@adalovelace" when she is the only crewmate it can mean, so her agents are the ones asked and the
+// answer is checked against her handle. The asker's own handle is left as it is.
+export function resolveMentions(question: string, crew: Crewmate[], me: string): Mentions {
+  const unknown: string[] = [];
+  const unclear: { mention: string; handles: string[] }[] = [];
+  const text = question.replace(MENTION, function (whole: string, before: string, raw: string) {
+    const mention = raw.toLowerCase();
+    if (mention === me) return whole;
+    const fits = crewmatesFor(mention, crew);
+    const only = fits.length === 1 ? fits[0] : undefined;
+    if (only !== undefined) return only.handle === mention ? whole : `${before}@${only.handle}`;
+    if (fits.length === 0) {
+      if (!unknown.includes(mention)) unknown.push(mention);
+    } else if (!unclear.some(function (u) { return u.mention === mention; })) {
+      unclear.push({ mention, handles: fits.map(function (f) { return f.handle; }) });
+    }
+    return whole;
+  });
+  return { question: text, unknown, unclear };
+}
+
+// What the Operator says when a question names someone it cannot place: who, and the crew to pick from.
+export function mentionNote(m: Mentions, crew: Crewmate[]): string {
+  const said = m.unknown.map(function (h) { return `Nobody in your crew is @${h}.`; });
+  for (const u of m.unclear) said.push(`@${u.mention} could be ${u.handles.map(function (h) { return `@${h}`; }).join(" or ")}.`);
+  const list = crew.map(function (c) { return c.name === undefined ? `@${c.handle}` : `@${c.handle} (${c.name})`; });
+  said.push(list.length === 0 ? "You have no crewmates on soopdoop yet." : `Your crew: ${list.join(", ")}.`);
+  return said.join(" ");
+}
+
+// For a question that names crewmates when none of them has an open agent running: who is missing, in a sentence.
+// Null when one of them has.
+export function absentNote(question: string, candidates: Candidate[], me: string): string | null {
+  const mentioned = mentionedHandles(question);
+  if (mentioned.length === 0 || candidates.some(function (c) { return mentioned.includes(c.handle); })) return null;
+  return mentioned
+    .map(function (h) {
+      return h === me ? `@${h} is you, and the Operator only asks your crewmates' agents.` : `@${h} has no open agent running right now.`;
+    })
+    .join(" ");
+}
+
 const ROUTER =
-  "You route a developer's question to the crewmate's coding agent most likely to already know the answer, judging " +
-  "from one-line summaries of what each agent is working on. Each agent is listed with its owner's @handle, and their " +
-  "name when known. A question about a particular person (\"what is jimmy working on\", \"what did Ana change?\") can " +
-  "only be answered by that person's own agents: if none of the agents belongs to that person, reply 0, even when the " +
-  "work sounds related. Reply with only the number of the best agent, or 0 if none of them is likely to know.";
+  "You are the Operator of a soopdoop crew: developers who each run coding agents. A crewmate's coding agent asks you a " +
+  "question. You see the crew's open agents, each with its owner's @handle (and their name, when known) and a one-line " +
+  "summary of what the agent is working on. You never see code or conversations. Do one of three things: answer the " +
+  "question yourself, pick one agent to ask, or say nobody knows. Answer it yourself when it only asks what someone, or " +
+  "the crew, is working on (\"what is jimmy working on?\", \"who is on checkout?\") and the summaries answer it. Pick an " +
+  "agent when the answer needs that agent's own knowledge of the project (how something works, where it lives, why it " +
+  "was done that way, what is left to do): the one most likely to already know. Say nobody knows when no agent is likely " +
+  "to know. A question about a particular person (\"what is jimmy working on\", \"what did Ana change?\") can only be " +
+  "answered from that person's own agents: if none of the agents belongs to that person, say nobody knows, even when the " +
+  "work sounds related. Reply with JSON only, one of {\"reply\": \"<your answer>\"}, {\"ask\": <agent number>} or " +
+  "{\"nobody\": true}. A reply is at most three short sentences, plain, about the work and not the person, naming files " +
+  "when they help. Never make up facts about code or people.";
 
 function answerer(owner: { handle: string; name?: string }): string {
   const who = `@${owner.handle}`;
@@ -167,15 +258,46 @@ export function describeError(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-// The best candidate's index, or null when none is likely to know. Even a lone candidate is checked: reading an agent
-// that cannot answer would show its owner's work to someone who asked about something, or someone, else.
-export async function pickAgent(question: string, candidates: Candidate[]): Promise<number | null> {
-  // A question about @someone goes only to their own agents. If they have none open, nothing is read.
+// What the Operator does with an agent's question: answers it itself from the summaries, asks one agent (an index into
+// the candidates), or neither (null) when no agent is likely to know.
+export type Route = { reply: string } | { ask: number } | null;
+
+// The router's JSON, for `agents` listed agents. A bare number is read as an agent, the way the router used to answer;
+// anything else as nobody.
+export function parseRoute(text: string, agents: number): Route {
+  const json = /\{[\s\S]*\}/.exec(text)?.[0];
+  if (json === undefined) {
+    const n = Number(/\d+/.exec(text)?.[0] ?? "0");
+    return Number.isInteger(n) && n >= 1 && n <= agents ? { ask: n - 1 } : null;
+  }
+  try {
+    const raw: unknown = JSON.parse(json);
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+    if ("ask" in raw && typeof raw.ask === "number" && Number.isInteger(raw.ask) && raw.ask >= 1 && raw.ask <= agents) {
+      return { ask: raw.ask - 1 };
+    }
+    if ("reply" in raw && typeof raw.reply === "string" && raw.reply.trim() !== "") return { reply: raw.reply.trim().slice(0, MAX_REPLY) };
+  } catch {
+    // Not JSON after all.
+  }
+  return null;
+}
+
+// Routes an agent's question. A question about @someone goes only to their own agents; if they have none open, nothing
+// is read. Even a lone candidate is checked: reading an agent that cannot answer would show its owner's work to someone
+// who asked about something, or someone, else.
+export async function routeQuestion(question: string, candidates: Candidate[]): Promise<Route> {
   const mentioned = mentionedHandles(question);
   const pool = candidates.flatMap(function (c, i) { return mentioned.length === 0 || mentioned.includes(c.handle) ? [i] : []; });
   if (pool.length === 0) return null;
   if (operatorMode() === "fake") {
-    // The candidate whose summary shares the most words with the question, or the first.
+    // "What is … working on?" with summaries to go by: those summaries. Otherwise the candidate whose summary shares the
+    // most words with the question, or the first.
+    const known = pool.flatMap(function (i) {
+      const c = candidates[i];
+      return c?.summary === undefined ? [] : [`@${c.handle}'s agent: ${c.summary}`];
+    });
+    if (/\bworking on\b/i.test(question) && known.length > 0) return { reply: known.join(" ") };
     const q = words(question);
     let best = pool[0] ?? null;
     let bestScore = -1;
@@ -188,7 +310,7 @@ export async function pickAgent(question: string, candidates: Candidate[]): Prom
         bestScore = score;
       }
     }
-    return best;
+    return best === null ? null : { ask: best };
   }
   const listed = pool.flatMap(function (i) { const c = candidates[i]; return c === undefined ? [] : [c]; });
   const response = await client().beta.messages.create({
@@ -201,8 +323,10 @@ export async function pickAgent(question: string, candidates: Candidate[]): Prom
     messages: [{ role: "user", content: `Question: ${question}\n\nAgents:\n${listed.map(candidateLine).join("\n")}` }],
   });
   if (response.stop_reason === "refusal") return null;
-  const n = Number(/\d+/.exec(textOf(response.content))?.[0] ?? "0");
-  return Number.isInteger(n) && n >= 1 && n <= listed.length ? (pool[n - 1] ?? null) : null;
+  const route = parseRoute(textOf(response.content), listed.length);
+  if (route === null || "reply" in route) return route;
+  const index = pool[route.ask];
+  return index === undefined ? null : { ask: index };
 }
 
 // The answer a crewmate's agent wrote itself: its daemon asked a fork of the agent's session. The Operator reads no

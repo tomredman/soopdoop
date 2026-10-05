@@ -1,11 +1,11 @@
 // ABOUTME: Friends: request by handle (or invite someone not here yet, found on Superset when possible), accept, invite
-// ABOUTME: links (7 days, one use), and the friend list with live presence, which respects sharing settings and focus mode.
+// ABOUTME: links (7 days, one use), and the friend list with live presence (also for an agent, by its machine's token), which respects sharing settings and focus mode.
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { action, internalMutation, mutation, query } from "./_generated/server";
-import { hackerFor, requireHacker, requireIdentity } from "./lib/auth";
+import { hackerFor, requireDaemon, requireHacker, requireIdentity } from "./lib/auth";
 import { normalizeHandle, type SupersetProfile } from "./lib/supersetProfile";
 import { fetchProfile, supersetCard, supersetCardView } from "./superset";
 
@@ -113,6 +113,45 @@ export const list = query({
       return p.handle.localeCompare(q.handle);
     });
     return out;
+  },
+});
+
+// The crew as an agent sees it, through its machine's token (the crew_status tool): each crewmate's handle, the name
+// they linked and their light, so the agent can put the right @handle in a question to the Operator.
+export const crew = query({
+  args: { token: v.string() },
+  returns: v.object({
+    me: v.string(),
+    crew: v.array(
+      v.object({
+        handle: v.string(),
+        name: v.optional(v.string()),
+        led: v.union(v.literal("g"), v.literal("b"), v.literal("x")),
+        inFocus: v.boolean(),
+        agentCount: v.number(),
+      }),
+    ),
+  }),
+  handler: async function (ctx, args) {
+    const { hacker } = await requireDaemon(ctx, args.token);
+    const now = Date.now();
+    const out = [];
+    for (const id of await acceptedFriendIds(ctx, hacker._id)) {
+      const friend = await ctx.db.get("hackers", id);
+      if (friend === null) continue;
+      const subsets = await ctx.db
+        .query("subsets")
+        .withIndex("by_hacker_machine", function (q) {
+          return q.eq("hackerId", id);
+        })
+        .collect();
+      const p = presenceFor(friend, subsets, now, await supersetCard(ctx, id));
+      out.push({ handle: p.handle, name: p.superset?.name, led: p.led, inFocus: p.inFocus, agentCount: p.agentCount });
+    }
+    out.sort(function (p, q) {
+      return p.handle.localeCompare(q.handle);
+    });
+    return { me: hacker.handle, crew: out };
   },
 });
 

@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { CREW_TOOL, TOOL } from "./mcp";
 import { installSkill, removeSkill, skillDir, skillInstalled } from "./skill";
 
 const SKILL = path.resolve(import.meta.dir, "..", "..", "..", "packages", "plugin", "skills", "soopdoop", "SKILL.md");
@@ -24,6 +25,8 @@ describe("the soopdoop skill", function () {
     const description = /^description: (.*)$/m.exec(text)?.[1] ?? "";
     expect(description).toContain("ask_operator");
     expect(description).not.toContain(": ");
+    // The body names both of the MCP server's tools as the server names them.
+    for (const name of [TOOL.name, CREW_TOOL.name]) expect(text).toContain(`\`${name}\``);
   });
 
   test("installs as a copy, installs again over itself, and uninstalls", async function () {

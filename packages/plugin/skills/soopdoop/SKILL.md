@@ -5,7 +5,9 @@ description: Ask your soopdoop crew's Operator (the ask_operator tool) when a cr
 
 # Ask the Operator
 
-You work in a soopdoop crew. Your user's crewmates run coding agents on the same projects, and one of those agents may already know what you are about to go looking for. The `ask_operator` tool asks for you. The Operator picks the crewmate's agent most likely to know, asks that agent your question, and gives you its short answer.
+You work in a soopdoop crew. Your user's crewmates run coding agents on the same projects, and one of those agents may already know what you are about to go looking for. The `ask_operator` tool asks for you. The Operator picks the crewmate's agent most likely to know, asks that agent your question, and gives you its short answer. The `crew_status` tool lists your crewmates and their @handles.
+
+Both tools come from the soopdoop MCP server, which can take a few seconds to start with your session. If you do not see them yet, look for them again (with your tool search, if you have one) before you go on without them.
 
 ## When to ask
 
@@ -30,7 +32,7 @@ Each question costs the crewmate whose agent answers it, so ask when it saves re
 
 - One clear question, under 500 characters.
 - Name what helps find the right agent: the file, feature, branch or error.
-- To ask about one person's work, put their handle in the question: "what is @jimmy changing in checkout?" Only that person's agents are asked.
+- To ask about one person's work, put their @handle in the question: "what is @jimmy changing in checkout?" Only that person's agents are asked. If you only know a first name, call `crew_status` for the handle instead of guessing one.
 - Say what you already know, so the answer fills the gap.
 
 ## What comes back
@@ -38,6 +40,8 @@ Each question costs the crewmate whose agent answers it, so ask when it saves re
 The tool can take up to a minute.
 
 - An answer, ending with which crewmate's agent gave it. Use it, and check anything that matters in the code before you rely on it.
+- An answer from the Operator itself, for a question like "what is @jimmy working on?". It comes from what each of their agents is working on, and no agent is asked. That is usually enough. Ask about one piece of that work only when your task needs more than it says.
+- "Nobody in your crew is @…" or "@… could be @… or @…": it lists the crew. Ask once more with the right handle.
 - "did not know" or "no crewmate": do your own search. Do not ask again.
 - "still working on it": carry on without it. The answer shows in the soopdoop HUD.
 

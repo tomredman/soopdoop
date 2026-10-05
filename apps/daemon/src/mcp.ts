@@ -1,20 +1,23 @@
-// ABOUTME: The soopdoop MCP server (stdio) that Claude Code starts: one tool, ask_operator, which asks the crew's Operator
-// ABOUTME: and waits for the answer. soopdoop setup registers it with `claude mcp add`. JSON-RPC 2.0, one message per line.
+// ABOUTME: The soopdoop MCP server (stdio) that Claude Code starts: ask_operator asks the crew's Operator and waits for the
+// ABOUTME: answer, crew_status lists the crew's @handles. soopdoop setup registers it with `claude mcp add`. JSON-RPC 2.0, one message per line.
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
-import { readConfig } from "./config";
+import { type Config, readConfig } from "./config";
 import { isRecord } from "./state";
 
 const askRef = makeFunctionReference<"mutation">("operator:ask");
 const relayRef = makeFunctionReference<"query">("operator:relay");
+const crewRef = makeFunctionReference<"query">("friends:crew");
 
 export const TOOL = {
   name: "ask_operator",
   description:
     "Ask your soopdoop crew's Operator a question that a crewmate's coding agent has probably already worked out: how " +
     "something in this project works, where it lives, what was decided, or what a crewmate is changing. The Operator " +
-    "finds the agent that knows, asks it, and returns its short answer, or says nobody knows. Try it before a long search " +
-    "of code a teammate is working on. Never ask for secrets or credentials.",
+    "finds the agent that knows, asks it, and returns its short answer, or says nobody knows. To ask about one crewmate, " +
+    "put their @handle in the question (crew_status lists the handles); \"what is @jimmy working on?\" is answered from " +
+    "what each of their agents is doing. Try it before a long search of code a teammate is working on. Never ask for " +
+    "secrets or credentials.",
   inputSchema: {
     type: "object",
     properties: { question: { type: "string", description: "One clear question, under 500 characters." } },
@@ -23,12 +26,22 @@ export const TOOL = {
   },
 };
 
+export const CREW_TOOL = {
+  name: "crew_status",
+  description:
+    "List your soopdoop crew: each crewmate's @handle, their name when they linked one, and whether they have open " +
+    "agents running now. Use it to find the right @handle before you ask_operator about one person's work.",
+  inputSchema: { type: "object", properties: {}, additionalProperties: false },
+};
+
 export interface RelayView {
   status: string;
   answer?: string;
   note?: string;
   targetHandle?: string;
   targetAgentName?: string;
+  byOperator?: boolean;
+  askAgain?: boolean;
 }
 
 function parseRelay(raw: unknown): RelayView | null {
@@ -38,15 +51,90 @@ function parseRelay(raw: unknown): RelayView | null {
   if (typeof raw.note === "string") view.note = raw.note;
   if (typeof raw.targetHandle === "string") view.targetHandle = raw.targetHandle;
   if (typeof raw.targetAgentName === "string") view.targetAgentName = raw.targetAgentName;
+  if (raw.byOperator === true) view.byOperator = true;
+  if (raw.askAgain === true) view.askAgain = true;
   return view;
 }
 
 // What the asking agent reads back.
 export function formatRelay(r: RelayView): string {
   const who = r.targetHandle === undefined ? "a crewmate's agent" : `@${r.targetHandle}'s ${r.targetAgentName ?? "agent"}`;
-  if (r.status === "answered" && r.answer !== undefined) return `${r.answer}\n\n(Answered from ${who} by the soopdoop Operator.)`;
+  if (r.status === "answered" && r.answer !== undefined) {
+    if (r.byOperator === true) return `${r.answer}\n\n(The soopdoop Operator answered this itself, from what your crewmates' agents are working on. No agent was asked.)`;
+    return `${r.answer}\n\n(Answered from ${who} by the soopdoop Operator.)`;
+  }
   if (r.status === "not-found") return `${who} did not know${r.note === undefined ? "." : `: ${r.note}`} Work it out yourself.`;
+  // A name the Operator could not place: the note lists the crew, and the question can be fixed.
+  if (r.askAgain === true) return `${r.note ?? "The Operator could not tell who the question is about."} Ask again with the right @handle.`;
   return `${r.note ?? "The Operator could not answer."} Work it out yourself.`;
+}
+
+export interface Crewmate {
+  handle: string;
+  name?: string;
+  led: string;
+  inFocus: boolean;
+  agentCount: number;
+}
+
+export interface CrewView {
+  me: string;
+  crew: Crewmate[];
+}
+
+function parseCrew(raw: unknown): CrewView | null {
+  if (!isRecord(raw) || typeof raw.me !== "string" || !Array.isArray(raw.crew)) return null;
+  const crew: Crewmate[] = [];
+  for (const c of raw.crew) {
+    if (!isRecord(c) || typeof c.handle !== "string") continue;
+    const mate: Crewmate = {
+      handle: c.handle,
+      led: typeof c.led === "string" ? c.led : "x",
+      inFocus: c.inFocus === true,
+      agentCount: typeof c.agentCount === "number" ? c.agentCount : 0,
+    };
+    if (typeof c.name === "string") mate.name = c.name;
+    crew.push(mate);
+  }
+  return { me: raw.me, crew };
+}
+
+function stateOf(c: Crewmate): string {
+  if (c.inFocus) return "in focus mode";
+  if (c.led === "x") return "offline";
+  if (c.agentCount === 0) return "online, no open agents";
+  return `${c.agentCount === 1 ? "1 open agent" : `${c.agentCount} open agents`}, ${c.led === "g" ? "working" : "idle"}`;
+}
+
+// What the agent reads back from crew_status: one line per crewmate.
+export function formatCrew(view: CrewView): string {
+  if (view.crew.length === 0) {
+    return `You are @${view.me}, and your crew is empty, so there is nobody to ask yet. Your user adds crewmates in the soopdoop app.`;
+  }
+  const lines = view.crew.map(function (c) {
+    return `- ${c.name === undefined ? `@${c.handle}` : `@${c.handle} (${c.name})`}: ${stateOf(c)}`;
+  });
+  return [`Your crew (you are @${view.me}):`, ...lines, "", "To ask about one crewmate's work, put their @handle in your ask_operator question."].join("\n");
+}
+
+// This machine's pairing, or null before setup.
+async function paired(): Promise<Config | null> {
+  try {
+    return await readConfig();
+  } catch {
+    return null;
+  }
+}
+
+export async function crewStatus(): Promise<string> {
+  const config = await paired();
+  if (config === null) return "soopdoop is not set up on this machine: open the soopdoop app and sign in.";
+  try {
+    const view = parseCrew(await new ConvexHttpClient(config.convexUrl).query(crewRef, { token: config.token }));
+    return view === null ? "soopdoop sent back a crew this tool cannot read." : formatCrew(view);
+  } catch (e) {
+    return `Could not read your crew: ${cleanError(e)}`;
+  }
 }
 
 // A ConvexError's message travels as its data (production passes it on; any other error's text becomes "Server
@@ -58,12 +146,7 @@ export function cleanError(e: unknown): string {
 }
 
 export async function askOperator(question: string, waitMs: number = 75_000, pollMs: number = 1_500): Promise<string> {
-  let config = null;
-  try {
-    config = await readConfig();
-  } catch {
-    config = null;
-  }
+  const config = await paired();
   if (config === null) return "soopdoop is not set up on this machine: open the soopdoop app and sign in. Work it out yourself for now.";
   const client = new ConvexHttpClient(config.convexUrl);
   let relayId: unknown;
@@ -91,8 +174,14 @@ function failure(id: unknown, code: number, message: string): Message {
   return { jsonrpc: "2.0", id, error: { code, message } };
 }
 
+// What the two tools do. Tests pass stand-ins.
+export interface Tools {
+  ask: (question: string) => Promise<string>;
+  crew: () => Promise<string>;
+}
+
 // One JSON-RPC message in, at most one out. Notifications (no id) get no answer.
-export async function handle(raw: unknown, ask: (question: string) => Promise<string>, version: string): Promise<Message | null> {
+export async function handle(raw: unknown, tools: Tools, version: string): Promise<Message | null> {
   if (!isRecord(raw) || raw.jsonrpc !== "2.0" || typeof raw.method !== "string") return null;
   const id = raw.id;
   if (id === undefined || id === null) return null;
@@ -107,14 +196,15 @@ export async function handle(raw: unknown, ask: (question: string) => Promise<st
     case "ping":
       return result(id, {});
     case "tools/list":
-      return result(id, { tools: [TOOL] });
+      return result(id, { tools: [TOOL, CREW_TOOL] });
     case "tools/call": {
       const args = isRecord(params.arguments) ? params.arguments : {};
+      if (params.name === CREW_TOOL.name) return result(id, { content: [{ type: "text", text: await tools.crew() }] });
       if (params.name !== TOOL.name) return failure(id, -32602, `Unknown tool ${String(params.name)}`);
       if (typeof args.question !== "string" || args.question.trim() === "") {
         return result(id, { content: [{ type: "text", text: "Give the Operator a question." }], isError: true });
       }
-      return result(id, { content: [{ type: "text", text: await ask(args.question) }] });
+      return result(id, { content: [{ type: "text", text: await tools.ask(args.question) }] });
     }
     default:
       return failure(id, -32601, `Method not found: ${raw.method}`);
@@ -147,7 +237,7 @@ async function main(): Promise<void> {
         continue;
       }
       // A question can take a minute; keep reading (pings, cancels) while it runs.
-      void handle(message, askOperator, version).then(function (reply) {
+      void handle(message, { ask: askOperator, crew: crewStatus }, version).then(function (reply) {
         if (reply !== null) process.stdout.write(JSON.stringify(reply) + "\n");
       });
     }

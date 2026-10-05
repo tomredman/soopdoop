@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Asked } from "./ask";
-import { cleanError, formatRelay, handle, TOOL } from "./mcp";
+import { cleanError, CREW_TOOL, formatCrew, formatRelay, handle, TOOL, type Tools } from "./mcp";
 import { logRead, parseReads, prepareAnswer, siteUrl } from "./operator";
 import type { AgentRecord, Subset } from "./state";
 
@@ -20,20 +20,21 @@ afterAll(async function () {
 async function never(): Promise<string> {
   throw new Error("not asked");
 }
+const idle: Tools = { ask: never, crew: never };
 
 describe("the ask_operator MCP server", function () {
-  test("introduces itself, lists its one tool, and answers pings", async function () {
-    const init = await handle({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } }, never, "0.2.0");
+  test("introduces itself, lists its two tools, and answers pings", async function () {
+    const init = await handle({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } }, idle, "0.2.0");
     expect(init).toEqual({
       jsonrpc: "2.0",
       id: 1,
       result: { protocolVersion: "2025-06-18", capabilities: { tools: { listChanged: false } }, serverInfo: { name: "soopdoop", version: "0.2.0" } },
     });
-    expect(await handle({ jsonrpc: "2.0", id: 2, method: "tools/list" }, never, "0")).toEqual({ jsonrpc: "2.0", id: 2, result: { tools: [TOOL] } });
-    expect(await handle({ jsonrpc: "2.0", id: 3, method: "ping" }, never, "0")).toEqual({ jsonrpc: "2.0", id: 3, result: {} });
+    expect(await handle({ jsonrpc: "2.0", id: 2, method: "tools/list" }, idle, "0")).toEqual({ jsonrpc: "2.0", id: 2, result: { tools: [TOOL, CREW_TOOL] } });
+    expect(await handle({ jsonrpc: "2.0", id: 3, method: "ping" }, idle, "0")).toEqual({ jsonrpc: "2.0", id: 3, result: {} });
     // Notifications get no answer.
-    expect(await handle({ jsonrpc: "2.0", method: "notifications/initialized" }, never, "0")).toBeNull();
-    expect(await handle({ jsonrpc: "2.0", id: 4, method: "resources/list" }, never, "0")).toMatchObject({ error: { code: -32601 } });
+    expect(await handle({ jsonrpc: "2.0", method: "notifications/initialized" }, idle, "0")).toBeNull();
+    expect(await handle({ jsonrpc: "2.0", id: 4, method: "resources/list" }, idle, "0")).toMatchObject({ error: { code: -32601 } });
   });
 
   test("passes the question to the Operator and returns its answer as text", async function () {
@@ -42,12 +43,45 @@ describe("the ask_operator MCP server", function () {
       asked.push(q);
       return "It is in select.ts.";
     }
+    const tools: Tools = { ask, crew: never };
     const call = { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "ask_operator", arguments: { question: "where?" } } };
-    expect(await handle(call, ask, "0")).toEqual({ jsonrpc: "2.0", id: 5, result: { content: [{ type: "text", text: "It is in select.ts." }] } });
+    expect(await handle(call, tools, "0")).toEqual({ jsonrpc: "2.0", id: 5, result: { content: [{ type: "text", text: "It is in select.ts." }] } });
     expect(asked).toEqual(["where?"]);
     const empty = { ...call, params: { name: "ask_operator", arguments: { question: " " } } };
-    expect(await handle(empty, ask, "0")).toMatchObject({ result: { isError: true } });
-    expect(await handle({ ...call, params: { name: "other" } }, ask, "0")).toMatchObject({ error: { code: -32602 } });
+    expect(await handle(empty, tools, "0")).toMatchObject({ result: { isError: true } });
+    expect(await handle({ ...call, params: { name: "other" } }, tools, "0")).toMatchObject({ error: { code: -32602 } });
+  });
+
+  test("lists the crew, with no arguments", async function () {
+    async function crew(): Promise<string> {
+      return "Your crew (you are @tom):";
+    }
+    const call = { jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "crew_status", arguments: {} } };
+    expect(await handle(call, { ask: never, crew }, "0")).toEqual({ jsonrpc: "2.0", id: 6, result: { content: [{ type: "text", text: "Your crew (you are @tom):" }] } });
+    expect(await handle({ ...call, params: { name: "crew_status" } }, { ask: never, crew }, "0")).toMatchObject({ result: { content: [{ type: "text" }] } });
+  });
+
+  test("shows each crewmate's handle, name and state, one line each", function () {
+    expect(formatCrew({
+      me: "tom",
+      crew: [
+        { handle: "jimmy", led: "b", inFocus: false, agentCount: 0 },
+        { handle: "adalovelace", name: "Ada Lovelace", led: "g", inFocus: false, agentCount: 3 },
+        { handle: "ana", led: "b", inFocus: false, agentCount: 1 },
+        { handle: "galois", name: "Évariste Galois", led: "x", inFocus: true, agentCount: 0 },
+        { handle: "zed", led: "x", inFocus: false, agentCount: 0 },
+      ],
+    })).toBe([
+      "Your crew (you are @tom):",
+      "- @jimmy: online, no open agents",
+      "- @adalovelace (Ada Lovelace): 3 open agents, working",
+      "- @ana: 1 open agent, idle",
+      "- @galois (Évariste Galois): in focus mode",
+      "- @zed: offline",
+      "",
+      "To ask about one crewmate's work, put their @handle in your ask_operator question.",
+    ].join("\n"));
+    expect(formatCrew({ me: "tom", crew: [] })).toContain("your crew is empty");
   });
 
   test("reads back what happened in plain words", function () {
@@ -61,6 +95,14 @@ describe("the ask_operator MCP server", function () {
     expect(formatRelay({ status: "nobody", note: "No crewmate has an open agent running right now." })).toBe(
       "No crewmate has an open agent running right now. Work it out yourself.",
     );
+    // The Operator's own answer, from what the agents are working on.
+    expect(formatRelay({ status: "answered", answer: "Jimmy is on the market update.", byOperator: true })).toBe(
+      "Jimmy is on the market update.\n\n(The soopdoop Operator answered this itself, from what your crewmates' agents are working on. No agent was asked.)",
+    );
+    // A handle the Operator could not place: fix it and ask again, rather than give up.
+    expect(formatRelay({ status: "nobody", note: "Nobody in your crew is @bob. Your crew: @adalovelace.", askAgain: true })).toBe(
+      "Nobody in your crew is @bob. Your crew: @adalovelace. Ask again with the right @handle.",
+    );
   });
 
   test("speaks JSON-RPC over stdio, one message per line", async function () {
@@ -71,7 +113,7 @@ describe("the ask_operator MCP server", function () {
     proc.stdin.end();
     const out = (await new Response(proc.stdout).text()).trim().split("\n").map(function (l) { return JSON.parse(l); });
     expect(out.map(function (m) { return m.id; })).toEqual([1, 2]);
-    expect(out[1].result.tools[0].name).toBe("ask_operator");
+    expect(out[1].result.tools.map(function (t: { name: string }) { return t.name; })).toEqual(["ask_operator", "crew_status"]);
     await proc.exited;
   });
 });

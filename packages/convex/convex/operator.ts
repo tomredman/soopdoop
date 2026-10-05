@@ -1,5 +1,5 @@
-// ABOUTME: The Operator. A question goes to the crewmate agent most likely to know; its owner's daemon asks that agent and
-// ABOUTME: sends back the agent's own answer once (http.ts). The Operator never reads the conversation. Only the question and answer are kept.
+// ABOUTME: The Operator. A question goes to the crewmate agent most likely to know, whose owner's daemon asks it and sends back
+// ABOUTME: its answer once (http.ts), or the Operator answers from the routing summaries. It never reads a conversation; only the question and answer are kept.
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -7,7 +7,19 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { acceptedFriendIds } from "./friends";
 import { requireDaemon, requireHacker } from "./lib/auth";
-import { answerFrom, chatTurn, type ChatTurn, describeError, NOT_CONFIGURED, operatorMode, pickAgent } from "./lib/claude";
+import {
+  absentNote,
+  answerFrom,
+  chatTurn,
+  type ChatTurn,
+  describeError,
+  mentionNote,
+  NOT_CONFIGURED,
+  operatorMode,
+  resolveMentions,
+  type Route,
+  routeQuestion,
+} from "./lib/claude";
 import { relayStatus } from "./schema";
 
 const TIMEOUT_MS = 90_000;
@@ -83,6 +95,7 @@ const relayView = v.object({
   role: v.union(v.literal("asked"), v.literal("answered")),
   via: v.optional(v.literal("chat")),
   byOperator: v.optional(v.boolean()),
+  askAgain: v.optional(v.boolean()),
 });
 
 async function handleOf(ctx: QueryCtx, id: Id<"hackers"> | undefined): Promise<string | undefined> {
@@ -107,6 +120,7 @@ async function view(ctx: QueryCtx, r: Doc<"relays">, role: "asked" | "answered")
     role,
     via: r.via,
     byOperator: r.byOperator,
+    askAgain: r.askAgain,
   };
 }
 
@@ -205,18 +219,21 @@ const candidate = v.object({
   summary: v.optional(v.string()),
 });
 
-// A hacker's name from their linked Superset profile, if they linked one: it lets "what is Vlad doing" find @vladimir.
-async function linkedName(ctx: QueryCtx, hackerId: Id<"hackers">): Promise<string | undefined> {
+const crewmate = v.object({ handle: v.string(), name: v.optional(v.string()), supersetHandle: v.optional(v.string()) });
+
+// A hacker's linked Superset profile, if they linked one: its name lets "what is Vlad doing" find @vladimir, and an
+// @mention of its handle finds them too.
+async function linkedProfile(ctx: QueryCtx, hackerId: Id<"hackers">): Promise<{ handle: string; name?: string } | undefined> {
   const profile = await ctx.db
     .query("supersetProfiles")
     .withIndex("by_hacker", function (q) {
       return q.eq("hackerId", hackerId);
     })
     .first();
-  return profile?.name;
+  return profile === null ? undefined : { handle: profile.handle, name: profile.name };
 }
 
-// The open, live agents of the asker's crewmates, with their routing summaries. For now the crew is the asker's friends.
+// The asker's crew (for now, their friends), and their open, live agents with the routing summaries.
 export const candidates = internalQuery({
   args: { relayId: v.id("relays") },
   returns: v.union(v.null(), v.object({
@@ -225,6 +242,8 @@ export const candidates = internalQuery({
     asker: v.string(),
     // For a chat message: the chat so far (the last few finished turns), so a follow-up makes sense.
     history: v.array(v.object({ you: v.string(), operator: v.string() })),
+    // Everyone in the crew, agents or not, so an @mention can be matched to the right person.
+    crew: v.array(crewmate),
     candidates: v.array(candidate),
   })),
   handler: async function (ctx, args) {
@@ -251,11 +270,14 @@ export const candidates = internalQuery({
     }
     const asker = (await handleOf(ctx, relay.askerHackerId)) ?? "";
     const now = Date.now();
+    const crew = [];
     const out = [];
     for (const id of await acceptedFriendIds(ctx, relay.askerHackerId)) {
       const hacker = await ctx.db.get("hackers", id);
       if (hacker === null) continue;
-      const name = await linkedName(ctx, id);
+      const profile = await linkedProfile(ctx, id);
+      const name = profile?.name;
+      crew.push({ handle: hacker.handle, name, supersetHandle: profile?.handle });
       const subsets = await ctx.db
         .query("subsets")
         .withIndex("by_hacker_machine", function (s) {
@@ -287,33 +309,46 @@ export const candidates = internalQuery({
         }
       }
     }
-    return { question: relay.question, via: relay.via, asker, history, candidates: out };
+    crew.sort(function (a, b) { return a.handle.localeCompare(b.handle); });
+    return { question: relay.question, via: relay.via, asker, history, crew, candidates: out };
   },
 });
 
 export const route = internalAction({
   args: { relayId: v.id("relays") },
   returns: v.null(),
-  handler: async function (ctx, args) {
+  // The return type is written out: one return reads `found`, whose type comes from this module's own API.
+  handler: async function (ctx, args): Promise<null> {
     const found = await ctx.runQuery(internal.operator.candidates, { relayId: args.relayId });
     if (found === null) return null;
-    async function end(status: "nobody" | "error", note: string): Promise<null> {
-      await ctx.runMutation(internal.operator.finish, { relayId: args.relayId, status, note });
+    async function end(status: "nobody" | "error", note: string, askAgain?: boolean): Promise<null> {
+      await ctx.runMutation(internal.operator.finish, { relayId: args.relayId, status, note, askAgain });
       return null;
     }
+    // The Operator answers itself: no agent is asked.
+    async function reply(answer: string): Promise<null> {
+      await ctx.runMutation(internal.operator.finish, { relayId: args.relayId, status: "answered", answer, byOperator: true });
+      return null;
+    }
+    // "@ada" means @adalovelace when she is the only crewmate it fits. A name that fits nobody, or more than one
+    // crewmate, gets the crew's handles back, so the asker can fix it.
+    const mentions = resolveMentions(found.question, found.crew, found.asker);
+    if (mentions.unknown.length > 0 || mentions.unclear.length > 0) {
+      const note = mentionNote(mentions, found.crew);
+      // With nobody in the crew, there is no handle to fix.
+      return found.via === "chat" ? await reply(note) : await end("nobody", note, found.crew.length > 0 ? true : undefined);
+    }
+    const question = mentions.question;
     // A chat message: the Operator answers it itself, or asks one agent a question that stands alone.
     if (found.via === "chat") {
       if (operatorMode() === null) return await end("error", NOT_CONFIGURED);
       let turn: ChatTurn;
       try {
-        turn = await chatTurn(found.question, found.history, found.candidates, found.asker);
+        turn = await chatTurn(question, found.history, found.candidates, found.asker);
       } catch (e) {
         return await end("error", describeError(e));
       }
-      if ("reply" in turn) {
-        await ctx.runMutation(internal.operator.finish, { relayId: args.relayId, status: "answered", answer: turn.reply, byOperator: true });
-        return null;
-      }
+      if ("reply" in turn) return await reply(turn.reply);
       const picked = found.candidates[turn.ask];
       if (picked === undefined) return await end("nobody", "I couldn't find the right agent for that.");
       await ctx.runMutation(internal.operator.setTarget, {
@@ -327,14 +362,18 @@ export const route = internalAction({
       return null;
     }
     if (found.candidates.length === 0) return await end("nobody", "No crewmate has an open agent running right now.");
+    const absent = absentNote(question, found.candidates, found.asker);
+    if (absent !== null) return await end("nobody", absent);
     if (operatorMode() === null) return await end("error", NOT_CONFIGURED);
-    let index: number | null;
+    let routed: Route;
     try {
-      index = await pickAgent(found.question, found.candidates);
+      routed = await routeQuestion(question, found.candidates);
     } catch (e) {
       return await end("error", describeError(e));
     }
-    const chosen = index === null ? undefined : found.candidates[index];
+    // "What is @jimmy working on?": the summaries answer it, and no agent is asked.
+    if (routed !== null && "reply" in routed) return await reply(routed.reply);
+    const chosen = routed === null ? undefined : found.candidates[routed.ask];
     if (chosen === undefined) return await end("nobody", "None of your crewmates' agents seems to know about this.");
     await ctx.runMutation(internal.operator.setTarget, {
       relayId: args.relayId,
@@ -342,6 +381,8 @@ export const route = internalAction({
       targetMachine: chosen.machineName,
       targetAgentId: chosen.agentId,
       targetAgentName: chosen.shareAgentNames ? chosen.agentName : undefined,
+      // With its @mentions matched to handles: the agent is asked this, and its answer is checked against it.
+      routedQuestion: question === found.question ? undefined : question,
     });
     return null;
   },
@@ -376,6 +417,7 @@ export const finish = internalMutation({
     tokensRead: v.optional(v.number()),
     tokensSent: v.optional(v.number()),
     byOperator: v.optional(v.boolean()),
+    askAgain: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async function (ctx, args) {
@@ -417,7 +459,8 @@ export const relayForDaemon = internalQuery({
     if (relay === null || relay.status !== "reading") return null;
     if (relay.targetHackerId !== hacker._id || relay.targetMachine !== daemon.machineName) return null;
     // Whose agent is read, so the answer credits the work to them and to nobody else.
-    return { relayId: relay._id, question: relay.routedQuestion ?? relay.question, owner: { handle: hacker.handle, name: await linkedName(ctx, hacker._id) } };
+    const owner = { handle: hacker.handle, name: (await linkedProfile(ctx, hacker._id))?.name };
+    return { relayId: relay._id, question: relay.routedQuestion ?? relay.question, owner };
   },
 });
 
@@ -449,6 +492,7 @@ const dryRunCandidate = v.object({
 
 // Tries the Operator's Claude calls on made-up agents, to check the prompts against the real model:
 // npx convex run --prod operator:dryRun '{"question": "...", "candidates": [...], "context": "...", "owner": "tom"}'
+// `picked` is the agent's owner the question would go to; `reply`, the Operator's own answer from the summaries instead.
 // With "chatAs": "tom" (and "history"), it also runs one turn of the chat. Reads no hacker's data and stores nothing.
 export const dryRun = internalAction({
   args: {
@@ -459,16 +503,22 @@ export const dryRun = internalAction({
     chatAs: v.optional(v.string()),
     history: v.optional(v.array(v.object({ you: v.string(), operator: v.string() }))),
   },
-  returns: v.object({ picked: v.union(v.null(), v.string()), answer: v.union(v.null(), v.string()), chat: v.optional(v.string()) }),
+  returns: v.object({
+    picked: v.union(v.null(), v.string()),
+    reply: v.optional(v.string()),
+    answer: v.union(v.null(), v.string()),
+    chat: v.optional(v.string()),
+  }),
   handler: async function (_ctx, args) {
-    const index = await pickAgent(args.question, args.candidates);
-    const picked = index === null ? null : (args.candidates[index]?.handle ?? null);
+    const routed = await routeQuestion(args.question, args.candidates);
+    const picked = routed === null || "reply" in routed ? null : (args.candidates[routed.ask]?.handle ?? null);
+    const reply = routed !== null && "reply" in routed ? routed.reply : undefined;
     const answer = args.context === undefined || args.owner === undefined
       ? null
       : (await answerFrom(args.question, args.context, { handle: args.owner })).text;
-    if (args.chatAs === undefined) return { picked, answer };
+    if (args.chatAs === undefined) return { picked, reply, answer };
     const turn = await chatTurn(args.question, args.history ?? [], args.candidates, args.chatAs);
     const chat = "reply" in turn ? `reply: ${turn.reply}` : `ask @${args.candidates[turn.ask]?.handle ?? "?"}: ${turn.question}`;
-    return { picked, answer, chat };
+    return { picked, reply, answer, chat };
   },
 });

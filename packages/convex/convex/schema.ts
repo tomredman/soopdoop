@@ -158,6 +158,8 @@ export default defineSchema({
     routedQuestion: v.optional(v.string()),
     // The Operator answered itself (crew news, small talk): no agent was asked.
     byOperator: v.optional(v.boolean()),
+    // The question named someone the Operator could not place in the crew: the asker can fix the @handle and ask again.
+    askAgain: v.optional(v.boolean()),
   })
     .index("by_asker", ["askerHackerId"])
     .index("by_target_status", ["targetHackerId", "status"]),

@@ -307,7 +307,7 @@ async function setup(args: string[]): Promise<void> {
   // The registered path never moves, so an existing registration stays right.
   if (!keepUpdater || !(await mcpRegistered())) {
     const mcp = registerMcp();
-    if (mcp === "added") say("· Claude Code sessions get the ask_operator tool (MCP server \"soopdoop\", user scope).");
+    if (mcp === "added") say("· Claude Code sessions get the ask_operator and crew_status tools (MCP server \"soopdoop\", user scope).");
     else if (mcp === "no-claude") say("· The claude command was not found, so the ask_operator tool was not added. Run setup again from a terminal where `claude` works.");
     else say(`· Could not add the ask_operator tool: ${mcp}`);
   }
