@@ -82,6 +82,18 @@ Checked with Claude Code 2.1.289:
 
 Not checked: production; two different Macs; an older Claude Code without `--safe-mode`, `--tools` or `--no-session-persistence` (the daemon passes the error on to the asker); a session kept in another `CLAUDE_CONFIG_DIR` (unit-tested only); sessions near their context limit or the 70-second timeout.
 
+## Invites by handle, and flicks (5 Oct 2026)
+
+Adding a friend by handle (`friends.addByHandle`, an action) asks someone on soopdoop, found by their soopdoop handle or by the Superset handle they linked. Anyone else gets an invite. When Superset has a public profile for the handle (`superset.sh/md/user/<handle>`), the invite stores that handle and name, and `superset.save` redeems open invites for a handle when someone links it; linking already checks that the profile's name matches the Superset sign-in, so nobody can take someone else's invite by typing their handle. If Superset cannot be read, a plain invite still goes out. The app copies a one-line message with `soopdoop.com/invite#<code>`; the code sits in the fragment, so it never reaches Cloudflare. The page (`apps/site/invite.html`) fills in the install line and an Accept link to the local rail.
+
+A flick is a poke between friends: open until flicked back or a scheduled function expires it after 10 minutes, at most one open flick per sender per friend, and each flick back adds one to the rally. Focus mode bounces it.
+
+Checked on the dev deployment: adding a friend already on soopdoop asked them; adding `@vlad` found his real public Superset profile and made an invite naming him; adding a handle on neither made a plain invite, and a new test hacker redeemed it and joined the crew. A flick rally between two test hackers went 1, then "Wait for … to flick back", then 2, and the last flick, left alone, was gone 10 minutes later through its scheduled function. `bun test` covers the same paths with a faked Superset, plus linking a profile redeeming an invite and a stranger failing to. The invite page was built and drawn in headless Chrome with a code; the HUD's snapshot mode drew the flick row, the hand buttons and the knock composer at 300 and 260 points wide (the composer's buttons wrapped there before).
+
+The Operator's tests ask questions, which schedule `route` at 0 ms. Those timers never fired during the tests, because the tests only await database calls; they fired when the next test file started and failed it. That file used to be last, so nobody saw it. `settleScheduled()` (testing.helpers.ts) now runs them at the end of each Operator test.
+
+Not checked: the invite page on soopdoop.com (not deployed yet), the redeem-on-link path against a real Superset sign-in, and the macOS notification for a flick.
+
 ## Spike 1: our hooks beside Superset's (29 Sep 2026)
 
 The installer adds one `soopdoop hook <event>` command per Claude Code event and leaves every other hook alone; reinstalling does not duplicate; uninstalling removes only ours. This is unit-tested (`apps/daemon/src/hooks.test.ts`), including the absolute-path form the installer now writes by default (`<bun> <cli.ts> hook <event>`), so the hook works without anything on PATH.

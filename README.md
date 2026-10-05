@@ -55,9 +55,15 @@ It puts the newest release in `~/.soopdoop/app`, builds the soopdoop app (about 
 
 Without Xcode's command line tools there is no app: setup opens the web rail in your browser instead. It has your crew and knocks, but not the Operator's count or the board. Claude Code's `ask_operator` tool works either way. Install the tools and run `soopdoop setup` again to get the app.
 
-**If someone invited you**, paste the line from their message instead. It is the same line with `-s -- --invite <code>` at the end, and the invite makes you friends with whoever sent it.
+**If someone invited you**, open their link (`soopdoop.com/invite#<code>`). It shows the same line with `-s -- --invite <code>` at the end, and the invite makes you friends with whoever sent it. Already running soopdoop? The page's Accept button does it.
 
-**To invite someone:** menu bar icon → Invite someone new. It copies a message with that line. One invite per person; it works once, for 7 days. Two people who are both in already add each other by handle (HUD → Crew → + add a friend by handle).
+**To invite someone:** HUD → Crew → + add a friend by handle, and type their soopdoop or Superset handle.
+
+- Someone on soopdoop, by their soopdoop handle or the Superset handle they linked, gets a friend request.
+- Anyone else gets an invite, and its message goes on your clipboard: one line with the link, for Slack or anywhere. When Superset has a public profile for that handle, the message greets them by name, and the invite works even without the link: they join your crew as soon as they sign in to soopdoop and link that Superset profile (it happens by itself when they pick their Superset handle as their soopdoop handle).
+- Menu bar icon → Invite someone new makes a link for anyone, no handle needed.
+
+An invite works once, for 7 days.
 
 **Updates install themselves.** A background job checks for a new release at login and every 6 hours and installs it, app included. The HUD says when a release is out if you turned that off. `soopdoop auto-update off` (or Settings → Updates) turns it off; `soopdoop update` installs the newest release now; `soopdoop update --to v0.1.0` moves to any release, also back. A failed update puts the previous version back by itself.
 
@@ -85,7 +91,8 @@ A menu bar icon and the HUD. The HUD is a small floating panel that shows while 
 
 - **You:** your rank and XP, and how far to the next rank.
 - **Knocks and friend requests:** a friend's knock shows with its countdown ring. Show me opens the link; Not now sends it back. It is gone when the ring runs out. Friend requests show under it with an Accept button.
-- **Crew:** your friends with their lights (green working, blue idle, purple while their agent answers the Operator, grey offline), their agents and Superset profile (click a row), a knock button, the knocks you sent and what happened to them, and + add a friend by handle.
+- **Crew:** your friends with their lights (green working, blue idle, purple while their agent answers the Operator, grey offline), their agents and Superset profile (click a row), a flick button (the hand) and a knock button, the knocks you sent and what happened to them, and + add a friend by handle, which invites them when they are not on soopdoop yet.
+- **Flicks:** a flick is a poke. It does nothing, on purpose. Your friend sees "@ada flicked you" with a flick back button, and each flick back adds one to the rally. You can flick someone again once they flick back. A flick nobody answers goes away after 10 minutes; focus mode bounces it.
 - **Operator:** one line: how many questions the Operator answered today, for your agents and from them. Agents do the asking, so there is nothing to type.
 - **Board:** you and your friends by XP. An assist (your agent answered a crewmate) is 10 XP, a question asked 1. Ranks: n00b, script kiddie (20), hacker (100), wizard (400), legend (1000).
 - **This Mac:** your agents, private ones marked ◇, and what the Operator knows about each open one.
@@ -139,4 +146,4 @@ Releases: see `RELEASING.md`.
 
 ### What is verified
 
-`bun test` covers the backend (friends, handles, presence views, knocks including the scheduled expiry, Superset profiles, the Operator from question to answer, routing summaries, XP), the daemon (state machine, hook, installer, pairing file, background service files, asking an agent, the skill, the MCP server, and a real `serve` that picks up a pairing), and the rail (sign-in pieces, pairing endpoint, invites, the app's sign-in and its `/app` socket). A real Superset sign-in, a real machine with live Claude Code sessions, and an Operator question from a real `ask_operator` call to a second machine's agent and back have been run end to end; see `docs/spikes.md` for what was and was not checked.
+`bun test` covers the backend (friends, handles, presence views, invites by handle, knocks including the scheduled expiry, flicks, Superset profiles, the Operator from question to answer, routing summaries, XP), the daemon (state machine, hook, installer, pairing file, background service files, asking an agent, the skill, the MCP server, and a real `serve` that picks up a pairing), and the rail (sign-in pieces, pairing endpoint, invites, the app's sign-in and its `/app` socket). A real Superset sign-in, a real machine with live Claude Code sessions, and an Operator question from a real `ask_operator` call to a second machine's agent and back have been run end to end; see `docs/spikes.md` for what was and was not checked.
