@@ -66,6 +66,22 @@ Checked end to end on the dev deployment with the stand-in: two test hackers who
 
 Not checked: answers from the real Claude API (no key was set on any deployment while building), routing among many agents, and the Operator on production.
 
+## Asking the agent instead of reading a slice (5 Oct 2026)
+
+The daemon no longer sends a slice of the conversation. `operator.readsFor` now gives the daemon the question too, and the daemon asks the agent itself (`apps/daemon/src/ask.ts`): `claude -p --resume <session id> --fork-session --no-session-persistence --safe-mode --tools "" --effort low --output-format json <question and instructions>`. It runs in the agent's folder, with the session's own `CLAUDE_CONFIG_DIR` (worked out from the transcript path), and with the real `claude`, not Superset's wrapper. Only the agent's answer (cut at 2,000 characters) and the tokens it read go to `POST /operator/answer`. An agent that does not know answers `NOT_FOUND`, which becomes "It has not worked on this." The backend still takes a slice from older daemons.
+
+Checked with Claude Code 2.1.289:
+
+- A fork found its session from any folder, answered from it, and wrote no transcript. The original transcript did not change, and the fork never showed up as an agent (safe mode skips hooks).
+- A history full of tool calls works with `--tools ""`.
+- Forking a session in the middle of a turn (this session: 157,000 tokens on Opus 5.5, with a tool call running) answered correctly, including what the session was doing at that moment, in 6 seconds, for $1.26 at API prices. The fork's tools differ from the live session's, so it reads nothing from the live session's prompt cache, and two questions in a row to the same small session cost the same.
+- It runs in a launchd-like environment (`env -i` with only HOME, USER and a short PATH): Claude Code reads its sign-in from the keychain.
+- A session that does not exist: exit 1, nothing on stdout, "No conversation found with session ID: …" on stderr. The asker gets that reason.
+- End to end on the dev deployment with the routing stand-in: two test hackers (@t-ask-1005 and @t-ans-1005), a second daemon from this branch on port 47398 with a real Claude Code session reported through `/hook`, and a real `ask_operator` call over the MCP server's stdio. The answer came back in 5 seconds from the agent's own fork. The relay stored 7,030 tokens read and 44 sent, and `reads.log` recorded sizes and cost only. A question the agent could not answer came back as "did not know", and the log still recorded what that read cost.
+- The HUD: `Soopdoop --snapshot` drew the new Operator section (one line, "2 answered today", no Ask box), and it was looked at.
+
+Not checked: production; two different Macs; an older Claude Code without `--safe-mode`, `--tools` or `--no-session-persistence` (the daemon passes the error on to the asker); a session kept in another `CLAUDE_CONFIG_DIR` (unit-tested only); sessions near their context limit or the 70-second timeout.
+
 ## Spike 1: our hooks beside Superset's (29 Sep 2026)
 
 The installer adds one `soopdoop hook <event>` command per Claude Code event and leaves every other hook alone; reinstalling does not duplicate; uninstalling removes only ours. This is unit-tested (`apps/daemon/src/hooks.test.ts`), including the absolute-path form the installer now writes by default (`<bun> <cli.ts> hook <event>`), so the hook works without anything on PATH.
