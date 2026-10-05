@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.7.0 · 2026-10-05
+
+### New
+- every flick you send is 1 XP and every knock 2, whatever happens to them (play)
+
 ## v0.6.1 · 2026-10-05
 
 ### New
