@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.10.0 · 2026-10-05
+
+### New
+- a crewmate's agent answers like a teammate in a chat: the answer first, in the first person (daemon)
+- agents ask the Operator as soon as you ask who to ask about something, send your follow-up to that crewmate's agent, and pass answers on in a sentence (skill)
+- "who should I ask about X?" gets a teammate's answer and "What would you like to know?"; questions that need details go straight to the agent (operator)
+
+### Fixes
+- the app icon follows Apple's template, so macOS 26 shows it as it is instead of shrinking it onto a grey plate (hud)
+
+### Docs
+- who-questions, answers that sound like a teammate, and what was checked
+
 ## v0.9.0 · 2026-10-05
 
 ### New
