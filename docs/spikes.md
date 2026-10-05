@@ -94,6 +94,16 @@ The Operator's tests ask questions, which schedule `route` at 0 ms. Those timers
 
 Not checked: the invite page on soopdoop.com (not deployed yet), the redeem-on-link path against a real Superset sign-in, and the macOS notification for a flick.
 
+## Catching flicks, superflicks, the private switch (5 Oct 2026)
+
+A flick can be caught for 10 seconds (`flicks.catchFlick`); catching takes up to 5 XP from the flicker, never more than they have. A scheduled function closes the window (`closeCatch`, which sets `safe`), and every 5 flicks in a row that closed safe earn a superflick: `flicks.superflick` takes up to 10 XP from any friend, focus or not, and cannot be caught. XP stays counted from records: `play.ts` adds what a hacker caught or superflicked and takes away what was taken from them. The streak is ordered by `_creationTime`, because two flicks can share a millisecond.
+
+The HUD's private switch goes app → local agent (`setPrivate`) → daemon (`POST /private`, refused with an Origin header, like `/hook`). The daemon keeps each agent's git repository (`git rev-parse --git-common-dir`, so a Superset workspace belongs to its main repository), adds that repository to `privateDirs` or removes what covered the agent, and re-checks every agent at once. A hand edit of `config.json` is picked up the same way, without a restart.
+
+Checked on the dev deployment: a flick caught at once moved 3 XP (all the flicker had) to the catcher, and the flicker saw who caught it; a flick tried 12 seconds later was "Too slow", the real scheduler had closed its window, and it counted toward the flicker's next superflick. `bun test` covers catching, the cap, the window, the streak and its reset, superflicks, a real git worktree resolving to its repository, and a real `serve` turning an agent private and open again. The HUD's snapshot mode drew a catchable flick, a superflick, the ⚡ buttons, the private switches and Settings' section order.
+
+Not checked: a full superflick earned on a deployment (five flicks with their windows), the Catch! button on a macOS notification, and the switch from the installed app.
+
 ## Spike 1: our hooks beside Superset's (29 Sep 2026)
 
 The installer adds one `soopdoop hook <event>` command per Claude Code event and leaves every other hook alone; reinstalling does not duplicate; uninstalling removes only ours. This is unit-tested (`apps/daemon/src/hooks.test.ts`), including the absolute-path form the installer now writes by default (`<bun> <cli.ts> hook <event>`), so the hook works without anything on PATH.
