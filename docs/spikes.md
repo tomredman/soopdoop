@@ -154,7 +154,9 @@ Checked:
 - The new answer prompt on a throwaway Claude Code session (its own config folder, made-up enrichment work): the answers started with the answer, in the first person, and a question it had not worked on came back as `NOT_FOUND`.
 - A real Claude Code session (Opus 5.5, its own config folder, a stand-in soopdoop MCP server with the real tool list and replies) in a small repo. With the new skill, "who should i ask about contact enrichment?" called `ask_operator` at once with those words and told the user "Ask Ada. One of her agents is working on contact enrichment right now. … What do you want to know?". The follow-up went out as "@adalovelace: does contact enrichment skip CRM contacts that already have an email?", and the reply credited Ada's agent. With the released skill and tool text, the same question went to `crew_status` and then "What is @adalovelace working on right now?", and came back as a long list with notes on how the answer was found.
 
-Not checked: production (the prompts ship with the next release). The Operator still does not see the asker's own agents.
+After v0.10.0: the line letting the Operator answer about a person's agents when one of them has no summary made it answer the long question from summaries too, once with a made-up "Yes, she's still the one". It now covers only "what is … working on" questions. Three runs each: the who-question got the invitation, the long question went to the agent, and "what is @adalovelace working on?" got a short answer.
+
+Not checked: production with this last change. The Operator still does not see the asker's own agents.
 
 ## The app icon on Apple's template (5 Oct 2026)
 
