@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.1 · 2026-10-05
+
+### New
+- the HUD's message line is soopdoop green, and getting flicked comes with a line ("you gonna just take that?") (hud)
+
+### Docs
+- the Operator chat checked against the real model
+
 ## v0.6.0 · 2026-10-05
 
 ### New
