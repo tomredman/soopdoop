@@ -47,6 +47,12 @@ enum Snapshot {
         let sample = samples().first { $0.0 == "ready" }?.1 ?? AppState()
         let look = LookSettings().environmentObject(AgentClient(preview: sample)).environmentObject(style)
         render(look, size: NSSize(width: 460, height: 520), to: URL(fileURLWithPath: dir).appendingPathComponent("settings-hud.png"))
+        // Settings → Account before a Superset profile is linked: the box to type the handle in has to show.
+        var signedIn = AppState()
+        signedIn.phase = "ready"
+        signedIn.me = Me(handle: "tom")
+        let account = AccountSettings().environmentObject(AgentClient(preview: signedIn)).environmentObject(style)
+        render(account, size: NSSize(width: 460, height: 560), to: URL(fileURLWithPath: dir).appendingPathComponent("settings-account.png"))
         // The knock composer at the HUD's default and narrowest widths: its buttons must never wrap.
         let client = AgentClient(preview: AppState())
         for width in [300.0, 260.0] {

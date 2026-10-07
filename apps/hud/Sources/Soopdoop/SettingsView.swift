@@ -95,9 +95,21 @@ struct AccountSettings: View {
                         LabeledContent("Linked", value: "superset.sh/\(card.handle)")
                         Button("Unlink") { client.run("unlinkSuperset") }
                     } else {
-                        TextField("Your Superset handle", text: $superset)
-                        Button("Link") { client.run("linkSuperset", ["handle": superset], done: "Linked your Superset profile.") }
-                            .disabled(superset.isEmpty)
+                        // A box with a border and a hint: a bare text field in a grouped form looks like a label, and
+                        // Link stayed grey with nothing to show where to type.
+                        LabeledContent("Superset handle") {
+                            HStack(spacing: 6) {
+                                TextField("Superset handle", text: $superset, prompt: Text("e.g. ada-lovelace"))
+                                    .labelsHidden()
+                                    .textFieldStyle(.roundedBorder)
+                                    .multilineTextAlignment(.leading)
+                                    .frame(width: 150)
+                                    .onSubmit(link)
+                                Button("Link", action: link).disabled(superset.trimmingCharacters(in: .whitespaces).isEmpty)
+                            }
+                        }
+                        Text("The handle on your public profile, superset.sh/handle. Publish it in Superset first.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                     Text("Friends see your public Superset name, tier, achievements and models. Never token counts or cost.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -108,6 +120,13 @@ struct AccountSettings: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    // "redman", "@redman" or a superset.sh link: the backend reads any of them.
+    private func link() {
+        let handle = superset.trimmingCharacters(in: .whitespaces)
+        guard !handle.isEmpty else { return }
+        client.run("linkSuperset", ["handle": handle], done: "Linked your Superset profile.")
     }
 }
 
