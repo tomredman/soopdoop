@@ -6,7 +6,7 @@ import { hostname, homedir } from "node:os";
 import path from "node:path";
 import { ConvexClient, ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
-import { appBinaryPath, appBundlePath, buildApp, removeApp } from "./app";
+import { appBinaryPath, appBundlePath, buildApp, removeApp, watcherBinaryPath } from "./app";
 import { configPath, configStamp, invitePath, readConfig, readSettings, soopdoopHome, writeConfig, writeSettings, type Config } from "./config";
 import { readFund, readSpends, spentToday, writeFund } from "./fund";
 import { forwardHook } from "./hook";
@@ -329,7 +329,7 @@ async function setup(args: string[]): Promise<void> {
   // Background services. Stop ours first, so a port still taken afterwards belongs to something else.
   const all = serviceSpecs(ROOT, process.execPath, home, process.env.SOOPDOOP_HOME);
   const specs = all.filter(function (s) {
-    return !(keepUpdater && s.name === "updater") && (s.name !== "hud" || app.ok);
+    return !(keepUpdater && s.name === "updater") && (s.needsApp !== true || app.ok);
   });
   for (const spec of specs) await unload(spec.label);
   for (const spec of specs) {
@@ -351,7 +351,13 @@ async function setup(args: string[]): Promise<void> {
     throw new Error(`The ${railUp ? "daemon" : "rail"} did not start. Its log: ${tilde(path.join(home, "logs", railUp ? "daemon.log" : "rail.log"))}`);
   }
   say("· The rail and the daemon run in the background and start again when you log in.");
-  say(`· New releases install themselves within 6 hours${(await readSettings()).autoUpdate ? "" : " (auto-update is off here)"}. \`soopdoop auto-update off\` stops that.`);
+  const settings = await readSettings();
+  if (app.ok) {
+    say(settings.autoOpen
+      ? "· soopdoop opens when Superset opens, also after you quit it. `soopdoop auto-open off` stops that."
+      : "· Auto-open is off here, so soopdoop does not open with Superset. `soopdoop auto-open on` turns it on.");
+  }
+  say(`· New releases install themselves within 6 hours${settings.autoUpdate ? "" : " (auto-update is off here)"}. \`soopdoop auto-update off\` stops that.`);
   if (quiet) return;
 
   if (app.ok) {
@@ -401,6 +407,14 @@ async function status(): Promise<void> {
     if (spec.name === "hud") {
       const built = await Bun.file(appBinaryPath()).exists();
       console.log(`hud     ${built ? (loaded ? "running" : "built, not running") : "not built (needs Xcode's command line tools)"} · ${tilde(appBundlePath())}`);
+      continue;
+    }
+    if (spec.name === "watcher") {
+      const built = await Bun.file(watcherBinaryPath()).exists();
+      // An app built by a version from before the watcher has none.
+      const why = (await Bun.file(appBinaryPath()).exists()) ? "run soopdoop setup" : "needs Xcode's command line tools";
+      const does = settings.autoOpen ? "opens soopdoop when Superset opens" : "auto-open is off, so it does not open soopdoop (soopdoop auto-open on)";
+      console.log(`watcher ${built ? (loaded ? `running · ${does}` : "built, not running") : `not built (${why})`} · log ${tilde(spec.log)}`);
       continue;
     }
     if (spec.port === undefined) {
@@ -510,7 +524,7 @@ async function uninstall(): Promise<void> {
       await removeFile(plistPath(spec.label)).catch(function () { /* already gone */ });
     }
     await removeApp();
-    console.log("· Stopped the background rail, daemon, app and updater, and removed ~/Applications/soopdoop.app.");
+    console.log("· Stopped the background rail, daemon, app, watcher and updater, and removed ~/Applications/soopdoop.app.");
   }
   const link = path.join(path.dirname(process.execPath), "soopdoop");
   try {
@@ -532,6 +546,7 @@ soopdoop status | version                       what is running, paired, hooked,
 soopdoop open | logs                            show the HUD (the web rail if there is no app) · follow the logs
 soopdoop update [--to <version>]                install the newest release (or move to one, also back)
 soopdoop auto-update [on|off]                   whether new releases install themselves (on by default)
+soopdoop auto-open [on|off]                     whether soopdoop opens when Superset opens (on by default)
 soopdoop fund [<dollars> [share]]               what this Mac's agents may spend answering crewmates in 24 hours ($5, half each)
 soopdoop start | stop | restart                 the background services
 soopdoop uninstall                              remove the hooks, the background services, the app, the ask_operator tool and the skill
@@ -559,9 +574,14 @@ try {
     case "logs":
       await logs();
       break;
-    case "start":
-      for (const spec of serviceSpecs(ROOT, process.execPath, soopdoopHome(), process.env.SOOPDOOP_HOME)) await load(spec);
+    case "start": {
+      // The app and its watcher only when the app is built, as setup does.
+      const built = await Bun.file(appBinaryPath()).exists();
+      for (const spec of serviceSpecs(ROOT, process.execPath, soopdoopHome(), process.env.SOOPDOOP_HOME)) {
+        if (spec.needsApp !== true || built) await load(spec);
+      }
       break;
+    }
     case "stop":
       for (const spec of serviceSpecs(ROOT, process.execPath, soopdoopHome())) await unload(spec.label);
       break;
@@ -583,6 +603,19 @@ try {
       console.log(value === "on"
         ? "Auto-update on: new releases install themselves within 6 hours."
         : "Auto-update off. The rail says when a release is out; `soopdoop update` installs it.");
+      break;
+    }
+    case "auto-open": {
+      const value = rest[0];
+      if (value !== "on" && value !== "off") {
+        console.log(`Auto-open is ${(await readSettings()).autoOpen ? "on" : "off"}. Change it with: soopdoop auto-open on|off`);
+        break;
+      }
+      // The watcher reads the setting each time Superset opens, so it needs no restart.
+      await writeSettings({ autoOpen: value === "on" });
+      console.log(value === "on"
+        ? "Auto-open on: soopdoop opens when Superset opens, also after you quit it."
+        : "Auto-open off: soopdoop no longer opens with Superset. It still starts when you log in.");
       break;
     }
     case "fund":

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { configStamp, parseConfig, readConfig, writeConfig } from "./config";
+import { configStamp, parseConfig, readConfig, readSettings, writeConfig, writeSettings } from "./config";
 
 const dirs: string[] = [];
 async function tempHome(): Promise<string> {
@@ -47,5 +47,26 @@ describe("the pairing file", function () {
     await Bun.write(file, JSON.stringify({ token: 1 }));
     await expect(readConfig(file)).rejects.toThrow("Bad config");
     expect(parseConfig({ convexUrl: "u", token: "t", privateDirs: ["/a", 2] })).toEqual({ convexUrl: "u", token: "t", privateDirs: ["/a"] });
+  });
+});
+
+describe("the settings file", function () {
+  test("everything is on until it is turned off", async function () {
+    const file = path.join(await tempHome(), "settings.json");
+    expect(await readSettings(file)).toEqual({ autoUpdate: true, autoOpen: true });
+    await Bun.write(file, "not json");
+    expect(await readSettings(file)).toEqual({ autoUpdate: true, autoOpen: true });
+    await Bun.write(file, JSON.stringify({ autoOpen: "no" }));
+    expect(await readSettings(file)).toEqual({ autoUpdate: true, autoOpen: true });
+  });
+
+  test("changing one setting keeps the others, also ones a newer version wrote", async function () {
+    const file = path.join(await tempHome(), "settings.json");
+    await Bun.write(file, JSON.stringify({ autoUpdate: false, later: 1 }));
+    await writeSettings({ autoOpen: false }, file);
+    expect(await readSettings(file)).toEqual({ autoUpdate: false, autoOpen: false });
+    await writeSettings({ autoUpdate: true }, file);
+    // The watcher (Swift) reads this file itself, by these key names.
+    expect(await Bun.file(file).json()).toEqual({ autoUpdate: true, later: 1, autoOpen: false });
   });
 });

@@ -1,5 +1,5 @@
-// ABOUTME: The Settings window: how the HUD looks and when it shows, notifications, what friends see, the Superset profile,
-// ABOUTME: the board, updates, and signing out. HUD choices stay in this app; account choices go to the agent.
+// ABOUTME: The Settings window: how the HUD looks and when it shows, opening with Superset, notifications, what friends see,
+// ABOUTME: the Superset profile, the board, updates, and signing out. HUD choices stay in this app; the rest go to the agent.
 import AppKit
 import SwiftUI
 
@@ -17,11 +17,18 @@ struct SettingsView: View {
 
 struct LookSettings: View {
     @EnvironmentObject var style: HUDStyle
+    @EnvironmentObject var client: AgentClient
 
     var body: some View {
         Form {
             Picker("Show the HUD", selection: Binding(get: { style.mode }, set: { style.mode = $0 })) {
                 ForEach(HUDMode.allCases) { Text($0.label).tag($0) }
+            }
+            // The watcher reads it from ~/.soopdoop/settings.json, so it goes through the agent.
+            if let local = client.state?.local {
+                Toggle("Open soopdoop when Superset opens", isOn: Binding(get: { local.autoOpen }, set: { on in
+                    client.run("setAutoOpen", ["on": on])
+                }))
             }
             Picker("Material", selection: Binding(get: { style.material }, set: { style.material = $0 })) {
                 ForEach(HUDMaterial.allCases) { Text($0.label).tag($0) }

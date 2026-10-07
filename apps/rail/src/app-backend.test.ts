@@ -2,7 +2,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { relayingTo } from "./agent";
+import { readSettings } from "@soopdoop/daemon/src/config";
+import { createAgent, relayingTo } from "./agent";
 import { ensureAppToken, parseCommand, upgradeAllowed } from "./app-api";
 import { base64url } from "./pkce";
 import { CALLBACK_URI, idToken, readSession, saveSession, signIn } from "./session";
@@ -58,6 +59,34 @@ describe("the app's socket", function () {
       { ...base, status: "reading" as const, role: "answered" as const, targetHandle: "tom" },
     ];
     expect([...relayingTo(wire as unknown as Parameters<typeof relayingTo>[0])]).toEqual(["jimmy"]);
+  });
+});
+
+describe("the app's settings", function () {
+  test("the auto-open and auto-update switches write the settings file and come back in the state", async function () {
+    const saved = process.env.SOOPDOOP_HOME;
+    const settingsFile = await tempFile("settings.json");
+    // Update state is read from SOOPDOOP_HOME; keep it out of the real ~/.soopdoop.
+    process.env.SOOPDOOP_HOME = path.dirname(settingsFile);
+    try {
+      const agent = createAgent({
+        railOrigin: "http://127.0.0.1:47312",
+        convexUrl: "https://x.convex.cloud",
+        version: "0.1.0",
+        canUpdate: false,
+        configFile: path.join(path.dirname(settingsFile), "config.json"),
+        settingsFile,
+      }, async function () { /* no browser */ });
+      await agent.act("setAutoOpen", { on: false });
+      expect(agent.state().local?.autoOpen).toBe(false);
+      await agent.act("setAutoUpdate", { on: false });
+      expect(await readSettings(settingsFile)).toEqual({ autoUpdate: false, autoOpen: false });
+      expect(agent.state().local).toMatchObject({ autoUpdate: false, autoOpen: false });
+      await expect(agent.act("setAutoOpen", { on: "no" })).rejects.toThrow("Missing on.");
+    } finally {
+      if (saved === undefined) delete process.env.SOOPDOOP_HOME;
+      else process.env.SOOPDOOP_HOME = saved;
+    }
   });
 });
 

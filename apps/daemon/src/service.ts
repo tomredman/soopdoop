@@ -1,7 +1,8 @@
-// ABOUTME: macOS LaunchAgents: the rail and the daemon run always (start at login, restart if they exit), the Mac app starts at
-// ABOUTME: login, the updater runs every 6 hours. Service list and plist text are pure (tested); launchctl and lsof are wrappers.
+// ABOUTME: macOS LaunchAgents: the rail, the daemon and the watcher run always (start at login, restart if they exit), the Mac
+// ABOUTME: app starts at login, the updater runs every 6 hours. Service list and plist text are pure (tested); launchctl and lsof are wrappers.
 import { homedir } from "node:os";
 import path from "node:path";
+import { appBinaryPath, watcherBinaryPath } from "./app";
 
 export const RAIL_PORT = 47312;
 export const DAEMON_PORT = 47311;
@@ -10,7 +11,7 @@ export const UPDATER_LABEL = "com.soopdoop.updater";
 export const UPDATE_EVERY_SECONDS = 6 * 60 * 60;
 
 export interface ServiceSpec {
-  name: "rail" | "daemon" | "updater" | "hud";
+  name: "rail" | "daemon" | "updater" | "hud" | "watcher";
   label: string;
   program: string[];
   workingDirectory: string;
@@ -21,6 +22,8 @@ export interface ServiceSpec {
   everySeconds?: number;
   // The Mac app: restarted after a crash, but not after the hacker quits it from the menu bar.
   restartOnCrashOnly?: boolean;
+  // Runs a program from the Mac app's bundle, so it is set up only when the app is built.
+  needsApp?: boolean;
 }
 
 // root: the soopdoop checkout. bun: an absolute path, because launchd does not read your shell's PATH.
@@ -54,11 +57,22 @@ export function serviceSpecs(root: string, bun: string, home: string, soopdoopHo
     {
       name: "hud",
       label: "com.soopdoop.hud",
-      program: [path.join(homedir(), "Applications", "soopdoop.app", "Contents", "MacOS", "Soopdoop")],
+      program: [appBinaryPath()],
       workingDirectory: root,
       env,
       log: path.join(logs, "hud.log"),
       restartOnCrashOnly: true,
+      needsApp: true,
+    },
+    {
+      // Opens the app when Superset opens, unless auto-open is off. Kept running like a server, with no port.
+      name: "watcher",
+      label: "com.soopdoop.watcher",
+      program: [watcherBinaryPath()],
+      workingDirectory: root,
+      env,
+      log: path.join(logs, "watcher.log"),
+      needsApp: true,
     },
     {
       // Checks for a new release at login and every 6 hours; installs it unless auto-update is off.

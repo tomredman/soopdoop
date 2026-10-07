@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { readConfig, readSettings, writeConfig } from "@soopdoop/daemon/src/config";
+import { readConfig, readSettings, writeConfig, writeSettings } from "@soopdoop/daemon/src/config";
 import { takeUpdateRequest, writeUpdateState } from "@soopdoop/daemon/src/update";
 import { localInfo, machineName, pairHere, settingsHere, updateHere, type LocalServer } from "./local";
 
@@ -66,7 +66,7 @@ describe("the rail's local server", function () {
     expect((await localInfo(rebound, s)).status).toBe(403);
   });
 
-  test("reports the version, a newer release, and the auto-update setting", async function () {
+  test("reports the version, a newer release, and the auto-update and auto-open settings", async function () {
     const s = server();
     await writeUpdateState({ latest: "v0.2.0", error: undefined });
     expect(await (await localInfo(ask, s)).json()).toMatchObject({
@@ -78,9 +78,12 @@ describe("the rail's local server", function () {
       canUpdate: true,
       updating: false,
       updateError: null,
+      autoOpen: true,
     });
     await writeUpdateState({ latest: "v0.1.0" });
     expect((await (await localInfo(ask, s)).json()).newer).toBe(false);
+    await writeSettings({ autoOpen: false }, s.settingsFile ?? "");
+    expect((await (await localInfo(ask, s)).json()).autoOpen).toBe(false);
   });
 
   test("pairing writes this server's Convex URL, owner-only, and keeps private folders", async function () {
@@ -129,8 +132,11 @@ describe("the rail's local server", function () {
     expect((await settingsHere(post("/local/settings", { autoUpdate: false }, "https://evil.example"), s)).status).toBe(403);
     expect((await settingsHere(post("/local/settings", { autoUpdate: "no" }), s)).status).toBe(400);
     expect((await readSettings(file)).autoUpdate).toBe(true);
+    await writeSettings({ autoOpen: false }, file);
     expect((await settingsHere(post("/local/settings", { autoUpdate: false }), s)).status).toBe(200);
     expect((await readSettings(file)).autoUpdate).toBe(false);
     expect((await (await localInfo(ask, s)).json()).autoUpdate).toBe(false);
+    // The rail's switch leaves auto-open as it was.
+    expect((await readSettings(file)).autoOpen).toBe(false);
   });
 });

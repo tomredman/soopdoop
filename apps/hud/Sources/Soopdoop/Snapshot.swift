@@ -43,8 +43,9 @@ enum Snapshot {
         ]
         let chat = OperatorChat().environmentObject(AgentClient(preview: chatting)).environmentObject(style)
         render(chat, size: NSSize(width: 380, height: 520), to: URL(fileURLWithPath: dir).appendingPathComponent("chat.png"))
-        // Settings → HUD: the sections, which can be hidden and put in order.
-        let look = LookSettings().environmentObject(style)
+        // Settings → HUD: opening with Superset, and the sections, which can be hidden and put in order.
+        let sample = samples().first { $0.0 == "ready" }?.1 ?? AppState()
+        let look = LookSettings().environmentObject(AgentClient(preview: sample)).environmentObject(style)
         render(look, size: NSSize(width: 460, height: 520), to: URL(fileURLWithPath: dir).appendingPathComponent("settings-hud.png"))
         // The knock composer at the HUD's default and narrowest widths: its buttons must never wrap.
         let client = AgentClient(preview: AppState())

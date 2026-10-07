@@ -19,6 +19,8 @@ export interface LocalInfo {
   canUpdate: boolean;
   updating: boolean;
   updateError: string | null;
+  // Whether the watcher opens the app when Superset opens.
+  autoOpen: boolean;
 }
 
 // What the server knows about itself, fixed at start.
@@ -89,6 +91,7 @@ export async function readLocalInfo(server: LocalServer): Promise<LocalInfo> {
     canUpdate: server.canUpdate,
     updating,
     updateError: state.error ?? null,
+    autoOpen: settings.autoOpen,
   };
   return info;
 }

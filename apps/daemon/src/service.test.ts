@@ -17,13 +17,16 @@ afterAll(async function () {
 describe("background services", function () {
   const specs = serviceSpecs("/Users/me/.soopdoop/app", "/Users/me/.bun/bin/bun", "/Users/me/.soopdoop");
 
-  test("runs the rail, the daemon, the app and the updater, with an absolute bun", function () {
+  test("runs the rail, the daemon, the app, the watcher and the updater, with an absolute bun", function () {
     expect(specs.map(function (s) { return [s.label, s.program, s.port, s.everySeconds]; })).toEqual([
       ["com.soopdoop.rail", ["/Users/me/.bun/bin/bun", "/Users/me/.soopdoop/app/apps/rail/serve.ts"], 47312, undefined],
       ["com.soopdoop.daemon", ["/Users/me/.bun/bin/bun", "/Users/me/.soopdoop/app/apps/daemon/src/cli.ts", "serve"], 47311, undefined],
       ["com.soopdoop.hud", [path.join(homedir(), "Applications", "soopdoop.app", "Contents", "MacOS", "Soopdoop")], undefined, undefined],
+      ["com.soopdoop.watcher", [path.join(homedir(), "Applications", "soopdoop.app", "Contents", "Helpers", "SoopdoopWatcher")], undefined, undefined],
       ["com.soopdoop.updater", ["/Users/me/.bun/bin/bun", "/Users/me/.soopdoop/app/apps/daemon/src/cli.ts", "update", "--auto"], undefined, 21600],
     ]);
+    // Setup skips these when the app does not build.
+    expect(specs.filter(function (s) { return s.needsApp === true; }).map(function (s) { return s.name; })).toEqual(["hud", "watcher"]);
     for (const s of specs) {
       expect(s.env.PATH?.startsWith("/Users/me/.bun/bin:")).toBe(true);
       expect(s.env.SOOPDOOP_SERVICE).toBe("1");
@@ -46,8 +49,17 @@ describe("background services", function () {
     expect(text).toContain("<key>RunAtLoad</key>\n  <true/>");
   });
 
-  test("the updater runs at login and every 6 hours, and is not kept alive", function () {
+  test("the watcher starts at login and comes back whenever it exits", function () {
     const text = plist(must(specs[3]));
+    expect(text).toContain("<string>com.soopdoop.watcher</string>");
+    expect(text).toContain("<key>RunAtLoad</key>\n  <true/>");
+    expect(text).toContain("<key>KeepAlive</key>\n  <true/>");
+    expect(text).not.toContain("StartInterval");
+    expect(text).toContain("/Users/me/.soopdoop/logs/watcher.log");
+  });
+
+  test("the updater runs at login and every 6 hours, and is not kept alive", function () {
+    const text = plist(must(specs[4]));
     expect(text).toContain("<key>RunAtLoad</key>\n  <true/>");
     expect(text).toContain("<key>StartInterval</key>\n  <integer>21600</integer>");
     expect(text).not.toContain("KeepAlive");

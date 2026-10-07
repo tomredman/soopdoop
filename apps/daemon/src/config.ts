@@ -60,24 +60,34 @@ export async function configStamp(file: string = configPath()): Promise<number> 
 export interface Settings {
   // On unless turned off: the updater job installs new releases by itself.
   autoUpdate: boolean;
+  // On unless turned off: the watcher (apps/hud/Sources/SoopdoopWatcher) opens the app when Superset opens. It reads
+  // this file itself, so the key keeps its name.
+  autoOpen: boolean;
 }
 
 export function settingsPath(home: string = soopdoopHome()): string {
   return path.join(home, "settings.json");
 }
 
-export async function readSettings(file: string = settingsPath()): Promise<Settings> {
+async function readSettingsFile(file: string): Promise<Record<string, unknown>> {
   try {
     const raw: unknown = await Bun.file(file).json();
-    return { autoUpdate: !(isRecord(raw) && raw.autoUpdate === false) };
+    return isRecord(raw) ? raw : {};
   } catch {
-    return { autoUpdate: true };
+    return {};
   }
 }
 
-export async function writeSettings(settings: Settings, file: string = settingsPath()): Promise<void> {
+export async function readSettings(file: string = settingsPath()): Promise<Settings> {
+  const raw = await readSettingsFile(file);
+  return { autoUpdate: raw.autoUpdate !== false, autoOpen: raw.autoOpen !== false };
+}
+
+// Changes the settings given and keeps the rest, also any that a newer version wrote.
+export async function writeSettings(change: Partial<Settings>, file: string = settingsPath()): Promise<void> {
+  const raw = await readSettingsFile(file);
   await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
-  await Bun.write(file, JSON.stringify(settings, null, 2) + "\n");
+  await Bun.write(file, JSON.stringify({ ...raw, ...change }, null, 2) + "\n");
 }
 
 // An invite code from `soopdoop setup --invite`, waiting for the app's first sign-in to redeem it.

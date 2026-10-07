@@ -1,5 +1,5 @@
 // ABOUTME: Builds the soopdoop Mac app (apps/hud) on this machine and installs it as ~/Applications/soopdoop.app: a menu bar
-// ABOUTME: app (no Dock icon), signed for this Mac only. Built from source, so nothing downloaded needs Apple's notarization.
+// ABOUTME: app (no Dock icon) and its watcher, signed for this Mac only. Built from source, so nothing downloaded needs Apple's notarization.
 import { chmod, mkdir, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -12,6 +12,12 @@ export function appBundlePath(): string {
 
 export function appBinaryPath(): string {
   return path.join(appBundlePath(), "Contents", "MacOS", "Soopdoop");
+}
+
+// The watcher, which opens the app when Superset opens. In Helpers, not MacOS: a program in Contents/MacOS takes the
+// bundle's identity, and macOS could take the watcher for the app.
+export function watcherBinaryPath(): string {
+  return path.join(appBundlePath(), "Contents", "Helpers", "SoopdoopWatcher");
 }
 
 function xml(s: string): string {
@@ -73,17 +79,24 @@ export async function buildApp(root: string, version: string): Promise<{ ok: tru
   const staging = `${target}.new`;
   await rm(staging, { recursive: true, force: true });
   await mkdir(path.join(staging, "Contents", "MacOS"), { recursive: true });
+  await mkdir(path.join(staging, "Contents", "Helpers"), { recursive: true });
   await mkdir(path.join(staging, "Contents", "Resources"), { recursive: true });
   const binary = path.join(staging, "Contents", "MacOS", "Soopdoop");
   await Bun.write(binary, Bun.file(path.join(pkg, ".build", "release", "Soopdoop")));
   await chmod(binary, 0o755);
+  const watcher = path.join(staging, "Contents", "Helpers", "SoopdoopWatcher");
+  await Bun.write(watcher, Bun.file(path.join(pkg, ".build", "release", "SoopdoopWatcher")));
+  await chmod(watcher, 0o755);
   await Bun.write(path.join(staging, "Contents", "Info.plist"), infoPlist(version));
   // The icon (apps/hud/icon: rendered in Blender by icon.py). Finder, Settings and notifications show it.
   const icon = Bun.file(path.join(pkg, "icon", "AppIcon.icns"));
   if (await icon.exists()) await Bun.write(path.join(staging, "Contents", "Resources", "AppIcon.icns"), icon);
-  // Ad-hoc: signed for this Mac. Built here from source, so Gatekeeper has nothing downloaded to check.
-  const sign = run(["codesign", "--force", "--sign", "-", staging], root);
-  if (sign.code !== 0) return { ok: false, why: `codesign failed: ${sign.output.trim()}` };
+  // Ad-hoc: signed for this Mac. Built here from source, so Gatekeeper has nothing downloaded to check. The watcher is
+  // code inside the bundle, so it is signed before the bundle is.
+  for (const code of [watcher, staging]) {
+    const sign = run(["codesign", "--force", "--sign", "-", code], root);
+    if (sign.code !== 0) return { ok: false, why: `codesign failed: ${sign.output.trim()}` };
+  }
 
   const old = `${target}.old`;
   await rm(old, { recursive: true, force: true });

@@ -190,6 +190,8 @@ struct LocalInfo: Decodable {
     var canUpdate = false
     var updating = false
     var updateError: String?
+    // The watcher opens the app when Superset opens.
+    var autoOpen = true
 }
 
 struct AppState: Decodable {
@@ -386,14 +388,14 @@ extension Relay {
 
 extension LocalInfo {
     enum CodingKeys: String, CodingKey {
-        case machine, paired, version, latest, newer, releaseUrl, autoUpdate, canUpdate, updating, updateError
+        case machine, paired, version, latest, newer, releaseUrl, autoUpdate, canUpdate, updating, updateError, autoOpen
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         machine = c.value(.machine, ""); paired = c.value(.paired, false); version = c.value(.version, "")
         latest = c.maybe(.latest); newer = c.value(.newer, false); releaseUrl = c.maybe(.releaseUrl)
         autoUpdate = c.value(.autoUpdate, true); canUpdate = c.value(.canUpdate, false)
-        updating = c.value(.updating, false); updateError = c.maybe(.updateError)
+        updating = c.value(.updating, false); updateError = c.maybe(.updateError); autoOpen = c.value(.autoOpen, true)
     }
 }
 

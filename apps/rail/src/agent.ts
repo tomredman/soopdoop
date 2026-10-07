@@ -356,6 +356,11 @@ export function createAgent(server: LocalServer, open: (url: string) => Promise<
         await writeSettings({ autoUpdate: flag(args, "on") }, server.settingsFile ?? settingsPath());
         await refreshLocal();
         return null;
+      // Whether the watcher opens the app when Superset opens. It reads the settings file each time.
+      case "setAutoOpen":
+        await writeSettings({ autoOpen: flag(args, "on") }, server.settingsFile ?? settingsPath());
+        await refreshLocal();
+        return null;
       case "updateNow":
         if (!server.canUpdate) throw new Error("Run `soopdoop update` in Terminal.");
         await requestUpdate();
