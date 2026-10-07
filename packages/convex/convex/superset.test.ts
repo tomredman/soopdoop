@@ -240,21 +240,21 @@ describe("adding a friend by handle", function () {
 
   test("someone only on Superset gets an invite that works even without the link, once they link that profile", async function () {
     const t = harness();
-    const asked = fakeSuperset({ vlad: profilePage({ handle: "vlad", name: "Vladimir Babic" }) });
+    const asked = fakeSuperset({ hedy: profilePage({ handle: "hedy", name: "Hedy Lamarr" }) });
     const tom = await hackerCalled(t, "tom", "Tom Redman");
-    const added = await tom.action(api.friends.addByHandle, { handle: "https://superset.sh/vlad" });
-    expect(added).toMatchObject({ kind: "invited", handle: "vlad", onSuperset: true, name: "Vladimir Babic" });
-    expect(asked).toContain("https://superset.sh/md/user/vlad");
+    const added = await tom.action(api.friends.addByHandle, { handle: "https://superset.sh/hedy" });
+    expect(added).toMatchObject({ kind: "invited", handle: "hedy", onSuperset: true, name: "Hedy Lamarr" });
+    expect(asked).toContain("https://superset.sh/md/user/hedy");
     if (added.kind !== "invited") throw new Error("expected an invite");
 
     // Someone else cannot take it: linking needs the profile's own name.
     const grace = await hackerCalled(t, "grace", "Grace Hopper");
-    await expect(grace.action(api.superset.linkProfile, { handle: "vlad" })).rejects.toThrow("Link your own profile");
+    await expect(grace.action(api.superset.linkProfile, { handle: "hedy" })).rejects.toThrow("Link your own profile");
 
-    // Vlad installs without the link, picks another handle, and links his Superset profile: he is in Tom's crew.
-    const vlad = await hackerCalled(t, "vladimir", "Vladimir Babic");
-    expect(await vlad.action(api.superset.linkProfile, { handle: "vlad" })).toMatchObject({ handle: "vlad", invitedBy: ["tom"] });
-    expect((await tom.query(api.friends.list, {})).map(function (f) { return f.handle; })).toEqual(["vladimir"]);
+    // Hedy installs without the link, picks another handle, and links their Superset profile: they are in Tom's crew.
+    const hedy = await hackerCalled(t, "hedylamarr", "Hedy Lamarr");
+    expect(await hedy.action(api.superset.linkProfile, { handle: "hedy" })).toMatchObject({ handle: "hedy", invitedBy: ["tom"] });
+    expect((await tom.query(api.friends.list, {})).map(function (f) { return f.handle; })).toEqual(["hedylamarr"]);
     // The invite is used up, so its link no longer works for anyone.
     await expect(grace.mutation(api.friends.redeemInvite, { token: added.token })).rejects.toThrow("no longer valid");
   });

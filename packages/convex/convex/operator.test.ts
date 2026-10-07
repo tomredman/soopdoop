@@ -255,10 +255,10 @@ describe("the Operator", function () {
   test("a crewmate with no open agent, or the asker themself, is said plainly", async function () {
     const t = harness();
     const { tom } = await crew(t);
-    await befriend(tom, await hackerNamed(t, "vlad"), "vlad");
-    const aboutVlad = await tom.mutation(api.operator.askAsHacker, { question: "Where does @vlad keep the coupon code?" });
-    await t.action(internal.operator.route, { relayId: aboutVlad });
-    expect(await logged(tom, aboutVlad)).toMatchObject({ status: "nobody", note: "@vlad has no open agent running right now." });
+    await befriend(tom, await hackerNamed(t, "hedy"), "hedy");
+    const aboutHedy = await tom.mutation(api.operator.askAsHacker, { question: "Where does @hedy keep the coupon code?" });
+    await t.action(internal.operator.route, { relayId: aboutHedy });
+    expect(await logged(tom, aboutHedy)).toMatchObject({ status: "nobody", note: "@hedy has no open agent running right now." });
     const aboutMe = await tom.mutation(api.operator.askAsHacker, { question: "What did @tom change?" });
     await t.action(internal.operator.route, { relayId: aboutMe });
     expect(await logged(tom, aboutMe)).toMatchObject({ status: "nobody", note: "@tom is you, and the Operator only asks your crewmates' agents." });
@@ -311,21 +311,21 @@ describe("the Operator", function () {
   });
 
   test("an answer is never about anyone but the agent's owner", async function () {
-    // Jimmy's agent, asked about Vlad: nothing is answered and nothing is spent.
-    expect(await answerFrom("What is @vlad doing?", CONTEXT, { handle: "jimmy" })).toEqual({ text: null, tokensRead: 0, tokensSent: 0 });
+    // Jimmy's agent, asked about Hedy: nothing is answered and nothing is spent.
+    expect(await answerFrom("What is @hedy doing?", CONTEXT, { handle: "jimmy" })).toEqual({ text: null, tokensRead: 0, tokensSent: 0 });
     expect((await answerFrom("Where are expired listings filtered, @jimmy?", CONTEXT, { handle: "jimmy" })).text).toContain("select.ts");
     // The same for an answer Jimmy's agent wrote itself.
-    expect(agentAnswer("What is @vlad doing?", "Fixing the HUD.", { handle: "jimmy" }, 800)).toEqual({ text: null, tokensRead: 800, tokensSent: 0 });
+    expect(agentAnswer("What is @hedy doing?", "Fixing the HUD.", { handle: "jimmy" }, 800)).toEqual({ text: null, tokensRead: 800, tokensSent: 0 });
     expect(agentAnswer("What is @jimmy doing?", "Fixing the HUD.", { handle: "jimmy" }, 800)).toEqual({ text: "Fixing the HUD.", tokensRead: 800, tokensSent: 4 });
   });
 
   test("@mentions are found, and the router sees each owner's name", function () {
-    expect(mentionedHandles("what is @vlad working on? ask @Jimmy-Vibes too")).toEqual(["vlad", "jimmy-vibes"]);
+    expect(mentionedHandles("what is @hedy working on? ask @Jimmy-Vibes too")).toEqual(["hedy", "jimmy-vibes"]);
     expect(mentionedHandles("mail tom@vibes.dev about it")).toEqual([]);
     expect(mentionedHandles("what is jimmy working on")).toEqual([]);
     // A handle has no letters like "É", so this is a name, not a mention.
     expect(mentionedHandles("what is @Évariste doing?")).toEqual([]);
-    expect(candidateLine({ handle: "vladimir", name: "Vlad P", agentName: "api", status: "working" }, 0)).toBe("1. @vladimir (Vlad P) · api · working");
+    expect(candidateLine({ handle: "hedylamarr", name: "Hedy P", agentName: "api", status: "working" }, 0)).toBe("1. @hedylamarr (Hedy P) · api · working");
     expect(firstNameAndHandle({ handle: "adalovelace", name: "Ada Lovelace" })).toBe("Ada (@adalovelace)");
     expect(firstNameAndHandle({ handle: "zed" })).toBe("@zed");
   });
@@ -500,16 +500,16 @@ describe("the crew an agent sees", function () {
     const t = harness();
     const { tom } = await crew(t);
     await linkSuperset(t, "jimmy", "jimmy-neutron", "Jimmy Neutron");
-    const vlad = await hackerNamed(t, "vlad");
-    await befriend(tom, vlad, "vlad");
-    await vlad.mutation(api.hackers.setFocus, { minutes: 25 });
+    const hedy = await hackerNamed(t, "hedy");
+    await befriend(tom, hedy, "hedy");
+    await hedy.mutation(api.hackers.setFocus, { minutes: 25 });
     const tomToken = await machine(t, tom, "mbp16", []);
     expect(await t.query(api.friends.crew, { token: tomToken })).toEqual({
       me: "tom",
       crew: [
+        { handle: "hedy", name: undefined, led: "x", inFocus: true, agentCount: 0 },
         // Jimmy's private agent is not counted.
         { handle: "jimmy", name: "Jimmy Neutron", led: "g", inFocus: false, agentCount: 1 },
-        { handle: "vlad", name: undefined, led: "x", inFocus: true, agentCount: 0 },
       ],
     });
     await expect(t.query(api.friends.crew, { token: "sd_nope" })).rejects.toThrow("Unknown daemon token");

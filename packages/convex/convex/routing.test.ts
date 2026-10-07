@@ -42,25 +42,25 @@ describe("introducing crewmates' agents", function () {
     const t = harness();
     const tom = await hackerNamed(t, "tom");
     const jimmy = await hackerNamed(t, "jimmy");
-    const vlad = await hackerNamed(t, "vlad");
+    const hedy = await hackerNamed(t, "hedy");
     const stranger = await hackerNamed(t, "stranger");
     await befriend(tom, jimmy, "jimmy");
-    await befriend(vlad, jimmy, "jimmy");
+    await befriend(hedy, jimmy, "jimmy");
     const jimmyToken = await jimmy.mutation(api.subsets.pairDaemon, { machineName: "jm" });
 
     const tomToken = await machine(t, tom, "mbp", [agent("t1", true), agent("t2", false), agent("t3", true, "idle")]);
     await t.mutation(api.routing.update, { token: tomToken, agentId: "t1", summary: CANNONBALLS });
     await t.mutation(api.routing.update, { token: tomToken, agentId: "t2", summary: "taxes · \"my private thing\"" });
-    // t3 has no summary yet: there is nothing to say about it. Vlad's agent is the one active last.
+    // t3 has no summary yet: there is nothing to say about it. Hedy's agent is the one active last.
     await Bun.sleep(5);
-    const vladToken = await machine(t, vlad, "vm", [agent("v1", true, "idle")]);
-    await t.mutation(api.routing.update, { token: vladToken, agentId: "v1", summary: "vibes · \"why does the knock ring jump?\"" });
+    const hedyToken = await machine(t, hedy, "vm", [agent("v1", true, "idle")]);
+    await t.mutation(api.routing.update, { token: hedyToken, agentId: "v1", summary: "vibes · \"why does the knock ring jump?\"" });
     const strangerToken = await machine(t, stranger, "sm", [agent("s1", true)]);
     await t.mutation(api.routing.update, { token: strangerToken, agentId: "s1", summary: "secret · \"not a friend\"" });
 
     const view = await t.query(api.routing.crew, { token: jimmyToken });
     expect(view.agents.map(function (a) { return [a.handle, a.status, a.summary]; })).toEqual([
-      ["vlad", "idle", "\"why does the knock ring jump?\""],
+      ["hedy", "idle", "\"why does the knock ring jump?\""],
       ["tom", "working", "\"build MLS-based email cannonballs for each contact\" · files: convex/cannonballs.ts"],
     ]);
     const first = must(view.agents[1]);

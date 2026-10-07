@@ -15,18 +15,18 @@ describe("introducing the crew's agents", function () {
   test("one line per agent, with the crewmate's name when they linked one, cut when it is long", function () {
     expect(agentLine(agent("k", "tom", 1, { name: "Tom Redman", summary: "\"build MLS-based email cannonballs\"" })))
       .toBe("- @tom (Tom Redman), working: \"build MLS-based email cannonballs\"");
-    expect(agentLine(agent("k", "vlad", 1, { status: "waiting" }))).toStartWith("- @vlad, idle: ");
+    expect(agentLine(agent("k", "hedy", 1, { status: "waiting" }))).toStartWith("- @hedy, idle: ");
     const long = agentLine(agent("k", "tom", 1, { summary: "x".repeat(500) }));
     expect(long.length).toBe(320);
     expect(long.endsWith("…")).toBe(true);
   });
 
   test("the introduction names the agents and how to ask them, and says nothing when there are none", function () {
-    const text = introduction({ now: 10, agents: [agent("a", "tom", 1), agent("b", "vlad", 2)] }) ?? "";
+    const text = introduction({ now: 10, agents: [agent("a", "tom", 1), agent("b", "hedy", 2)] }) ?? "";
     expect(text.split("\n")).toEqual([
       "soopdoop: your crewmates' agents running now, and what each one is working on.",
       "- @tom, working: \"tom's task\" · files: src/tom.ts",
-      "- @vlad, working: \"vlad's task\" · files: src/vlad.ts",
+      "- @hedy, working: \"hedy's task\" · files: src/hedy.ts",
       expect.stringContaining("call ask_operator with the crewmate's @handle in the question"),
     ]);
     expect(introduction({ now: 10, agents: [] })).toBeNull();

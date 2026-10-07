@@ -224,7 +224,7 @@ const candidate = v.object({
 
 const crewmate = v.object({ handle: v.string(), name: v.optional(v.string()), supersetHandle: v.optional(v.string()) });
 
-// A hacker's linked Superset profile, if they linked one: its name lets "what is Vlad doing" find @vladimir, and an
+// A hacker's linked Superset profile, if they linked one: its name lets "what is Hedy doing" find @hedylamarr, and an
 // @mention of its handle finds them too.
 async function linkedProfile(ctx: QueryCtx, hackerId: Id<"hackers">): Promise<{ handle: string; name?: string } | undefined> {
   const profile = await ctx.db

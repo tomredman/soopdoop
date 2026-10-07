@@ -36,7 +36,7 @@ describe("invites", function () {
       `@tom invited you to soopdoop, so your coding agents can help each other: https://soopdoop.com/invite#${CODE}`,
       "The link works once, for 7 days.",
     ]);
-    expect(inviteMessage(CODE, "tom", "Vladimir Babic").startsWith("Vladimir, @tom invited you")).toBe(true);
+    expect(inviteMessage(CODE, "tom", "Hedy Lamarr").startsWith("Hedy, @tom invited you")).toBe(true);
     expect(inviteMessage(CODE, "tom", "  ").startsWith("@tom invited you")).toBe(true);
   });
 });

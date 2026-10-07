@@ -81,11 +81,11 @@ describe("the fund's settings", function () {
       // Older lines logged costUsd, which counted the whole session's past: not counted.
       JSON.stringify({ at: "2026-10-05T18:00:00Z", relayId: "r0", agentId: "a1", costUsd: 3.5, tokensRead: 433_197 }),
       "not json",
-      JSON.stringify({ at: "2026-10-05T19:00:00Z", relayId: "r1", agentId: "a1", asker: "vlad", model: "claude-opus-5-5", tokensRead: 72_605, usd: 0.39 }),
+      JSON.stringify({ at: "2026-10-05T19:00:00Z", relayId: "r1", agentId: "a1", asker: "hedy", model: "claude-opus-5-5", tokensRead: 72_605, usd: 0.39 }),
       JSON.stringify({ at: "2026-10-05T19:30:00Z", relayId: "r2", agentId: "a2", usd: 0.04 }),
     ].join("\n");
     expect(parseSpends(log)).toEqual([
-      { at: Date.parse("2026-10-05T19:00:00Z"), agentId: "a1", asker: "vlad", model: "claude-opus-5-5", tokensRead: 72_605, usd: 0.39 },
+      { at: Date.parse("2026-10-05T19:00:00Z"), agentId: "a1", asker: "hedy", model: "claude-opus-5-5", tokensRead: 72_605, usd: 0.39 },
       { at: Date.parse("2026-10-05T19:30:00Z"), agentId: "a2", usd: 0.04 },
     ]);
   });
@@ -106,8 +106,8 @@ describe("the fund's limits", function () {
   });
 
   test("lets answers through while the fund lasts, then stops them; old answers drop out after 24 hours", function () {
-    expect(fundLimit(fund, [], { agentId: "a1", asker: "vlad" }, NOW)).toBeNull();
-    const spent = [spend({ usd: 2, asker: "vlad" }), spend({ usd: 2.5, asker: "mira" })];
+    expect(fundLimit(fund, [], { agentId: "a1", asker: "hedy" }, NOW)).toBeNull();
+    const spent = [spend({ usd: 2, asker: "hedy" }), spend({ usd: 2.5, asker: "mira" })];
     expect(fundLimit(fund, spent, { agentId: "a1", asker: "jimmy" }, NOW)).toBeNull();
     // $4.50 spent: an answer expected to cost $1.64 would pass $5.
     const big = [...spent, spend({ usd: 0, tokensRead: 200_000, model: "claude-opus-5-5" })];
@@ -119,9 +119,9 @@ describe("the fund's limits", function () {
   });
 
   test("one crewmate can use only their share, and the others can still ask", function () {
-    const spent = [spend({ usd: 2.4, asker: "vlad", tokensRead: 50_000, model: "claude-opus-5-5" })];
-    // Vlad: $2.40 of his $2.50, and the next read is expected to cost about $0.44.
-    expect(fundLimit(fund, spent, { agentId: "a1", asker: "vlad" }, NOW)).toEqual({
+    const spent = [spend({ usd: 2.4, asker: "hedy", tokensRead: 50_000, model: "claude-opus-5-5" })];
+    // Hedy: $2.40 of their $2.50, and the next read is expected to cost about $0.44.
+    expect(fundLimit(fund, spent, { agentId: "a1", asker: "hedy" }, NOW)).toEqual({
       kind: "share", note: "You have used your share of this crewmate's answering fund for today.",
     });
     expect(fundLimit(fund, spent, { agentId: "a1", asker: "mira" }, NOW)).toBeNull();
@@ -130,13 +130,13 @@ describe("the fund's limits", function () {
   });
 
   test("a fund of zero turns answering off", function () {
-    expect(fundLimit({ dailyUsd: 0, askerShare: 0.5 }, [], { agentId: "a1", asker: "vlad" }, NOW)?.kind).toBe("off");
+    expect(fundLimit({ dailyUsd: 0, askerShare: 0.5 }, [], { agentId: "a1", asker: "hedy" }, NOW)?.kind).toBe("off");
   });
 
   test("adds up the last 24 hours, by asker", function () {
-    const { total, byAsker } = spentToday([spend({ usd: 1, asker: "vlad" }), spend({ usd: 0.5, asker: "vlad" }), spend({ usd: 2 }),
-      spend({ usd: 9, at: NOW - 25 * HOUR, asker: "vlad" })], NOW);
+    const { total, byAsker } = spentToday([spend({ usd: 1, asker: "hedy" }), spend({ usd: 0.5, asker: "hedy" }), spend({ usd: 2 }),
+      spend({ usd: 9, at: NOW - 25 * HOUR, asker: "hedy" })], NOW);
     expect(total).toBe(3.5);
-    expect([...byAsker]).toEqual([["vlad", 1.5], ["?", 2]]);
+    expect([...byAsker]).toEqual([["hedy", 1.5], ["?", 2]]);
   });
 });

@@ -55,7 +55,7 @@ export function candidateLine(c: Candidate, i: number): string {
   return `${i + 1}. ${who} · ${c.agentName}${where} · ${c.status}${c.summary === undefined ? "" : ` · ${c.summary}`}`;
 }
 
-// The @handles a question mentions ("what is @vlad working on"), lowercased. Bare names are left to Claude: a handle
+// The @handles a question mentions ("what is @hedy working on"), lowercased. Bare names are left to Claude: a handle
 // can be an everyday word (@dev), so matching words would send ordinary questions to one person's agents. "@Évariste" is
 // not a mention: a handle has no letters like "É".
 export function mentionedHandles(question: string): string[] {
