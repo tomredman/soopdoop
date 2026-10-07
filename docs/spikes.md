@@ -223,6 +223,25 @@ Not checked: Superset itself opening (relaunching Superset would have closed the
 
 Known gap: going back to v0.11.0 or older (`soopdoop update --to`) leaves `com.soopdoop.watcher` loaded, because the older setup does not know it. The older app is built without a watcher, so the program the job points at is gone, and launchd cannot start it again (checked with a test job whose program was missing: one run, exit code 78, then it waits). Nothing breaks, but the job stays until it is removed: `launchctl bootout gui/$(id -u)/com.soopdoop.watcher`, then delete `~/Library/LaunchAgents/com.soopdoop.watcher.plist`.
 
+## Introducing the crew's agents (7 Oct 2026)
+
+Why: Mr. Tom asked that a crewmate's agents know about his agents from the start. His example: his agent works on "MLS-based email cannonballs", and Jimmy comes online to build the UI for it; Jimmy's agent should know about Tom's agent before it starts.
+
+What changed:
+
+- Claude Code adds a hook's `additionalContext` to the session as a system reminder, on `SessionStart` and `UserPromptSubmit` (`{"hookSpecificOutput": {"hookEventName": ..., "additionalContext": ...}}`). soopdoop already has a hook on both. `hook.ts` now reads the daemon's reply to those two events and prints it in that shape; every other event stays fire and forget, and it still never fails.
+- The backend's `routing:crew` (by the machine's token) lists each crewmate's open agents that are running now and have a routing summary, newest first, at most 20: @handle, linked name, working or idle, the summary, and when its first summary came in. Nobody in focus mode. The folder and branch are left off unless the owner shares folder names. `routing:update` now takes strings that look like keys or tokens out of every summary before it is kept (`lib/summaries.ts`); the summary quotes the start of the agent's last prompt, and a key can be pasted there.
+- The daemon (`intro.ts`) keeps a copy of that list. A session that starts (also resumed, cleared, compacted) gets the whole introduction: up to 12 agents, one line each, and how to ask them with `ask_operator`. A session the daemon did not see start gets it at its first prompt. After that, a prompt gets a line only for agents the crew heard of after the session was last told, once each. Prompts never wait for the network: they use the copy and read again behind it; the heartbeat reads it every minute while there are sessions. A session's start waits up to 1.5 seconds for a fresh copy.
+- The soopdoop skill tells agents what the note is and when to ask the agents it names.
+
+Checked:
+
+- `bun test` (the backend list with friends, private agents, agents without a summary, focus mode, folder names shared or not, linked names, keys taken out; the daemon's introduction, news once per agent, a session it did not see start, a failed or slow read, forgetting ended sessions; the hook printing the reply only for the two events), typecheck and lint.
+- On the dev deployment, with two test hackers who are friends (`intro-tom`, `intro-jimmy`) and a second daemon run as intro-jimmy: intro-tom reported an agent whose summary held a made-up `sk-ant-…` key. `hook.ts SessionStart` printed the introduction with the key shown as `[secret]` and no folder or branch. A prompt right after added nothing. intro-tom then started a second agent; a prompt after the copy aged named only the new agent, and the prompt after that added nothing.
+- A real Claude Code session (`claude -p` on Haiku 4.5, with only the two test hooks, pointed at that daemon) listed both of intro-tom's agents and what each works on, from the introduction alone.
+
+Not checked: a crew on production, and how Superset's own `SessionStart` hooks and soopdoop's appear together in an interactive session (the test session had only soopdoop's). A daemon restart (an update) introduces every running session once more at its next prompt, because the daemon keeps what it told each session in memory.
+
 ## Spike 1: our hooks beside Superset's (29 Sep 2026)
 
 The installer adds one `soopdoop hook <event>` command per Claude Code event and leaves every other hook alone; reinstalling does not duplicate; uninstalling removes only ours. This is unit-tested (`apps/daemon/src/hooks.test.ts`), including the absolute-path form the installer now writes by default (`<bun> <cli.ts> hook <event>`), so the hook works without anything on PATH.
