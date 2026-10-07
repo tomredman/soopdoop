@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.13.1 · 2026-10-07
+
+### Fixes
+- Settings → Account shows a box to type your Superset handle in, so Link is no longer stuck grey (hud)
+
+### Docs
+- v0.13.0 installed on a real Mac: a session's introduction to the crew, and the tokens saved
+
+### Other
+- made-up people in tests, comments and docs instead of a real crewmate's name
+
 ## v0.13.0 · 2026-10-07
 
 ### New
