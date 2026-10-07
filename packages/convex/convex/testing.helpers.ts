@@ -29,6 +29,9 @@ const modules = {
   "./crons.ts": function () {
     return import("./crons");
   },
+  "./feed.ts": function () {
+    return import("./feed");
+  },
   "./lib/auth.ts": function () {
     return import("./lib/auth");
   },

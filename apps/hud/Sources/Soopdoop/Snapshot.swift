@@ -156,6 +156,15 @@ enum Snapshot {
         ready.routing = [RoutingSummary(agentId: "a", summary: "soopdoop@claude/hud-operator · \"make onboarding seamless\" · files: apps/daemon/src/cli.ts")]
         ready.local = LocalInfo(machine: "mbp16", paired: true, version: "0.2.0", latest: "v0.2.1", newer: true,
                                 releaseUrl: nil, autoUpdate: true, canUpdate: true, updating: false, updateError: nil)
+        // The wire: Jimmy's agent answered mine, Mira started an agent, Dev caught Mira's flick, mine helped Dev.
+        ready.feed = [
+            FeedEvent(id: "f1", kind: "answer", handle: "jimmy", otherHandle: "tom", me: false, otherMe: true, tokensSaved: 38_400, at: now - 20_000),
+            FeedEvent(id: "f2", kind: "agent", handle: "mira", at: now - 4 * 60_000),
+            FeedEvent(id: "f3", kind: "catch", handle: "dev", otherHandle: "mira", xp: 5, at: now - 26 * 60_000),
+            FeedEvent(id: "f4", kind: "answer", handle: "tom", otherHandle: "dev", me: true, tokensSaved: 52_000, at: now - 2 * 3_600_000),
+            FeedEvent(id: "f5", kind: "rally", handle: "mira", otherHandle: "jimmy", rally: 5, at: now - 3 * 3_600_000),
+        ]
+        ready.saved = Saved(you: 1_240_000, yourAgents: 3_100_000, crew: 4_820_000)
         return [("signed-out", signedOut), ("handle", handle), ("ready", ready)]
     }
 }

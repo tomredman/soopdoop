@@ -74,6 +74,28 @@ describe("introducing crewmates' agents", function () {
     expect([later.handle, later.key, later.since]).toEqual(["tom", first.key, first.since]);
   });
 
+  test("an agent whose summary comes back after its owner's daemon restarted is not new", async function () {
+    const t = harness();
+    const tom = await hackerNamed(t, "tom");
+    const jimmy = await hackerNamed(t, "jimmy");
+    await befriend(tom, jimmy, "jimmy");
+    const jimmyToken = await jimmy.mutation(api.subsets.pairDaemon, { machineName: "jm" });
+    const tomToken = await machine(t, tom, "mbp", [agent("t1", true)]);
+    await t.mutation(api.routing.update, { token: tomToken, agentId: "t1", summary: CANNONBALLS });
+    const first = must((await t.query(api.routing.crew, { token: jimmyToken })).agents[0]);
+
+    // The daemon restarts: its first report has no agents, so the summary goes; then the agent is back with a new one.
+    await t.mutation(api.subsets.report, { token: tomToken, agents: [] });
+    expect((await t.query(api.routing.crew, { token: jimmyToken })).agents).toEqual([]);
+    await Bun.sleep(5);
+    await t.mutation(api.subsets.report, { token: tomToken, agents: [agent("t1", true)] });
+    await t.mutation(api.routing.update, { token: tomToken, agentId: "t1", summary: CANNONBALLS });
+    const back = must((await t.query(api.routing.crew, { token: jimmyToken })).agents[0]);
+    expect(back.since).toBe(first.since);
+    // And the wire said it started only once.
+    expect((await jimmy.query(api.feed.recent, {})).filter(function (e) { return e.kind === "agent"; })).toHaveLength(1);
+  });
+
   test("shows the folder and branch only when shared, a linked name, and nobody in focus mode", async function () {
     const t = harness();
     const tom = await hackerNamed(t, "tom");

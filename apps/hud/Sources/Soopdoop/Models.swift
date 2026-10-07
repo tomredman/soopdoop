@@ -179,6 +179,30 @@ struct Relay: Decodable, Identifiable {
     var inFlight: Bool { status == "routing" || status == "reading" }
 }
 
+// One event on the wire (feed.recent): an answer between agents, a crewmate's new agent, a caught flick, a superflick or
+// a rally. `me`: the viewer did it. `otherMe`: it was done to, or for, the viewer.
+struct FeedEvent: Decodable, Identifiable {
+    var id = ""
+    // answer, agent, catch, superflick, rally
+    var kind = ""
+    var handle = ""
+    // Nil for whoever asked a question between two other crewmates.
+    var otherHandle: String?
+    var me = false
+    var otherMe = false
+    var tokensSaved: Double?
+    var xp: Int?
+    var rally: Int?
+    var at: Double = 0
+}
+
+// Tokens the crew's answers saved, all time, as an estimate (feed.saved): mine, my agents' for crewmates, the crew's.
+struct Saved: Decodable {
+    var you: Double = 0
+    var yourAgents: Double = 0
+    var crew: Double = 0
+}
+
 struct LocalInfo: Decodable {
     var machine = ""
     var paired = false
@@ -213,6 +237,9 @@ struct AppState: Decodable {
     var flicks = Flicks()
     // The Operator chat, oldest first.
     var chat: [Relay] = []
+    // The wire, newest first, and the tokens saved. Older agents send neither.
+    var feed: [FeedEvent] = []
+    var saved: Saved?
 
     var myRow: BoardRow? { board.first { $0.me } }
 }
@@ -386,6 +413,24 @@ extension Relay {
     }
 }
 
+extension FeedEvent {
+    enum CodingKeys: String, CodingKey { case id = "_id", kind, handle, otherHandle, me, otherMe, tokensSaved, xp, rally, at }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = c.value(.id, ""); kind = c.value(.kind, ""); handle = c.value(.handle, ""); otherHandle = c.maybe(.otherHandle)
+        me = c.value(.me, false); otherMe = c.value(.otherMe, false); tokensSaved = c.maybe(.tokensSaved)
+        xp = c.maybe(.xp); rally = c.maybe(.rally); at = c.value(.at, 0)
+    }
+}
+
+extension Saved {
+    enum CodingKeys: String, CodingKey { case you, yourAgents, crew }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        you = c.value(.you, 0); yourAgents = c.value(.yourAgents, 0); crew = c.value(.crew, 0)
+    }
+}
+
 extension LocalInfo {
     enum CodingKeys: String, CodingKey {
         case machine, paired, version, latest, newer, releaseUrl, autoUpdate, canUpdate, updating, updateError, autoOpen
@@ -401,7 +446,7 @@ extension LocalInfo {
 
 extension AppState {
     enum CodingKeys: String, CodingKey {
-        case version, phase, message, me, board, crew, requests, incoming, sent, subset, routing, wire, local, inviteWaiting, flicks, chat
+        case version, phase, message, me, board, crew, requests, incoming, sent, subset, routing, wire, local, inviteWaiting, flicks, chat, feed, saved
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -409,6 +454,6 @@ extension AppState {
         me = c.maybe(.me); board = c.value(.board, []); crew = c.value(.crew, []); requests = c.value(.requests, [])
         incoming = c.value(.incoming, Incoming()); sent = c.value(.sent, []); subset = c.value(.subset, [])
         routing = c.value(.routing, []); wire = c.value(.wire, []); local = c.maybe(.local); inviteWaiting = c.value(.inviteWaiting, false)
-        flicks = c.value(.flicks, Flicks()); chat = c.value(.chat, [])
+        flicks = c.value(.flicks, Flicks()); chat = c.value(.chat, []); feed = c.value(.feed, []); saved = c.maybe(.saved)
     }
 }

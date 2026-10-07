@@ -5,6 +5,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { addToFeed, tokensSaved } from "./feed";
 import { acceptedFriendIds } from "./friends";
 import { requireDaemon, requireHacker } from "./lib/auth";
 import {
@@ -426,7 +427,12 @@ export const finish = internalMutation({
     const relay = await ctx.db.get("relays", args.relayId);
     if (relay === null || (relay.status !== "routing" && relay.status !== "reading")) return null;
     const { relayId, ...result } = args;
-    await ctx.db.patch("relays", relayId, { ...result, finishedAt: Date.now() });
+    const now = Date.now();
+    await ctx.db.patch("relays", relayId, { ...result, finishedAt: now });
+    // A crewmate's agent answered: the crew's wire hears about it, with what it saved the asker.
+    if (args.status === "answered" && args.byOperator !== true && relay.targetHackerId !== undefined) {
+      await addToFeed(ctx, { kind: "answer", hackerId: relay.targetHackerId, otherHackerId: relay.askerHackerId, tokensSaved: tokensSaved(args), at: now });
+    }
     return null;
   },
 });

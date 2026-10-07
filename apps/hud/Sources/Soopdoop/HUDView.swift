@@ -1,5 +1,5 @@
-// ABOUTME: The HUD's content: sign-in and handle screens, then you (rank, XP), the knock on screen, friend requests, flicks,
-// ABOUTME: the crew, the Operator (how many answers today), the board, and this Mac. Every action goes through the agent.
+// ABOUTME: The HUD's content: sign-in and handle screens, then you (rank, XP, tokens saved), the knock on screen, friend requests,
+// ABOUTME: flicks, the wire, the crew, the Operator (how many answers today), the board, and this Mac. Every action goes through the agent.
 import AppKit
 import SwiftUI
 
@@ -208,6 +208,7 @@ struct Main: View {
         ForEach(style.order) { section in
             if style.shows(section) {
                 switch section {
+                case .wire: WireSection(state: state)
                 case .crew: CrewSection(state: state)
                 case .operatorLine: OperatorSection(state: state)
                 case .board: BoardSection(state: state)
@@ -238,8 +239,54 @@ struct MeCard: View {
                         Text("\(next - row.xp) to next rank").font(Theme.mono(10)).foregroundStyle(Theme.dim)
                     }
                 }
+                if let saved = state.saved, saved.crew > 0 { SavedLine(saved: saved) }
             }
         }
+    }
+}
+
+// What soopdoop saved, as an estimate: for each answer from a crewmate's agent, the tokens it had already read, minus the
+// answer the asking agent read instead. The numbers count up when they grow. Not a board: nobody is compared.
+struct SavedLine: View {
+    let saved: Saved
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Image(systemName: "arrow.down.circle.fill").font(.system(size: 9)).foregroundStyle(Theme.green).padding(.trailing, 5)
+            if saved.you > 0 {
+                Text("saved you ~")
+                Text(Tokens.short(saved.you)).foregroundStyle(Theme.green).contentTransition(.numericText(value: saved.you))
+                Text(" tokens · crew ~")
+                Text(Tokens.short(saved.crew)).contentTransition(.numericText(value: saved.crew))
+            } else {
+                Text("your crew saved ~")
+                Text(Tokens.short(saved.crew)).foregroundStyle(Theme.green).contentTransition(.numericText(value: saved.crew))
+                Text(" tokens")
+            }
+            Spacer(minLength: 0)
+        }
+        .font(Theme.mono(10))
+        .foregroundStyle(Theme.muted)
+        .lineLimit(1)
+        .animation(.spring(duration: 0.8), value: saved.you + saved.crew)
+        .help(Tokens.explain(saved))
+    }
+}
+
+// Token counts in a few characters: 950, 38k, 1.2M, 14M.
+enum Tokens {
+    static func short(_ n: Double) -> String {
+        if n >= 999_500 {
+            let m = n / 1_000_000
+            return m >= 9.95 ? "\(Int(m.rounded()))M" : String(format: "%.1fM", m).replacingOccurrences(of: ".0M", with: "M")
+        }
+        if n >= 1_000 { return "\(Int((n / 1_000).rounded()))k" }
+        return "\(Int(n.rounded()))"
+    }
+
+    static func explain(_ saved: Saved) -> String {
+        "An estimate: for each answer from a crewmate's agent, the tokens it had already read, minus the answer your agent read instead. "
+            + "Your agents' answers saved crewmates ~\(short(saved.yourAgents)) tokens."
     }
 }
 
@@ -753,6 +800,110 @@ enum OperatorLines {
         guard let t = r.tokensRead, t > 0 else { return nil }
         let n = t >= 1000 ? "\(Int((t / 1000).rounded()))k" : "\(Int(t))"
         return "\(n) tokens read ephemerally"
+    }
+}
+
+// The wire: what happened in the crew lately, newest first, a few lines. Quiet: no sound and no counters; a new line slides
+// in and glows for a moment.
+struct WireSection: View {
+    let state: AppState
+    static let shown = 4
+
+    var body: some View {
+        SectionHeader(title: "Wire")
+        // Ticks for the "2m ago" times; a new event redraws it at once.
+        TimelineView(.periodic(from: .now, by: 20)) { context in
+            let now = context.date.timeIntervalSince1970 * 1000
+            let events = Array(state.feed.filter { now - $0.at < 24 * 60 * 60 * 1000 }.prefix(Self.shown))
+            VStack(alignment: .leading, spacing: 3) {
+                if events.isEmpty {
+                    Text("Quiet so far. Answers between agents, new agents and flicks in your crew show up here.")
+                        .font(Theme.mono(10)).foregroundStyle(Theme.dim).fixedSize(horizontal: false, vertical: true)
+                }
+                ForEach(events) { event in
+                    WireRow(event: event, now: now)
+                        .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
+                }
+            }
+            .animation(.spring(duration: 0.45), value: events.map(\.id))
+        }
+    }
+}
+
+struct WireRow: View {
+    let event: FeedEvent
+    let now: Double
+    @State private var glow = false
+
+    var body: some View {
+        let line = WireLines.line(event)
+        HStack(alignment: .top, spacing: 7) {
+            Image(systemName: line.icon).font(.system(size: 9)).foregroundStyle(line.color).frame(width: 12).padding(.top, 2)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(line.text).font(Theme.mono(10.5)).foregroundStyle(Theme.text).lineLimit(1)
+                if let detail = line.detail { Text(detail).font(Theme.mono(9.5)).foregroundStyle(Theme.dim).lineLimit(1) }
+            }
+            Spacer(minLength: 4)
+            Text(WireLines.ago(event.at, now: now)).font(Theme.mono(9.5)).foregroundStyle(Theme.dim).padding(.top, 1)
+        }
+        .padding(.vertical, 2)
+        .padding(.horizontal, 4)
+        .background(RoundedRectangle(cornerRadius: 5).fill(line.color.opacity(glow ? 0.16 : 0)))
+        // Only an event that just happened glows, not the ones already there when the HUD opened.
+        .task(id: event.id) {
+            guard Date().timeIntervalSince1970 * 1000 - event.at < 15_000 else { return }
+            glow = true
+            try? await Task.sleep(for: .milliseconds(600))
+            withAnimation(.easeOut(duration: 2.4)) { glow = false }
+        }
+    }
+}
+
+// One line (and a small one under it) for each kind of event on the wire.
+enum WireLines {
+    struct Line {
+        let icon: String
+        let color: Color
+        let text: String
+        var detail: String?
+    }
+
+    static func line(_ e: FeedEvent) -> Line {
+        let who = "@\(e.handle)"
+        let other = e.otherHandle.map { "@\($0)" }
+        let saved = e.tokensSaved.flatMap { $0 > 0 ? "~\(Tokens.short($0)) tokens saved" : nil }
+        switch e.kind {
+        case "answer":
+            if e.me { return Line(icon: "bubble.left.and.bubble.right.fill", color: Theme.green, text: "Your agent helped \(other ?? "a crewmate")", detail: ["+10 XP", saved].compactMap { $0 }.joined(separator: " · ")) }
+            if e.otherMe { return Line(icon: "bubble.left.and.bubble.right.fill", color: Theme.green, text: "\(who)'s agent answered yours", detail: saved) }
+            return Line(icon: "bubble.left.and.bubble.right.fill", color: Theme.green, text: "\(who)'s agent helped \(other ?? "a crewmate")", detail: saved)
+        case "agent":
+            return Line(icon: "plus.circle.fill", color: Theme.blue, text: "\(who) started an agent", detail: "introduced to your agents")
+        case "catch":
+            let xp = e.xp ?? 0
+            if e.me { return Line(icon: "hand.raised.fill", color: Theme.amber, text: "You caught \(other ?? "a")'s flick", detail: xp > 0 ? "+\(xp) XP" : nil) }
+            if e.otherMe { return Line(icon: "hand.raised.fill", color: Theme.amber, text: "\(who) caught your flick", detail: xp > 0 ? "−\(xp) XP" : nil) }
+            return Line(icon: "hand.raised.fill", color: Theme.amber, text: "\(who) caught \(other ?? "a")'s flick", detail: xp > 0 ? "\(xp) XP" : nil)
+        case "superflick":
+            let xp = e.xp ?? 0
+            if e.me { return Line(icon: "bolt.fill", color: Theme.purple, text: "You superflicked \(other ?? "a crewmate")", detail: xp > 0 ? "+\(xp) XP" : nil) }
+            if e.otherMe { return Line(icon: "bolt.fill", color: Theme.purple, text: "\(who) superflicked you", detail: xp > 0 ? "−\(xp) XP" : nil) }
+            return Line(icon: "bolt.fill", color: Theme.purple, text: "\(who) superflicked \(other ?? "a crewmate")", detail: xp > 0 ? "\(xp) XP" : nil)
+        case "rally":
+            let rally = "\(e.rally ?? 3)-flick rally"
+            if e.me || e.otherMe { return Line(icon: "arrow.left.arrow.right", color: Theme.amber, text: "You and \(e.me ? other ?? "a crewmate" : who): \(rally)") }
+            return Line(icon: "arrow.left.arrow.right", color: Theme.amber, text: "\(who) and \(other ?? "a crewmate"): \(rally)")
+        default:
+            return Line(icon: "circle.fill", color: Theme.dim, text: "Something happened in your crew")
+        }
+    }
+
+    // "now", "4m", "2h".
+    static func ago(_ at: Double, now: Double) -> String {
+        let s = max(0, (now - at) / 1000)
+        if s < 60 { return "now" }
+        if s < 3600 { return "\(Int(s / 60))m" }
+        return "\(Int(s / 3600))h"
     }
 }
 

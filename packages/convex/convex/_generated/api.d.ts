@@ -9,6 +9,7 @@
  */
 
 import type * as crons from "../crons.js";
+import type * as feed from "../feed.js";
 import type * as flicks from "../flicks.js";
 import type * as friends from "../friends.js";
 import type * as hackers from "../hackers.js";
@@ -33,6 +34,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   crons: typeof crons;
+  feed: typeof feed;
   flicks: typeof flicks;
   friends: typeof friends;
   hackers: typeof hackers;

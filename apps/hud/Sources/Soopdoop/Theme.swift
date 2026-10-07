@@ -64,13 +64,15 @@ enum NotifyMode: String, CaseIterable, Identifiable {
     }
 }
 
-// The HUD's sections under the alerts (knocks, friend requests, flicks), which the hacker can hide and put in order.
+// The HUD's sections under the alerts (knocks, friend requests, flicks), which the hacker can hide and put in order. The
+// order here is the default one.
 enum HUDSection: String, CaseIterable, Identifiable {
-    case crew, operatorLine = "operator", board, machine
+    case wire, crew, operatorLine = "operator", board, machine
 
     var id: String { rawValue }
     var label: String {
         switch self {
+        case .wire: return "Wire"
         case .crew: return "Crew"
         case .operatorLine: return "Operator"
         case .board: return "Board"
@@ -85,12 +87,13 @@ final class HUDStyle: ObservableObject {
     @AppStorage("hud.material") var materialRaw = HUDMaterial.glass.rawValue
     @AppStorage("hud.opacity") var opacity = 0.85
     @AppStorage("hud.compact") var compact = false
+    @AppStorage("hud.showWire") var showWire = true
     @AppStorage("hud.showCrew") var showCrew = true
     @AppStorage("hud.showOperator") var showOperator = true
     @AppStorage("hud.showBoard") var showBoard = true
     // Off until the hacker wants it: it is about this Mac, not the crew.
     @AppStorage("hud.showMachine") var showMachine = false
-    // The section order, "crew,operator,board,machine"; empty until the hacker moves one.
+    // The section order, "wire,crew,operator,board,machine"; empty until the hacker moves one.
     @AppStorage("hud.order") var orderRaw = ""
     // Real names (from linked Superset profiles) next to handles. Off: just the @handle.
     @AppStorage("hud.showNames") var showNames = false
@@ -112,10 +115,14 @@ final class HUDStyle: ObservableObject {
         set { notifyRaw = newValue.rawValue }
     }
 
-    // The chosen order. Sections it does not name (all of them at first, or one added later) follow in the default order.
+    // The chosen order. A section it does not name (all of them at first, or one added in a later version) goes where it
+    // sits by default, so a new section is not buried at the bottom of an order chosen before it existed.
     var order: [HUDSection] {
-        let chosen = orderRaw.split(separator: ",").compactMap { HUDSection(rawValue: String($0)) }
-        return chosen + HUDSection.allCases.filter { !chosen.contains($0) }
+        var list = orderRaw.split(separator: ",").compactMap { HUDSection(rawValue: String($0)) }
+        for (index, section) in HUDSection.allCases.enumerated() where !list.contains(section) {
+            list.insert(section, at: min(index, list.count))
+        }
+        return list
     }
 
     func move(_ section: HUDSection, by offset: Int) {
@@ -127,6 +134,7 @@ final class HUDStyle: ObservableObject {
 
     func shows(_ section: HUDSection) -> Bool {
         switch section {
+        case .wire: return showWire
         case .crew: return showCrew
         case .operatorLine: return showOperator
         case .board: return showBoard
@@ -136,6 +144,7 @@ final class HUDStyle: ObservableObject {
 
     func setShows(_ section: HUDSection, _ on: Bool) {
         switch section {
+        case .wire: showWire = on
         case .crew: showCrew = on
         case .operatorLine: showOperator = on
         case .board: showBoard = on

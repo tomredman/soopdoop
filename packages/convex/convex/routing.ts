@@ -2,6 +2,7 @@
 // ABOUTME: with. Only for agents the machine reports as open. Owners read their own; crewmates' agents are introduced to them.
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { addToFeed, announcedAgents } from "./feed";
 import { acceptedFriendIds } from "./friends";
 import { requireDaemon, requireHacker } from "./lib/auth";
 import { redactSecrets, summaryForCrew } from "./lib/summaries";
@@ -42,8 +43,15 @@ export const update = mutation({
         return q.eq("hackerId", hacker._id).eq("agentId", args.agentId);
       })
       .unique();
-    if (existing === null) await ctx.db.insert("routingSummaries", row);
-    else await ctx.db.replace("routingSummaries", existing._id, row);
+    if (existing === null) {
+      await ctx.db.insert("routingSummaries", row);
+      // Its first summary: the crew's wire hears that this hacker started an agent, unless it already did this week.
+      if (!(await announcedAgents(ctx, hacker._id)).has(args.agentId)) {
+        await addToFeed(ctx, { kind: "agent", hackerId: hacker._id, agentId: args.agentId, at: row.updatedAt });
+      }
+    } else {
+      await ctx.db.replace("routingSummaries", existing._id, row);
+    }
     return null;
   },
 });
@@ -68,8 +76,8 @@ export const mine = query({
 
 // What a hacker's agents are told about the crew, through their machine's token: each crewmate's open agents that are
 // running now and have a summary, most recently active first. Nobody in focus mode. The folder and branch only when the
-// owner shares folder names. `key` stays the same while the agent runs; `since` is when its first summary came in, so a
-// session can be told about agents that started after it was introduced. `now` is the server's clock, to compare with it.
+// owner shares folder names. `key` stays the same while its summary is kept; `since` is when the agent was first on the
+// wire, so a session can be told about agents that started after it was introduced. `now` is the server's clock.
 export const crew = query({
   args: { token: v.string() },
   returns: v.object({
@@ -97,6 +105,7 @@ export const crew = query({
         })
         .collect();
       const name = (await supersetCard(ctx, id))?.name;
+      const announced = await announcedAgents(ctx, id);
       for (const subset of subsets) {
         if (now - subset.updatedAt >= LIVE_MS) continue;
         for (const agent of subset.agents) {
@@ -110,7 +119,8 @@ export const crew = query({
           if (row === null) continue;
           const summary = summaryForCrew(row.summary, friend.shareWorkspaceNames);
           if (summary === "") continue;
-          found.push({ key: row._id, handle: friend.handle, name, status: agent.status, summary, since: row._creationTime, active: row.updatedAt });
+          const since = announced.get(agent.agentId) ?? row._creationTime;
+          found.push({ key: row._id, handle: friend.handle, name, status: agent.status, summary, since, active: row.updatedAt });
         }
       }
     }

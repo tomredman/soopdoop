@@ -1,5 +1,5 @@
-// ABOUTME: The soopdoop data model: hackers, friendships, invites, subsets (presence), knocks, flicks, supersetProfiles, and
-// ABOUTME: the Operator's routingSummaries and relays. Later phases add crews, treeNodes, eyes, jackIns and companyTokens.
+// ABOUTME: The soopdoop data model: hackers, friendships, invites, subsets (presence), knocks, flicks, supersetProfiles, the
+// ABOUTME: Operator's routingSummaries and relays, and the wire (feed). Later phases add crews, treeNodes, eyes, jackIns and companyTokens.
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
@@ -163,6 +163,26 @@ export default defineSchema({
   })
     .index("by_asker", ["askerHackerId"])
     .index("by_target_status", ["targetHackerId", "status"]),
+
+  // The wire: what happened in a crew lately, for the HUD's feed. An agent answered a crewmate, a crewmate started an
+  // agent, a flick was caught, a superflick landed, a rally grew. Written when it happens (feed.ts); kept 7 days.
+  feed: defineTable({
+    kind: v.union(v.literal("answer"), v.literal("agent"), v.literal("catch"), v.literal("superflick"), v.literal("rally")),
+    // Who did it: whose agent answered, who started an agent, who caught the flick, who superflicked, who flicked back.
+    hackerId: v.id("hackers"),
+    // The other person: who was helped, whose flick was caught, who was superflicked, the rally partner.
+    otherHackerId: v.optional(v.id("hackers")),
+    // answer: what the asker's agent did not have to read (the tokens the answering copy read, minus the answer's).
+    tokensSaved: v.optional(v.number()),
+    // catch and superflick: the XP that moved. rally: how long it is.
+    xp: v.optional(v.number()),
+    rally: v.optional(v.number()),
+    // agent: which session it is, so an agent whose summary comes back (its owner's daemon restarted) is not news again.
+    agentId: v.optional(v.string()),
+    at: v.number(),
+  })
+    .index("by_hacker_at", ["hackerId", "at"])
+    .index("by_at", ["at"]),
 
   knocks: defineTable({
     fromHackerId: v.id("hackers"),

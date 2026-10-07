@@ -5,6 +5,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
+import { addToFeed, rallyIsNews } from "./feed";
 import { areFriends } from "./friends";
 import { requireHacker } from "./lib/auth";
 import { xpOf } from "./play";
@@ -95,6 +96,7 @@ export const send = mutation({
     });
     await ctx.scheduler.runAfter(CATCH_MS, internal.flicks.closeCatch, { flickId: id });
     await ctx.scheduler.runAfter(FLICK_TTL_MS, internal.flicks.expire, { flickId: id });
+    if (rallyIsNews(rally)) await addToFeed(ctx, { kind: "rally", hackerId: me._id, otherHackerId: to._id, rally, at: now });
     return { rally };
   },
 });
@@ -123,6 +125,7 @@ export const catchFlick = mutation({
     if (f.outcome !== "open" || f.safe === true || now > f.createdAt + CATCH_MS) throw new ConvexError("Too slow. You can still flick back.");
     const xp = Math.min(CATCH_XP, await xpOf(ctx, f.fromHackerId));
     await ctx.db.patch("flicks", f._id, { outcome: "caught", caughtXp: xp, caughtAt: now });
+    await addToFeed(ctx, { kind: "catch", hackerId: me._id, otherHackerId: f.fromHackerId, xp, at: now });
     const from = await ctx.db.get("hackers", f.fromHackerId);
     return { fromHandle: from === null ? "" : from.handle, xp };
   },
@@ -150,6 +153,7 @@ export const superflick = mutation({
       superXp: xp,
     });
     await ctx.scheduler.runAfter(FLICK_TTL_MS, internal.flicks.expire, { flickId: id });
+    await addToFeed(ctx, { kind: "superflick", hackerId: me._id, otherHackerId: to._id, xp, at: now });
     return { xp, ready: ready - 1 };
   },
 });

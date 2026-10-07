@@ -41,6 +41,10 @@ export interface AppState {
   flicks: FunctionReturnType<typeof api.flicks.mine>;
   // The Operator chat: my messages and its replies, oldest first.
   chat: Relay[];
+  // The wire: the crew's last day (answers between agents, new agents, caught flicks, superflicks, rallies), newest first.
+  feed: FunctionReturnType<typeof api.feed.recent>;
+  // Tokens the crew's answers saved, all time, as an estimate: mine, my agents' for crewmates, the crew's. Null until read.
+  saved: FunctionReturnType<typeof api.feed.saved> | null;
 }
 
 export interface Agent {
@@ -62,6 +66,8 @@ const EMPTY = {
   wire: [],
   flicks: { incoming: [], waitingOn: [], caught: [], superflicks: { ready: 0, clean: 0, every: 5 } },
   chat: [],
+  feed: [],
+  saved: null,
 };
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -165,6 +171,8 @@ export function createAgent(server: LocalServer, open: (url: string) => Promise<
       c.onUpdate(api.operator.log, {}, function (wire) { set({ wire }); }, logError),
       c.onUpdate(api.flicks.mine, {}, function (flicks) { set({ flicks }); }, logError),
       c.onUpdate(api.operator.chatLog, {}, function (chat) { set({ chat }); }, logError),
+      c.onUpdate(api.feed.recent, {}, function (feed) { set({ feed }); }, logError),
+      c.onUpdate(api.feed.saved, {}, function (saved) { set({ saved }); }, logError),
     );
   }
 
