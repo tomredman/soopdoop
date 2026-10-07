@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.13.0 · 2026-10-07
+
+### New
+- the wire: a quiet feed of your crew's last day (agents answering each other, new agents, flicks), and how many tokens soopdoop saved you and your crew (hud)
+- a new Claude Code session is introduced to what your crewmates' running agents are working on, and hears about agents that start later (operator)
+
+### Docs
+- the wire and tokens saved, and what was checked
+- introductions to the crew's agents, and what was checked
+- v0.12.0 installed on a real Mac, with the watcher running and auto-open switched through the live agent
+
 ## v0.12.0 · 2026-10-07
 
 ### New
