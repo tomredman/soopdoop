@@ -240,7 +240,9 @@ Checked:
 - On the dev deployment, with two test hackers who are friends (`intro-tom`, `intro-jimmy`) and a second daemon run as intro-jimmy: intro-tom reported an agent whose summary held a made-up `sk-ant-…` key. `hook.ts SessionStart` printed the introduction with the key shown as `[secret]` and no folder or branch. A prompt right after added nothing. intro-tom then started a second agent; a prompt after the copy aged named only the new agent, and the prompt after that added nothing.
 - A real Claude Code session (`claude -p` on Haiku 4.5, with only the two test hooks, pointed at that daemon) listed both of intro-tom's agents and what each works on, from the introduction alone.
 
-Not checked: a crew on production, and how Superset's own `SessionStart` hooks and soopdoop's appear together in an interactive session (the test session had only soopdoop's). A daemon restart (an update) introduces every running session once more at its next prompt, because the daemon keeps what it told each session in memory.
+Released as v0.13.0 (7 Oct 2026) and installed on Mr. Tom's Mac with `soopdoop update`. A session start sent through the installed hook printed the introduction with his crew's six running agents (two crewmates); that check session was ended at once and left nothing in his presence.
+
+Not checked: how Superset's own `SessionStart` hooks and soopdoop's appear together in an interactive session (the test sessions had only soopdoop's). A daemon restart (an update) introduces every running session once more at its next prompt, because the daemon keeps what it told each session in memory.
 
 ## The wire, and tokens saved (7 Oct 2026)
 
@@ -259,7 +261,9 @@ Checked:
 - On the dev deployment with intro-tom and intro-jimmy: intro-tom's agent started (a new-agent event), intro-jimmy's daemon asked it a question, intro-tom's daemon answered having read 41,000 tokens, and intro-jimmy caught a flick from intro-tom. `feed:recent` gave intro-jimmy the catch, the answer (40,969 tokens saved) and the new agent; intro-tom got the catch and the answer, not his own agent. `feed:saved` gave intro-jimmy 40,969 for himself and the crew, and intro-tom 40,969 for his agents and the crew. That JSON, run through the app's own `Models.swift`, decoded as expected, and a state from an older agent (no `feed`, no `saved`) decoded to an empty wire.
 - `Soopdoop --snapshot` drew the HUD with five sample events (four shown) and the saved line, on the dark and the light backdrop, and Settings with Wire first. With `hud.order` set to `crew,operator,board,machine` (the order on Mr. Tom's Mac), Wire still came first. All were looked at. `--check-window` passed.
 
-Not checked: the HUD live against a real crew (the app talks only to this Mac's agent, which runs Mr. Tom's own install), and the glow on a new line, which only shows in a running app.
+After v0.13.0 was installed on Mr. Tom's Mac, the live agent's state had the wire (empty: the table is new, and events start now) and tokens saved of about 1M for him and his crew, counted from answers given before the wire existed.
+
+Not checked: the Wire with real events in the running app, and the glow on a new line, which only shows there.
 
 ## Spike 1: our hooks beside Superset's (29 Sep 2026)
 
