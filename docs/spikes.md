@@ -199,6 +199,28 @@ Checked:
 
 Not checked: a Mac on macOS 14 or 15 (there is none here), and the icon in the Dock and in notifications, which waits for a release.
 
+## Opening with Superset (7 Oct 2026)
+
+Why: Mr. Tom asked for a daemon that watches for Superset to open, so that soopdoop opens when Superset does. It is optional and on by default. Before this, the app started at login (`com.soopdoop.hud`, `RunAtLoad`) and came back after a crash, but after Quit it stayed closed until the next login.
+
+What changed:
+
+- A second Swift program in `apps/hud`: the watcher (`Sources/SoopdoopWatcher`). It listens for `NSWorkspace.didLaunchApplicationNotification`. When the app that launched is `com.superset.desktop`, it reads `~/.soopdoop/settings.json`. If `autoOpen` is not `false` and no `com.soopdoop.app` is running, it runs `launchctl kickstart gui/<uid>/com.soopdoop.hud`. Starting the app through its own LaunchAgent keeps launchd's restart after a crash and the `hud.log` output. When that job is not loaded (stopped, or turned off in Login Items), the watcher opens `~/Applications/soopdoop.app` with `NSWorkspace` instead, without taking the focus from Superset. Only a Superset launch makes the watcher open soopdoop; the watcher starting up does not.
+- Setup puts the watcher in the app bundle at `Contents/Helpers/SoopdoopWatcher` and signs it before the bundle. A program in `Contents/MacOS` takes the bundle's identity; one in `Contents/Helpers` does not. Checked with a test bundle: there, `Bundle.main.bundleIdentifier` is nil, and neither `NSRunningApplication` nor `lsappinfo` lists the helper as the app. So the watcher is never mistaken for a running soopdoop.
+- A fifth LaunchAgent, `com.soopdoop.watcher` (`RunAtLoad`, `KeepAlive`). Like `com.soopdoop.hud`, setup and `soopdoop start` set it up only when the app is built. It logs one line per Superset launch to `~/.soopdoop/logs/watcher.log`.
+- The setting is `autoOpen` in `settings.json`, on unless it is `false`: `soopdoop auto-open on|off`, or Settings → HUD → Open soopdoop when Superset opens (the app's `setAutoOpen` action). `soopdoop status` has a line for the watcher. The watcher reads the file each time Superset opens, so a change needs no restart. Writing one setting now keeps the others; before, turning auto-update on or off rewrote the file with that one key.
+
+Checked:
+
+- `bun test` (the watcher's LaunchAgent, the settings file, `autoOpen` in the app's state, the `setAutoOpen` action), typecheck and lint. `swift build`, debug and release, with no warnings. `Soopdoop --snapshot` drew Settings → HUD with the new switch under "Show the HUD", and it was looked at. `--check-window` passed.
+- A bundle built by `buildApp` (in a scratch home) has the watcher in `Contents/Helpers` and passes `codesign --verify --deep --strict`.
+- A plain command-line program gets `didLaunchApplicationNotification` with only a run loop (no `NSApplication`).
+- End to end on Mr. Tom's Mac, against the installed app (v0.11.0), with Calculator launched in Superset's place (`SOOPDOOP_SUPERSET_ID`). While soopdoop ran, the watcher logged that it was already running and started nothing. Then soopdoop was quit the way the menu does (exit code 0, and launchd left it closed for 13 seconds); when Calculator opened, the watcher kickstarted `com.soopdoop.hud` and soopdoop ran again under launchd. With `autoOpen: false`, it stayed closed. With `com.soopdoop.hud` booted out, the watcher opened the app through `NSWorkspace`. The watcher run by launchd, from a plist that `plist()` wrote (under a test label), also brought soopdoop back after a quit. It uses 13 MB of memory while it waits. Afterwards the installed app was running under its own LaunchAgent again.
+
+Not checked: Superset itself opening (relaunching Superset would have closed the session doing this work; Calculator stood in, and `com.superset.desktop` is the bundle id `lsappinfo` shows for Superset); a full `soopdoop setup` or update on a real install (it would have replaced Mr. Tom's running services with this checkout); the Settings switch clicked in a running app (the installed agent is v0.11.0, which does not know `setAutoOpen`; the action is tested in `app-backend.test.ts`); and turning the jobs off in Login Items.
+
+Known gap: going back to v0.11.0 or older (`soopdoop update --to`) leaves `com.soopdoop.watcher` loaded, because the older setup does not know it. The older app is built without a watcher, so the program the job points at is gone, and launchd cannot start it again (checked with a test job whose program was missing: one run, exit code 78, then it waits). Nothing breaks, but the job stays until it is removed: `launchctl bootout gui/$(id -u)/com.soopdoop.watcher`, then delete `~/Library/LaunchAgents/com.soopdoop.watcher.plist`.
+
 ## Spike 1: our hooks beside Superset's (29 Sep 2026)
 
 The installer adds one `soopdoop hook <event>` command per Claude Code event and leaves every other hook alone; reinstalling does not duplicate; uninstalling removes only ours. This is unit-tested (`apps/daemon/src/hooks.test.ts`), including the absolute-path form the installer now writes by default (`<bun> <cli.ts> hook <event>`), so the hook works without anything on PATH.
