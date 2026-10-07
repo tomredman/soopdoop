@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.12.0 · 2026-10-07
+
+### New
+- soopdoop opens when Superset opens, even after you quit it (on by default; turn it off in Settings or with soopdoop auto-open off) (hud)
+
+### Docs
+- soopdoop opens with Superset (the watcher), and what was checked
+
 ## v0.11.0 · 2026-10-05
 
 ### New
