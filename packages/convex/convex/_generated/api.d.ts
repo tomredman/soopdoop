@@ -17,6 +17,7 @@ import type * as knocks from "../knocks.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_claude from "../lib/claude.js";
 import type * as lib_friendships from "../lib/friendships.js";
+import type * as lib_summaries from "../lib/summaries.js";
 import type * as lib_supersetProfile from "../lib/supersetProfile.js";
 import type * as operator from "../operator.js";
 import type * as play from "../play.js";
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/claude": typeof lib_claude;
   "lib/friendships": typeof lib_friendships;
+  "lib/summaries": typeof lib_summaries;
   "lib/supersetProfile": typeof lib_supersetProfile;
   operator: typeof operator;
   play: typeof play;

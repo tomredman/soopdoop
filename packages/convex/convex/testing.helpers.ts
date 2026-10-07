@@ -38,6 +38,9 @@ const modules = {
   "./lib/friendships.ts": function () {
     return import("./lib/friendships");
   },
+  "./lib/summaries.ts": function () {
+    return import("./lib/summaries");
+  },
   "./lib/supersetProfile.ts": function () {
     return import("./lib/supersetProfile");
   },

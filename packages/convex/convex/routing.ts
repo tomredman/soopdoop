@@ -1,10 +1,17 @@
 // ABOUTME: Routing summaries: one line per open agent, sent by its owner's daemon after each turn, that the Operator routes
-// ABOUTME: with. Only for agents the machine reports as open. Owners can read their own.
+// ABOUTME: with. Only for agents the machine reports as open. Owners read their own; crewmates' agents are introduced to them.
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { acceptedFriendIds } from "./friends";
 import { requireDaemon, requireHacker } from "./lib/auth";
+import { redactSecrets, summaryForCrew } from "./lib/summaries";
+import { supersetCard } from "./superset";
 
 export const MAX_SUMMARY = 600;
+// A machine that reported in the last 90 seconds is live, as for presence and the Operator.
+const LIVE_MS = 90_000;
+// The most agents one introduction lists, most recently active first.
+const MAX_INTRODUCED = 20;
 
 export const update = mutation({
   args: { token: v.string(), agentId: v.string(), summary: v.string() },
@@ -25,7 +32,8 @@ export const update = mutation({
       hackerId: hacker._id,
       machineName: daemon.machineName,
       agentId: args.agentId,
-      summary: args.summary.trim().slice(0, MAX_SUMMARY),
+      // Crewmates' agents read these, so nothing that looks like a key is kept.
+      summary: redactSecrets(args.summary.trim()).slice(0, MAX_SUMMARY),
       updatedAt: Date.now(),
     };
     const existing = await ctx.db
@@ -55,5 +63,63 @@ export const mine = query({
     return rows.map(function (r) {
       return { machineName: r.machineName, agentId: r.agentId, summary: r.summary, updatedAt: r.updatedAt };
     });
+  },
+});
+
+// What a hacker's agents are told about the crew, through their machine's token: each crewmate's open agents that are
+// running now and have a summary, most recently active first. Nobody in focus mode. The folder and branch only when the
+// owner shares folder names. `key` stays the same while the agent runs; `since` is when its first summary came in, so a
+// session can be told about agents that started after it was introduced. `now` is the server's clock, to compare with it.
+export const crew = query({
+  args: { token: v.string() },
+  returns: v.object({
+    now: v.number(),
+    agents: v.array(v.object({
+      key: v.string(),
+      handle: v.string(),
+      name: v.optional(v.string()),
+      status: v.string(),
+      summary: v.string(),
+      since: v.number(),
+    })),
+  }),
+  handler: async function (ctx, args) {
+    const { hacker } = await requireDaemon(ctx, args.token);
+    const now = Date.now();
+    const found = [];
+    for (const id of await acceptedFriendIds(ctx, hacker._id)) {
+      const friend = await ctx.db.get("hackers", id);
+      if (friend === null || (friend.focusUntil !== undefined && friend.focusUntil > now)) continue;
+      const subsets = await ctx.db
+        .query("subsets")
+        .withIndex("by_hacker_machine", function (q) {
+          return q.eq("hackerId", id);
+        })
+        .collect();
+      const name = (await supersetCard(ctx, id))?.name;
+      for (const subset of subsets) {
+        if (now - subset.updatedAt >= LIVE_MS) continue;
+        for (const agent of subset.agents) {
+          if (!agent.open) continue;
+          const row = await ctx.db
+            .query("routingSummaries")
+            .withIndex("by_hacker_agent", function (q) {
+              return q.eq("hackerId", id).eq("agentId", agent.agentId);
+            })
+            .unique();
+          if (row === null) continue;
+          const summary = summaryForCrew(row.summary, friend.shareWorkspaceNames);
+          if (summary === "") continue;
+          found.push({ key: row._id, handle: friend.handle, name, status: agent.status, summary, since: row._creationTime, active: row.updatedAt });
+        }
+      }
+    }
+    found.sort(function (a, b) { return b.active - a.active; });
+    return {
+      now,
+      agents: found.slice(0, MAX_INTRODUCED).map(function (a) {
+        return { key: a.key, handle: a.handle, name: a.name, status: a.status, summary: a.summary, since: a.since };
+      }),
+    };
   },
 });

@@ -10,6 +10,7 @@ import { appBinaryPath, appBundlePath, buildApp, removeApp, watcherBinaryPath } 
 import { configPath, configStamp, invitePath, readConfig, readSettings, soopdoopHome, writeConfig, writeSettings, type Config } from "./config";
 import { readFund, readSpends, spentToday, writeFund } from "./fund";
 import { forwardHook } from "./hook";
+import { introducer, type Introducer } from "./intro";
 import { claudeSettingsPath, findClaude, guardedHook, installClaudeHooks, prefixedHook, uninstallClaudeHooks } from "./hooks";
 import { answerReads, summaryFor, updateRouting } from "./operator";
 import {
@@ -36,8 +37,10 @@ const HOOK_FILE = path.join(import.meta.dir, "hook.ts");
 const MCP_FILE = path.join(import.meta.dir, "mcp.ts");
 // The skill that tells Claude Code sessions when to use that tool. Setup copies it into ~/.claude/skills.
 const SKILL_FILE = path.join(ROOT, "packages", "plugin", "skills", "soopdoop", "SKILL.md");
-// The daemon does not import the backend's generated API; it names the one public mutation it calls.
+// The daemon does not import the backend's generated API; it names the public functions it calls.
 const reportSubset = makeFunctionReference<"mutation">("subsets:report");
+// The crew's running agents, to introduce them to this machine's sessions.
+const crewAgents = makeFunctionReference<"query">("routing:crew");
 
 function tilde(p: string): string {
   const home = homedir();
@@ -59,8 +62,8 @@ async function serve(): Promise<void> {
   const subset: Subset = new Map();
   let dirty = true;
   let reporting = false;
-  // http reports presence; live follows the Operator's read requests over a WebSocket.
-  let paired: { config: Config; client: ConvexHttpClient; live: ConvexClient; stopReads: () => void } | null = null;
+  // http reports presence; live follows the Operator's read requests over a WebSocket; intro tells sessions about the crew.
+  let paired: { config: Config; client: ConvexHttpClient; live: ConvexClient; stopReads: () => void; intro: Introducer } | null = null;
   let stamp = -1;
   // Open agents that finished a turn since the last report: their routing summaries go out after it.
   const summariesDue = new Set<string>();
@@ -94,7 +97,9 @@ async function serve(): Promise<void> {
       unpair();
       if (config !== null) {
         const live = new ConvexClient(config.convexUrl);
-        paired = { config, client: new ConvexHttpClient(config.convexUrl), live, stopReads: answerReads(live, config.token, config.convexUrl, subset) };
+        const client = new ConvexHttpClient(config.convexUrl);
+        const intro = introducer(function () { return client.query(crewAgents, { token: config.token }); });
+        paired = { config, client, live, stopReads: answerReads(live, config.token, config.convexUrl, subset), intro };
       }
       if (paired === null) console.log(`Not paired yet. Sign in on the rail (${RAIL_URL}) and it pairs this machine.`);
       else {
@@ -151,7 +156,9 @@ async function serve(): Promise<void> {
         if (ev === null) return new Response("bad hook payload", { status: 400 });
         if (apply(subset, ev, Date.now(), paired?.config.privateDirs ?? [], repoOf)) dirty = true;
         if (ev.hook_event_name === "Stop" && subset.get(ev.session_id)?.open === true) summariesDue.add(ev.session_id);
-        return new Response("ok");
+        // A session that starts hears what the crew's agents work on; at a prompt, about agents that started since.
+        const context = paired === null ? null : await paired.intro.contextFor(ev.hook_event_name, ev.session_id);
+        return context === null ? new Response("ok") : Response.json({ context });
       }
       // The HUD's private switch, through the local agent: keep an agent's repository private, or stop.
       if (req.method === "POST" && url.pathname === "/private") {
@@ -181,6 +188,9 @@ async function serve(): Promise<void> {
   setInterval(function () {
     if (sweep(subset, Date.now(), STALE_MS)) dirty = true;
     void report();
+    // Keeps the crew fresh for the next prompt, while there are sessions to tell.
+    paired?.intro.keepOnly(new Set(subset.keys()));
+    if (paired !== null && subset.size > 0) void paired.intro.refresh(HEARTBEAT_MS - 10_000);
   }, HEARTBEAT_MS);
   // Report promptly after a change, coalescing bursts, and notice a new pairing within a second.
   setInterval(function () {
