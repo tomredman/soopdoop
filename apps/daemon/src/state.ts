@@ -1,8 +1,15 @@
-// ABOUTME: The daemon's in-memory picture of this machine's agents, built from harness hook events.
+// ABOUTME: The daemon's in-memory picture of this machine's agents, built from harness hook events (Claude Code, Codex, Grok).
 // ABOUTME: Pure functions so the state transitions are testable without a harness.
 import { isPrivate } from "./privacy";
 
 export type AgentStatus = "working" | "idle" | "waiting";
+
+// The harnesses whose sessions soopdoop reads.
+export type Harness = "claude-code" | "codex" | "grok";
+
+export function toHarness(raw: unknown): Harness | undefined {
+  return raw === "claude-code" || raw === "codex" || raw === "grok" ? raw : undefined;
+}
 
 export interface AgentRecord {
   agentId: string;
@@ -16,9 +23,16 @@ export interface AgentRecord {
   cwd?: string;
   repo?: string;
   lastTurnAt: number;
+  // How to reach the session later, for a hand-off. All stay on this machine: the Superset terminal and workspace it runs
+  // in, Claude Code's inbox socket and its token, and Grok's session id.
+  supersetTerminalId?: string;
+  supersetWorkspaceId?: string;
+  inboxSocket?: string;
+  inboxToken?: string;
+  grokSessionId?: string;
 }
 
-// The subset of Claude Code hook payload fields the daemon reads.
+// The hook payload fields the daemon reads, in Claude Code's and Codex's spelling, plus what the hook adds.
 export interface HookEvent {
   hook_event_name: string;
   session_id: string;
@@ -26,6 +40,14 @@ export interface HookEvent {
   transcript_path?: string;
   // Notification hooks carry a message; "waiting" is inferred from it.
   message?: string;
+  // The harness that ran the hook (its command names it). Missing from older hooks, which were all Claude Code's.
+  harness?: Harness;
+  // From the hook's environment, when there. Kept on this machine (see AgentRecord).
+  supersetTerminalId?: string;
+  supersetWorkspaceId?: string;
+  inboxSocket?: string;
+  inboxToken?: string;
+  grokSessionId?: string;
 }
 
 export type Subset = Map<string, AgentRecord>;
@@ -34,18 +56,45 @@ export function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
 }
 
-// Reads a hook payload off the wire. Only the event name and session id are required; the rest is optional.
-// Returns null for anything that is not a usable event, so a stray POST can never poison the subset.
+function text(x: unknown): string | undefined {
+  return typeof x === "string" && x !== "" ? x : undefined;
+}
+
+// Grok names its events in snake_case ("pre_tool_use"); soopdoop uses the PascalCase names Claude Code and Codex use.
+export function pascalEvent(raw: unknown): string | undefined {
+  const name = text(raw);
+  if (name === undefined) return undefined;
+  return name
+    .split("_")
+    .map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); })
+    .join("");
+}
+
+// Reads a hook payload off the wire. Only the event name and session id are required; the rest is optional. Grok's payload
+// is camelCase (sessionId, hookEventName); Claude Code's and Codex's are snake_case. Returns null for anything that is not a
+// usable event, so a stray POST can never poison the subset.
 export function parseHookEvent(raw: unknown): HookEvent | null {
   if (!isRecord(raw)) return null;
-  const event = raw.hook_event_name;
-  const sessionId = raw.session_id;
-  if (typeof event !== "string" || event === "") return null;
-  if (typeof sessionId !== "string" || sessionId === "") return null;
+  const event = text(raw.hook_event_name) ?? pascalEvent(raw.hookEventName);
+  const sessionId = text(raw.session_id) ?? text(raw.sessionId);
+  if (event === undefined || sessionId === undefined) return null;
   const ev: HookEvent = { hook_event_name: event, session_id: sessionId };
   if (typeof raw.cwd === "string") ev.cwd = raw.cwd;
-  if (typeof raw.transcript_path === "string") ev.transcript_path = raw.transcript_path;
+  const transcript = text(raw.transcript_path) ?? text(raw.transcriptPath);
+  if (transcript !== undefined) ev.transcript_path = transcript;
   if (typeof raw.message === "string") ev.message = raw.message;
+  const harness = toHarness(raw.harness);
+  if (harness !== undefined) ev.harness = harness;
+  const terminal = text(raw.supersetTerminalId);
+  if (terminal !== undefined) ev.supersetTerminalId = terminal;
+  const workspace = text(raw.supersetWorkspaceId);
+  if (workspace !== undefined) ev.supersetWorkspaceId = workspace;
+  const socket = text(raw.inboxSocket);
+  if (socket !== undefined) ev.inboxSocket = socket;
+  const token = text(raw.inboxToken);
+  if (token !== undefined) ev.inboxToken = token;
+  const grokSession = text(raw.grokSessionId);
+  if (grokSession !== undefined) ev.grokSessionId = grokSession;
   return ev;
 }
 
@@ -53,6 +102,39 @@ function nameFromCwd(cwd: string | undefined): string {
   if (cwd === undefined || cwd === "") return "agent";
   const parts = cwd.split("/").filter(Boolean);
   return parts[parts.length - 1] ?? "agent";
+}
+
+// Keeps the newest way to reach the session. A hook that does not see a value (Claude Code's SessionEnd has no inbox
+// socket) leaves the one already known.
+function keepLocal(agent: AgentRecord, ev: HookEvent): void {
+  if (ev.supersetTerminalId !== undefined) agent.supersetTerminalId = ev.supersetTerminalId;
+  if (ev.supersetWorkspaceId !== undefined) agent.supersetWorkspaceId = ev.supersetWorkspaceId;
+  if (ev.inboxSocket !== undefined) agent.inboxSocket = ev.inboxSocket;
+  if (ev.inboxToken !== undefined) agent.inboxToken = ev.inboxToken;
+  if (ev.grokSessionId !== undefined) agent.grokSessionId = ev.grokSessionId;
+}
+
+// The status an event leaves the agent in, or null for events that change nothing (and "end" for the session's end).
+function statusAfter(event: string): AgentStatus | "end" | null {
+  switch (event) {
+    case "SessionStart":
+    case "Stop":
+    case "StopFailure":
+    case "StopCancelled":
+    case "Interrupt":
+      return "idle";
+    case "UserPromptSubmit":
+    case "PreToolUse":
+    case "PostToolUse":
+      return "working";
+    case "Notification":
+    case "PermissionRequest":
+      return "waiting";
+    case "SessionEnd":
+      return "end";
+    default:
+      return null;
+  }
 }
 
 // Applies one hook event. Returns true when the subset changed in a way worth reporting. `repoOf` names the repository a
@@ -69,40 +151,31 @@ export function apply(
   const repo = existing === undefined && ev.cwd !== undefined ? repoOf(ev.cwd) : existing?.repo;
   const base: AgentRecord = existing ?? {
     agentId: ev.session_id,
-    harness: "claude-code",
+    harness: ev.harness ?? "claude-code",
     name,
     workspace: nameFromCwd(ev.cwd),
     status: "idle",
     open: !isPrivate(ev.cwd, repo, privateDirs),
     lastTurnAt: now,
   };
+  // A harness the hook names wins; a session first seen through an older hook (no name) was Claude Code's.
+  const harnessChanged = ev.harness !== undefined && base.harness !== ev.harness;
+  if (ev.harness !== undefined) base.harness = ev.harness;
   if (repo !== undefined) base.repo = repo;
   if (ev.transcript_path !== undefined) base.transcriptPath = ev.transcript_path;
   if (ev.cwd !== undefined) base.cwd = ev.cwd;
+  keepLocal(base, ev);
 
-  switch (ev.hook_event_name) {
-    case "SessionStart":
-      subset.set(ev.session_id, { ...base, status: "idle", lastTurnAt: now });
-      return true;
-    case "UserPromptSubmit":
-    case "PreToolUse":
-      if (base.status === "working" && existing !== undefined) {
-        subset.set(ev.session_id, { ...base, lastTurnAt: now });
-        return false;
-      }
-      subset.set(ev.session_id, { ...base, status: "working", lastTurnAt: now });
-      return true;
-    case "Stop":
-      subset.set(ev.session_id, { ...base, status: "idle", lastTurnAt: now });
-      return true;
-    case "Notification":
-      subset.set(ev.session_id, { ...base, status: "waiting", lastTurnAt: now });
-      return true;
-    case "SessionEnd":
-      return subset.delete(ev.session_id);
-    default:
-      return false;
+  const next = statusAfter(ev.hook_event_name);
+  if (next === "end") return subset.delete(ev.session_id);
+  if (next === null) return harnessChanged;
+  // Repeated tool use while working is not a change worth reporting.
+  if (next === "working" && base.status === "working" && existing !== undefined) {
+    subset.set(ev.session_id, { ...base, lastTurnAt: now });
+    return harnessChanged;
   }
+  subset.set(ev.session_id, { ...base, status: next, lastTurnAt: now });
+  return true;
 }
 
 // Checks every agent against a changed privateDirs. Returns true when one turned private or open.
@@ -130,7 +203,7 @@ export function sweep(subset: Subset, now: number, staleMs: number): boolean {
   return changed;
 }
 
-// What leaves the machine: never the transcript path, the folder or the repository.
+// What leaves the machine: never the transcript path, the folder, the repository, or how to reach the session.
 export function toReport(subset: Subset) {
   return Array.from(subset.values(), function (a) {
     return {
