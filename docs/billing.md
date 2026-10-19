@@ -63,7 +63,7 @@ Until the key and both prices are set, Upgrade answers "Billing is not set up on
 - If a leader pays twice (two Checkout tabs), the crew follows the checkout whose event arrived last, and the Convex logs name the other subscription: "Cancel sub_... in the Stripe Dashboard". Cancel that one. Until then, if the one the crew follows ends first, the crew falls back to the other while it still bills.
 - If the last member leaves a crew that still pays, the subscription keeps billing and the Convex logs say so. Cancel it in the Dashboard.
 - Handing the lead to someone else hands over billing too: the new leader's Manage billing opens the same Stripe customer, with the old leader's card and invoices. The old leader may want to change the card first.
-- A crew can be put on the team plan by hand (`plan: "team"` in the dashboard, with no `planUntil`). Nothing ends it, and its Upgrade button says it is on the team plan already.
+- A crew can be put on the team plan by hand, for a comped crew or for trying the team plan before billing is set up: from `packages/convex`, `npx convex run --prod crews:setPlanByHand '{"crewId":"<crew id from the dashboard>","plan":"team"}'` (or `plan: "team"` with no `planUntil` on the row in the dashboard). Nothing ends it, its Upgrade button says it is on the team plan already, and the same command with `"free"` puts it back.
 
 ## Try it in test mode
 

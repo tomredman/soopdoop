@@ -538,3 +538,18 @@ describe("time zones", function () {
     expect(must(await sam.query(api.crews.mine, {})).timezone).toBe("Asia/Kolkata");
   });
 });
+
+describe("a plan set by hand", function () {
+  test("setPlanByHand puts a crew on the team plan with no end, and back on free", async function () {
+    const t = harness();
+    const tom = await hackerNamed(t, "tom");
+    const ada = await hackerNamed(t, "adalovelace");
+    await invite(tom, ada);
+    const crewId = await crewIdOf(t, "tom");
+    await t.mutation(internal.crews.setPlanByHand, { crewId, plan: "team" });
+    expect(must(await tom.query(api.crews.mine, {})).plan).toBe("team");
+    expect(await ada.query(api.billing.status, {})).toEqual({ plan: "team", planUntil: undefined, subscription: null });
+    await t.mutation(internal.crews.setPlanByHand, { crewId, plan: "free" });
+    expect(must(await tom.query(api.crews.mine, {})).plan).toBe("free");
+  });
+});

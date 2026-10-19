@@ -442,6 +442,21 @@ export const forDaemon = query({
   },
 });
 
+// Puts a crew on a plan by hand, for a crew that does not pay through Stripe: a comped crew, or the team trying the
+// team plan before billing is set up. From packages/convex: `npx convex run --prod crews:setPlanByHand
+// '{"crewId":"<crew id>","plan":"team"}'`. The plan has no end, so nothing takes it away; a Stripe subscription later
+// takes over through the webhook as usual, and `"free"` here puts the crew back.
+export const setPlanByHand = internalMutation({
+  args: { crewId: v.id("crews"), plan: crewPlan },
+  returns: v.null(),
+  handler: async function (ctx, args) {
+    const crew = await ctx.db.get("crews", args.crewId);
+    if (crew === null) throw new ConvexError("No such crew.");
+    await ctx.db.patch("crews", crew._id, { plan: args.plan, planUntil: undefined });
+    return null;
+  },
+});
+
 function pairKey(a: Id<"hackers">, b: Id<"hackers">): string {
   return a < b ? `${a}:${b}` : `${b}:${a}`;
 }
