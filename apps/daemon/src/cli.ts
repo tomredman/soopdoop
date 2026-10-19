@@ -1000,6 +1000,7 @@ try {
     }
     case "scout":
       await scoutCommand(rest);
+      break;
     case "handoffs":
       await handoffsCommand(rest);
       break;
