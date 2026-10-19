@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { readConfig, readSettings, writeConfig, writeSettings } from "@soopdoop/daemon/src/config";
 import { takeUpdateRequest, writeUpdateState } from "@soopdoop/daemon/src/update";
-import { localInfo, machineName, pairHere, settingsHere, updateHere, type LocalServer } from "./local";
+import { localInfo, machineName, pairHere, readLocalInfo, settingsHere, updateHere, type LocalServer } from "./local";
 
 const ORIGIN = "http://127.0.0.1:47312";
 const PROD = "https://fleet-skunk-723.convex.cloud";
@@ -84,6 +84,18 @@ describe("the rail's local server", function () {
     expect((await (await localInfo(ask, s)).json()).newer).toBe(false);
     await writeSettings({ autoOpen: false }, s.settingsFile ?? "");
     expect((await (await localInfo(ask, s)).json()).autoOpen).toBe(false);
+  });
+
+  test("reports This Mac's ledger line, scout and hand-off allowance settings, with their defaults", async function () {
+    const s = server();
+    const file = s.settingsFile ?? "";
+    expect(await (await localInfo(ask, s)).json()).toMatchObject({ ledgerLines: true, scout: false, handoffDailyUsd: 10 });
+    expect(await readLocalInfo(s)).toMatchObject({ ledgerLines: true, scout: false, handoffDailyUsd: 10 });
+    await writeSettings({ ledgerLines: false, scout: true, handoffDailyUsd: 2.5 }, file);
+    expect(await (await localInfo(ask, s)).json()).toMatchObject({ ledgerLines: false, scout: true, handoffDailyUsd: 2.5, autoUpdate: true, autoOpen: true });
+    // A file another version wrote badly: the defaults again, never a crash.
+    await Bun.write(file, JSON.stringify({ ledgerLines: "no", scout: 1, handoffDailyUsd: -3 }));
+    expect(await readLocalInfo(s)).toMatchObject({ ledgerLines: true, scout: false, handoffDailyUsd: 10 });
   });
 
   test("pairing writes this server's Convex URL, owner-only, and keeps private folders", async function () {

@@ -21,6 +21,12 @@ export interface LocalInfo {
   updateError: string | null;
   // Whether the watcher opens the app when Superset opens.
   autoOpen: boolean;
+  // Settings → This Mac, which the daemon reads: a Haiku call on the hacker's own Claude account writes each ledger line
+  // (on unless turned off); the scout reads their help-desk connector for props and saves (off until turned on); what
+  // hand-offs may cost this Mac's agents in any 24 hours, in US dollars.
+  ledgerLines: boolean;
+  scout: boolean;
+  handoffDailyUsd: number;
 }
 
 // What the server knows about itself, fixed at start.
@@ -92,6 +98,9 @@ export async function readLocalInfo(server: LocalServer): Promise<LocalInfo> {
     updating,
     updateError: state.error ?? null,
     autoOpen: settings.autoOpen,
+    ledgerLines: settings.ledgerLines,
+    scout: settings.scout,
+    handoffDailyUsd: settings.handoffDailyUsd,
   };
   return info;
 }
