@@ -147,9 +147,19 @@ export function realStripe(secretKey: string, connection?: { host: string; port:
         subscription_data: { metadata: { crewId: request.crewId } },
         success_url: request.successUrl,
         cancel_url: request.cancelUrl,
+        // Stripe Tax (docs/billing.md): tax for the leader's billing address goes on top of the price, in the places where
+        // soopdoop is registered to collect it. A business gives its VAT or GST number here, for a reverse charge.
+        automatic_tax: { enabled: true },
+        billing_address_collection: "required",
+        tax_id_collection: { enabled: true },
       };
-      if (request.customer !== undefined) params.customer = request.customer;
-      else if (request.customerEmail !== undefined) params.customer_email = request.customerEmail;
+      if (request.customer !== undefined) {
+        params.customer = request.customer;
+        // The name and address typed in Checkout go onto the existing customer, so the tax and the invoices use them.
+        params.customer_update = { address: "auto", name: "auto" };
+      } else if (request.customerEmail !== undefined) {
+        params.customer_email = request.customerEmail;
+      }
       const session = await stripe.checkout.sessions.create(params);
       if (session.url === null) throw new ConvexError("Stripe made a Checkout session without a link.");
       return { id: session.id, url: session.url };

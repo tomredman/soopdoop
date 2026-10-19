@@ -249,6 +249,9 @@ describe("the real client, against a local server standing in for api.stripe.com
         "subscription_data[metadata][crewId]": "crew_madeup",
         success_url: "https://soopdoop.com/?billing=done",
         cancel_url: "https://soopdoop.com/?billing=cancelled",
+        "automatic_tax[enabled]": "true",
+        billing_address_collection: "required",
+        "tax_id_collection[enabled]": "true",
       };
       expect(seen.slice(0, 5).map(function (r) { return [r.method, r.path]; })).toEqual([
         ["POST", "/v1/checkout/sessions"],
@@ -258,8 +261,8 @@ describe("the real client, against a local server standing in for api.stripe.com
         ["POST", "/v1/subscription_items/si_madeup_docs"],
       ]);
       expect(must(seen[0]).form).toEqual({ ...sessionForm, customer_email: "tom@example.com" });
-      // With a customer, Checkout uses its email and no email is sent.
-      expect(must(seen[1]).form).toEqual({ ...sessionForm, customer: "cus_madeup" });
+      // With a customer, Checkout uses its email and no email is sent; the name and address typed go onto the customer.
+      expect(must(seen[1]).form).toEqual({ ...sessionForm, customer: "cus_madeup", "customer_update[address]": "auto", "customer_update[name]": "auto" });
       expect(must(seen[2]).form).toEqual({ customer: "cus_madeup", return_url: "https://soopdoop.com" });
       expect(must(seen[4]).form).toEqual({ quantity: "4" });
       for (const r of seen) {
