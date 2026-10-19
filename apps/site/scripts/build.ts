@@ -1,15 +1,17 @@
-// ABOUTME: Builds soopdoop.com into dist/: Bun bundles index.html and invite.html (scripts and styles, minified and hashed), then
-// ABOUTME: public/ is copied as it is (fonts, icons, the social card, 404 page, and Cloudflare's _headers and _redirects).
+// ABOUTME: Builds soopdoop.com into dist/: Bun bundles the pages (scripts and styles, minified and hashed), then public/ is
+// ABOUTME: copied as it is (fonts, icons, the social card, 404 page, and Cloudflare's _headers and _redirects).
 import { cp, rm } from "node:fs/promises";
 import path from "node:path";
 
 const root = path.join(import.meta.dir, "..");
 const dist = path.join(root, "dist");
+// invite.html is the page invite links open: soopdoop.com/invite#<code>. Cloudflare serves each page without its .html
+// too (/teams, /privacy, /terms).
+const pages = ["index.html", "invite.html", "teams.html", "privacy.html", "terms.html"];
 
 await rm(dist, { recursive: true, force: true });
 const result = await Bun.build({
-  // invite.html is the page invite links open: soopdoop.com/invite#<code>.
-  entrypoints: [path.join(root, "index.html"), path.join(root, "invite.html")],
+  entrypoints: pages.map(function (page) { return path.join(root, page); }),
   outdir: dist,
   minify: true,
   // Root paths (/fonts, /favicon.svg) are files in public/, served as they are: leave them alone.

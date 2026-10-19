@@ -31,7 +31,8 @@ hacker (any user) · subset (one hacker's session and its agents; ∅ when empty
 ## Rules that do not bend
 
 - Agents never talk to each other directly. Every question goes through the Operator.
-- The Operator never reads a transcript. It asks the agent that knows, and keeps only that agent's answer. It keeps a short routing summary per agent, which the owner can see and edit.
+- The Operator never reads a transcript. It asks the agent that knows, and keeps only that agent's answer.
+- A conversation never leaves the Mac. Three one-line things built from it do, each made on the owner's Mac, shown to the owner, editable by the owner, and kept inside the crew: the routing summary (one per open agent), the ledger line (one per finished task), and the answer a fork writes to one question. Prompts are read locally for heads-ups and go nowhere.
 - Private agents never leave the machine.
 - Purple means a relay in flight. Green means working. Blue means idle, open to knocks.
 - Nothing stays on screen if the hacker ignores it. Every interruption expires.
@@ -83,7 +84,7 @@ An invite works once, for 7 days.
 
 **What the Operator asks your agents:** when a friend's agent asks a question that one of your open agents knows about, your daemon asks that agent on your Mac and sends back only its short answer (see The Operator, below). The question is answered by a copy of the agent's session that has no tools and is not saved, so your agent's own session never changes. Friends never see the conversation, only the answer, which can quote it. The answer is written with your Claude Code account, so it uses your plan or costs you about what reading the agent's conversation once costs. A Codex or Grok agent is asked the same way, by a copy of its session on your Codex or Grok account (`codex exec fork`, kept nowhere; `grok -p … --fork-session`, deleted after it answers). Every question is listed in `~/.soopdoop/logs/reads.log` (which agent, which question id, who asked, how long the answer was, how many tokens it read and what it cost; never the question or the answer). Private projects never leave your Mac: the Operator never asks or summarizes their agents, and friends never see them. Turn one private with its switch under This Mac in the HUD (Settings shows that section), or list folders in `privateDirs` in `~/.soopdoop/config.json`. A folder covers its whole git repository, so every Superset workspace and worktree of that project.
 
-**The anti-hijacking fund:** your agents answer crewmates' questions only within a budget, checked on your Mac before each answer: $5 in any 24 hours, and one crewmate can use at most half of it. When it is spent, the asker reads that your agents have spent today's answering fund, and nothing is read. `soopdoop fund` shows what was spent in the last 24 hours and by whom; `soopdoop fund 10 0.5` sets $10 a day, half of it per crewmate; `soopdoop fund 0` turns answering off. The check runs on the Mac that pays, so neither a crewmate nor the backend can get around it. The Operator also turns away questions that ask an agent to do work (write, change, fix or review code, documents or plans) before any agent is read.
+**The anti-hijacking fund:** your agents answer crewmates' questions only within a budget, checked on your Mac before each answer: $5 in any 24 hours, and one crewmate can use at most half of it. When it is spent, the asker reads that your agents have spent today's answering fund, and nothing is read. `soopdoop fund` shows what was spent in the last 24 hours and by whom; `soopdoop fund 10 0.5` sets $10 a day, half of it per crewmate; `soopdoop fund 0` turns answering off. The check runs on the Mac that pays, so neither a crewmate nor the backend can get around it. A question that asks an agent to do work (write, change, fix or review code, documents or plans) is never answered by reading an agent: the Operator offers it to that agent's owner as a hand-off instead (see Crews).
 
 **Later:** `soopdoop status`, `soopdoop open` (shows the HUD), `soopdoop logs`, `soopdoop update`, `soopdoop fund`, `soopdoop uninstall` (removes the hooks, the background services, the app, the `ask_operator` tool and the skill; your pairing and the code stay until you delete `~/.soopdoop`).
 
@@ -128,6 +129,51 @@ A routing summary is one line per open agent, made on its owner's machine: works
 
 The backend needs a Claude API key to route questions: `npx convex env set ANTHROPIC_API_KEY <key> --prod` (Mr. Tom sets it). Without one, the Operator answers that it has no Claude API key yet.
 
+## Crews
+
+A crew is up to 8 people who work together: a name, a leader, settings and a plan. The ledger, crew notes, heads-ups, hand-offs, the wire and the digest stay inside it. Friends stay friends, and someone in no crew keeps everything above as it is, with their friends as their crew.
+
+- **Starting one:** the first invite you send that someone accepts starts a crew, "<your handle>'s crew", and you lead it. Whoever accepts an invite from a crewmate joins that crew while it has room. Settings → Crew starts one by hand. One crew per person.
+- **The leader** renames it, adds a friend who is in no crew yet, removes someone, hands the lead on, sets the digest's hour and time zone, connects Slack and Intercom, picks whose agents may post crew notes without waiting, and pays for the Team plan. Anyone can leave; the last one out ends the crew, and its notes and digests go with it.
+- **The four numbers:** the HUD, the menu bar and the weekly digest show what soopdoop did for the crew in the last 7 days: questions answered by crewmates' agents (and about how many tokens that saved), hand-offs done, heads-ups acted on, and ships (and how many had a walkthrough). Crew totals, never per person.
+
+**Every agent on the wire.** Claude Code, Codex and Grok agents all show up, each with a badge (C, X, G). All three get introductions, answer crewmates' questions through a copy of their session on their owner's account, and take hand-offs. Setup installs the hooks for each (see What setup changes, above).
+
+**The ledger.** When a session ends, or sits idle for 10 minutes after a turn, the daemon writes one line about it on your Mac: the date, the harness, the folder and branch, what was done (at most 240 characters), the top-level folders it touched, how many files, and the pull request when the session opened or merged one. A Haiku call on your own Claude account writes the "what was done" part, for about a fifth of a cent; `soopdoop ledger-lines off` (or Settings → This Mac) builds it from the session's first and last prompts instead. Keys and tokens are taken out, and private agents get no line. Your lines are in the HUD under This Mac → Ledger, where you rewrite or delete any of them. The Operator searches the crew's lines to answer who-questions, also when nobody's agent on it is running: "Ada (@adalovelace) did 6 pieces of work on that in the last two weeks, the last 2 days ago. Their agent on it is off right now. Knock them, or hand it off?" Lines are kept 7 days on the free plan and 90 on Team, show crewmates the folder only when you share folder names, and never go above the crew.
+
+**Heads-ups.** At each prompt, your Mac compares the prompt with what your crewmates' agents are on (their routing summaries, and the crew's ledger for the last two weeks: file paths, folder names, words), with no model and no network, and the check sends the prompt nowhere. When a crewmate's agent is deep in the same area, or changing the same files, the HUD shows a card for 10 minutes ("@jimmy's agent is on email metrics right now (packages/email). Ask it · Hand off · Not now"), and a Claude Code or Codex agent gets one line with the prompt: "soopdoop: @jimmy's agent is on this area now (packages/email); ask it (ask_operator @jimmy) or hand it off (hand_off @jimmy) before you build." Asking that agent, handing off or knocking within 10 minutes counts as acted on. A card you dismiss or act on stays away for an hour for the same two agents.
+
+**Hand-offs.** Hand a task to a crewmate's agent from your agent (the `hand_off` tool), a heads-up card, a crewmate's row in the HUD, the menu bar's Hand off…, or the Operator chat ("hand this to Jimmy's email agent"). A work order asked of the Operator becomes an offer too.
+
+- **Consent.** Each person sets it per crewmate in Settings → Crew: ask me each time (the default), run when my agent is idle, or never. An offer waits 24 hours; then a scheduled function expires it.
+- **Exact text.** The receiver gets a card, a notification and a count on the menu bar icon, with your words as you wrote them and the agent that would run them: Run now · Run when idle · Decline · Reply…
+- **The owner's account.** It runs in the receiver's agent, with that agent's context, on the receiver's own Claude Code, Codex or Grok plan. The daemon puts it into the session the best way that tool allows (Claude Code's inbox, `codex queue`, the Superset terminal, a background session, or the clipboard), starting "soopdoop hand-off from @tom (they approved this text, you approved running it)". When it is done the agent calls `report_back`: the summary goes on the wire, the session that offered it hears at its next prompt, and the receiver gets 20 XP.
+- **The allowance.** Hand-offs have their own budget on the Mac that runs them: $10 in any 24 hours unless you change it (`soopdoop handoffs <dollars>`, or Settings → This Mac). It is checked there, like the fund.
+- **The log.** `~/.soopdoop/logs/handoffs.log` lists every hand-off your Mac ran: who, which agent, when, how big, what it cost. Never the text. The backend keeps the offer, its status and the summary.
+- Private agents cannot be picked. A hand-off no agent fits becomes a knock with the text attached.
+
+**Crew notes.** Short shared instructions, at most 400 characters each: design rules, pricing facts, decisions. Anyone in the crew adds one in the HUD, with tags, a "confirm by" date and an "applies when" (a folder, repository or word, so it reaches only sessions there). An agent proposes one with the `crew_note` tool and its owner approves it with one click; on Team the leader can let a crewmate's agents post without waiting. Claude Code and Codex agents get the live notes that apply at session start (at most 2 KB, newest first), and one line at their next prompt when a note changes. Grok agents read them from `~/.grok/rules/soopdoop.md`, and Codex also from a block in `~/.codex/AGENTS.md`, both pointing at `~/.soopdoop/crew.md`. Any agent can call `crew_notes`. After 30 days the author is asked "still true?"; a note nobody confirms stops reaching agents after 45 days and stays in the history. The free plan keeps 10 live notes, Team 60.
+
+**The room and the Slack digest.** The wire carries ships (a ledger line whose pull request merged, with a walkthrough link when the owner's agent wrote one), hand-offs done, heads-ups acted on, new crew notes, shouts (one line, at most 140 characters, gone after 24 hours), props (one tap on any wire line; 5 XP), and props from customers. Positive only: never "idle since", never a ranking. On Team, customer props come from Intercom (the leader connects it in Settings → Crew; a rating of 4 or 5 becomes props for whoever's ledger line names that conversation, or for the whole crew) and from the scout (`soopdoop scout on`, off by default), which reads your own email or help-desk connector on your Mac every hour and sends one line when a customer said thanks. After a ship, the HUD asks once whether your agent should write a walkthrough page; it goes out as a drop or a link. Every day at the crew's hour (9:00 in the leader's time zone unless the leader changes it), the Operator writes "Yesterday in <crew>" on Claude Opus 5.5 from the day's wire and ledger. It shows under Yesterday in the HUD and the menu bar, and goes to the crew's Slack channel through the incoming webhook the leader pastes in Settings → Crew. On Mondays the week's four numbers follow. The live mirror (off by default) posts ships, props and saves as they happen.
+
+**The menu bar.** The icon shows one dot per crewmate (green working, blue idle, grey off), pulses purple while a relay is in flight, counts the hand-offs waiting for you, and turns into the bell for a knock. The menu has a line per crewmate (their light, how many agents, and what their busiest agent is on, only what they share), yesterday's digest, the hand-offs waiting for you, and Ask the crew…, Hand off… and Shout…: one-line boxes under the menu bar, so none of them needs the HUD.
+
+**Plans and billing.** A crew starts on the free plan. The leader moves it to Team in Settings → Crew → Upgrade: $10 a member a month, or $100 a member a year, paid through Stripe. Manage billing opens Stripe's page to change the card or cancel; a cancelled plan runs to the end of its period.
+
+| | Free | Team |
+| --- | --- | --- |
+| Questions to the Operator | 20 a day per crew | 500 a day per crew (raised on request) |
+| Ledger lines kept | 7 days | 90 days |
+| Hand-offs | 5 a day per crew | no limit |
+| Live crew notes | 10 | 60, and trusted crewmates' agents post without waiting |
+| The digest, the weekly numbers, the Slack bridge | no | yes |
+| Props from customers (Intercom, the scout) | no | yes |
+| Drops | links only | 5 GB per crew |
+
+Replies the Operator writes itself in the chat do not count as questions. Settings → Crew shows what the Operator's own Claude calls (routing and chat on Sonnet 5.5, the digest on Opus 5.5) cost the crew this month, on either plan. Your agents' work (answers, hand-offs, ledger lines, walkthroughs) runs on each member's own plan; soopdoop never sells model tokens. The limits live in `packages/convex/convex/lib/plan.ts`, and soopdoop.com/teams shows them.
+
+**Drops.** Pages a crew shares, walkthroughs first. On Team, soopdoop stores them in the backend's file storage (5 GB per crew) and serves each at a long random link that anyone with the link can open. On the free plan a drop is a link to a page hosted elsewhere (a Superset Page, an Artifact). Drops are listed for the crew.
+
 ## Develop
 
 ```sh
@@ -158,3 +204,5 @@ Releases: see `RELEASING.md`.
 ### What is verified
 
 `bun test` covers the backend (friends, handles, presence views, invites by handle, knocks including the scheduled expiry, flicks, Superset profiles, the Operator from question to answer, routing summaries, XP), the daemon (state machine, hook, installer, pairing file, settings file, background service files, asking an agent, the skill, the MCP server, and a real `serve` that picks up a pairing), and the rail (sign-in pieces, pairing endpoint, invites, the app's sign-in, its `/app` socket and its switches). The backend tests also cover the wire and the tokens saved. A real Superset sign-in, a real machine with live Claude Code sessions, and an Operator question from a real `ask_operator` call to a second machine's agent and back have been run end to end; see `docs/spikes.md` for what was and was not checked.
+
+The crews release lists what was checked, and what was not, for each of its parts (every agent on the wire, crews, the ledger, heads-ups, hand-offs, crew notes, the room and the digest, the menu bar, billing, drops and the site) in its own dated section of `docs/spikes.md`.
