@@ -144,7 +144,8 @@ describe("heads-ups for a session", function () {
   test("the card's line comes from what the crewmate shares, never from the prompt", function () {
     const { h } = setup();
     const hits = h.check("s1", "secret plan: the email delivery metrics count bounces twice");
-    expect(hits[0]?.line).toBe('@jimmy\'s agent is on this now (packages/email/src, apps/web/metrics): "why are bounces double counted in the delivery metrics"');
+    expect(hits[0]?.line).toBe('@jimmy\'s agent is on this now (packages/email, apps/web/metrics): "why are bounces double counted in the delivery metrics"');
+    expect(hits[0]?.areas).toEqual(["packages/email", "apps/web/metrics"]);
     expect(hits[0]?.line).not.toContain("secret plan");
   });
 

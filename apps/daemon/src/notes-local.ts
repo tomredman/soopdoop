@@ -276,12 +276,15 @@ export function crewMarkdown(info: CrewInfo | null, crew: CrewNow | null, notes:
   return out.join("\n");
 }
 
-// Writes crew.md when its text changed. Returns whether it wrote.
+let writes = 0;
+
+// Writes crew.md when its text changed, through a temporary file of its own. Returns whether it wrote.
 export async function writeCrewFile(text: string, file: string = crewFilePath()): Promise<boolean> {
   const before = await readFile(file, "utf8").catch(function () { return null; });
   if (before === text) return false;
   await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
-  const tmp = `${file}.${process.pid}.tmp`;
+  writes += 1;
+  const tmp = `${file}.${process.pid}.${writes}.tmp`;
   await writeFile(tmp, text, { mode: 0o600 });
   await rename(tmp, file);
   return true;

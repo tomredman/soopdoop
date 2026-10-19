@@ -127,9 +127,14 @@ interface Target {
   at?: number;
 }
 
+// Folders that hold code rather than name a part of the project (the ledger's areas drop them too).
+const INNER = new Set(["src", "lib", "libs", "source", "sources", "components", "test", "tests", "__tests__", "spec", "specs", "utils", "internal"]);
+
+// The part of the project a file is in, as the ledger names areas: "packages/email/src/metrics.ts" is packages/email.
 function folderOf(file: string): string {
-  const parts = file.split("/").slice(0, -1);
-  return parts.slice(0, 3).join("/");
+  let parts = file.split("/").slice(0, -1).slice(0, 3);
+  while (parts.length > 1 && INNER.has((parts[parts.length - 1] ?? "").toLowerCase())) parts = parts.slice(0, -1);
+  return parts.join("/");
 }
 
 function liveTarget(key: string, handle: string, summary: string): Target {

@@ -138,6 +138,9 @@ describe("crew.md and the pointers to it", function () {
     expect(await writeCrewFile(text, file)).toBe(true);
     expect(await writeCrewFile(text, file)).toBe(false);
     expect(await readFile(file, "utf8")).toBe(text);
+    // Writes that start together (a note and the crew arriving at once) each use their own temporary file.
+    await Promise.all([writeCrewFile("one", file), writeCrewFile("two", file), writeCrewFile("three", file)]);
+    expect(["one", "two", "three"]).toContain(await readFile(file, "utf8"));
   });
 
   test("the block goes in and out, and every other byte of the file stays as it was", function () {
