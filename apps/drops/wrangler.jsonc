@@ -1,0 +1,16 @@
+// soopdoop.com/d/<token>: drops (pages a crew shares), passed on to the production Convex deployment that keeps them.
+// NOT DEPLOYED YET. When it is: `bunx wrangler@4 deploy` here, signed in to the Cloudflare account that serves soopdoop.com
+// (README.md). The route runs before the site's own Worker (apps/site) for /d/ paths only; the site keeps everything else.
+{
+  "$schema": "https://unpkg.com/wrangler@4/config-schema.json",
+  "name": "soopdoop-drops",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "routes": [{ "pattern": "soopdoop.com/d/*", "zone_name": "soopdoop.com" }],
+  "vars": {
+    // The production deployment's site URL (its .convex.cloud URL is in apps/rail/src/config.ts).
+    "DROPS_ORIGIN": "https://fleet-skunk-723.convex.site"
+  },
+  "workers_dev": false,
+  "preview_urls": false
+}

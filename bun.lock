@@ -23,6 +23,10 @@
         "typescript": "^5.6.0",
       },
     },
+    "apps/drops": {
+      "name": "@soopdoop/drops",
+      "version": "0.0.1",
+    },
     "apps/rail": {
       "name": "@soopdoop/rail",
       "version": "0.0.1",
@@ -147,6 +151,8 @@
     "@soopdoop/convex": ["@soopdoop/convex@workspace:packages/convex"],
 
     "@soopdoop/daemon": ["@soopdoop/daemon@workspace:apps/daemon"],
+
+    "@soopdoop/drops": ["@soopdoop/drops@workspace:apps/drops"],
 
     "@soopdoop/rail": ["@soopdoop/rail@workspace:apps/rail"],
 
