@@ -80,7 +80,7 @@ describe("the app's settings", function () {
       await agent.act("setAutoOpen", { on: false });
       expect(agent.state().local?.autoOpen).toBe(false);
       await agent.act("setAutoUpdate", { on: false });
-      expect(await readSettings(settingsFile)).toEqual({ autoUpdate: false, autoOpen: false });
+      expect(await readSettings(settingsFile)).toEqual({ autoUpdate: false, autoOpen: false, ledgerLines: true, scout: false, handoffDailyUsd: 10 });
       expect(agent.state().local).toMatchObject({ autoUpdate: false, autoOpen: false });
       await expect(agent.act("setAutoOpen", { on: "no" })).rejects.toThrow("Missing on.");
     } finally {
