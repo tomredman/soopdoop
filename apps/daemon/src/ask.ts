@@ -75,6 +75,11 @@ export const GROK_TOOLS = [
 ];
 
 // The command line that asks a copy of the session one question.
+export function askArgs(harness: string, sessionId: string, question: string, model?: string): string[] {
+  return forkArgs(harness, sessionId, askPrompt(question), model);
+}
+
+// The command line that runs one prompt in a copy of the session.
 //   Claude Code: resumes the session under a new id (--fork-session) and keeps nothing on disk. Safe mode drops hooks, MCP
 //   servers and skills, so the fork never shows up as an agent or asks the Operator itself; --tools "" leaves it no tools.
 //   The model is named, so the fund knows the price. The prompt goes last: --tools takes a list, so it is followed by a flag.
@@ -83,9 +88,8 @@ export const GROK_TOOLS = [
 //   failing), without the user's config.toml (no MCP servers, notify program or plugins), at low effort, on the session's
 //   own model. --skip-git-repo-check lets it run from the home folder when the session's folder is gone.
 //   Grok: resumes the session as a new one (--fork-session), one turn, low effort, every built-in tool taken away. Grok
-//   saves the fork; askAgent deletes it afterwards.
-export function askArgs(harness: string, sessionId: string, question: string, model?: string): string[] {
-  const prompt = askPrompt(question);
+//   saves the fork; forkAgent deletes it afterwards.
+export function forkArgs(harness: string, sessionId: string, prompt: string, model?: string): string[] {
   if (harness === "codex") {
     return [
       "exec", "fork", sessionId, "--ephemeral", "--json", "--skip-git-repo-check", "--ignore-user-config",
@@ -153,32 +157,38 @@ export function homeVarFor(harness: string, transcriptPath: string | undefined, 
   return configDir === undefined ? {} : { CLAUDE_CONFIG_DIR: configDir };
 }
 
-// The fork's environment: the daemon's, without the marks of a running session, with SOOPDOOP_FORK so that a harness that
-// still runs hooks for it (Codex and Grok can) is never reported as an agent, and with the session's folder when it has one.
-export function forkEnv(env: Record<string, string | undefined>, homeVars: Record<string, string> = {}): Record<string, string> {
+// The daemon's environment without the marks of a running session, with the session's folder when it has one. Commands
+// that reach a session (a hand-off) run with it as it is.
+export function sessionFreeEnv(env: Record<string, string | undefined>, homeVars: Record<string, string> = {}): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
     if (value === undefined || SESSION_VARS.includes(key)) continue;
     if (SESSION_PREFIXES.some(function (p) { return key.startsWith(p); })) continue;
     out[key] = value;
   }
-  return { ...out, ...homeVars, SOOPDOOP_FORK: "1" };
+  return { ...out, ...homeVars };
+}
+
+// The fork's environment: as above, with SOOPDOOP_FORK so that a harness that still runs hooks for it (Codex and Grok can)
+// is never reported as an agent.
+export function forkEnv(env: Record<string, string | undefined>, homeVars: Record<string, string> = {}): Record<string, string> {
+  return { ...sessionFreeEnv(env, homeVars), SOOPDOOP_FORK: "1" };
 }
 
 function cut(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
-// The answer, or "not found", with what it cost. `text` is the copy's reply.
-function answered(text: string, usage: Record<string, unknown>, model: string | undefined): Asked {
+// The answer, or "not found", with what it cost. `text` is the copy's reply, cut at `max` characters.
+function answered(text: string, usage: Record<string, unknown>, model: string | undefined, max: number): Asked {
   const spent = { tokensRead: tokensReadOf(usage), usd: answerCost(usage, model), ...(model === undefined ? {} : { model }) };
   const result = text.trim();
   if (result === "" || result.startsWith(NOT_FOUND)) return { refused: "It has not worked on this.", ...spent };
-  return { answer: cut(result, MAX_ANSWER), ...spent };
+  return { answer: cut(result, max), ...spent };
 }
 
 // Claude Code's `--output-format json`: one object with the result, whether it failed, and the copy's usage.
-function claudeResult(stdout: string, model: string | undefined): Asked {
+function claudeResult(stdout: string, model: string | undefined, max: number): Asked {
   let raw: unknown;
   try {
     raw = JSON.parse(stdout);
@@ -190,12 +200,12 @@ function claudeResult(stdout: string, model: string | undefined): Asked {
   if (raw.is_error === true || raw.subtype !== "success") {
     return { refused: result === "" ? "Could not ask that agent." : `Could not ask that agent: ${cut(result, 200)}` };
   }
-  return answered(result, isRecord(raw.usage) ? raw.usage : {}, model);
+  return answered(result, isRecord(raw.usage) ? raw.usage : {}, model, max);
 }
 
 // `codex exec --json`: one event per line. The copy's reply is its last agent_message; turn.completed carries the usage. Items
 // of type "error" are warnings (a bypass notice, a switched-off feature); a failed turn or an error event is the failure.
-function codexResult(stdout: string, model: string | undefined): Asked {
+function codexResult(stdout: string, model: string | undefined, max: number): Asked {
   let reply = "";
   let usage: Record<string, unknown> | null = null;
   let failure: string | null = null;
@@ -217,7 +227,7 @@ function codexResult(stdout: string, model: string | undefined): Asked {
     return { refused: `Could not ask that agent: ${cut(failure, 200)}`, ...spent };
   }
   if (usage === null) return { refused: "That agent gave no answer." };
-  return answered(reply, usage, model);
+  return answered(reply, usage, model, max);
 }
 
 // The first JSON object in some output: the whole of it, or its first line that is one.
@@ -235,7 +245,7 @@ function firstObject(stdout: string): Record<string, unknown> | null {
 
 // `grok --output-format json`: one object with the reply (text), the fork's session id, its usage (Claude's keys: input
 // tokens without the cached ones, cache reads and writes apart) and the model under modelUsage; or { type: "error", message }.
-function grokResult(stdout: string, model: string | undefined): Asked {
+function grokResult(stdout: string, model: string | undefined, max: number): Asked {
   const raw = firstObject(stdout);
   if (raw === null) return { refused: "That agent gave no answer." };
   if (raw.type === "error") {
@@ -244,14 +254,15 @@ function grokResult(stdout: string, model: string | undefined): Asked {
   }
   const used = isRecord(raw.modelUsage) ? Object.keys(raw.modelUsage)[0] : undefined;
   if (!isRecord(raw.usage)) return { refused: "That agent gave no answer." };
-  return answered(typeof raw.text === "string" ? raw.text : "", raw.usage, used ?? model);
+  return answered(typeof raw.text === "string" ? raw.text : "", raw.usage, used ?? model, max);
 }
 
-// The fork's JSON result: the agent's answer, how many tokens it read and what that cost, or why there is none.
-export function parseResult(harness: string, stdout: string, model?: string): Asked {
-  if (harness === "codex") return codexResult(stdout, model);
-  if (harness === "grok") return grokResult(stdout, model);
-  return claudeResult(stdout, model);
+// The fork's JSON result: the agent's answer (cut at `max` characters), how many tokens it read and what that cost, or why
+// there is none.
+export function parseResult(harness: string, stdout: string, model?: string, max: number = MAX_ANSWER): Asked {
+  if (harness === "codex") return codexResult(stdout, model, max);
+  if (harness === "grok") return grokResult(stdout, model, max);
+  return claudeResult(stdout, model, max);
 }
 
 // The id Grok gave the fork, so it can be deleted: Grok has no way to fork without saving.
@@ -293,6 +304,23 @@ export async function askAgent(
   run: Run = spawnFork,
   binary: string | null = findBinary(agent.harness),
 ): Promise<Asked> {
+  return await forkAgent(agent, askPrompt(question), { run, binary });
+}
+
+export interface ForkOptions {
+  run?: Run;
+  // The harness's command; null when it is not installed. Found when left out.
+  binary?: string | null;
+  timeoutMs?: number;
+  // The longest reply kept, in characters.
+  maxChars?: number;
+}
+
+// Runs one prompt in a copy of the agent's session (forkArgs) and reads its reply, with what reading the session cost.
+// The caller checks that the agent is open. Questions, the hand-off report-back and walkthroughs go through here.
+export async function forkAgent(agent: AgentRecord, prompt: string, options: ForkOptions = {}): Promise<Asked> {
+  const run = options.run ?? spawnFork;
+  const binary = options.binary === undefined ? findBinary(agent.harness) : options.binary;
   const harness = toHarness(agent.harness) ?? "claude-code";
   if (binary === null) return { refused: notInstalled(harness) };
   // Newer harnesses find a session from any folder; older ones look in the folder the session ran in.
@@ -302,13 +330,14 @@ export async function askAgent(
   const model = harness === "claude-code" ? answerModel(sessionModel) : sessionModel;
   const env = forkEnv(process.env, homeVarFor(harness, transcript));
   // Grok resumes on the session's own model; the one its transcript names is only for the price.
-  const result = await run([binary, ...askArgs(harness, agent.agentId, question, harness === "grok" ? undefined : model)], { cwd, env, timeoutMs: ASK_TIMEOUT_MS });
+  const command = [binary, ...forkArgs(harness, agent.agentId, prompt, harness === "grok" ? undefined : model)];
+  const result = await run(command, { cwd, env, timeoutMs: options.timeoutMs ?? ASK_TIMEOUT_MS });
   if (harness === "grok") {
     const fork = grokForkId(result.stdout);
     if (fork !== null && fork !== agent.agentId) await run([binary, "sessions", "delete", fork], { cwd, env, timeoutMs: 15_000 }).catch(function () { return null; });
   }
   if (result.timedOut) return { refused: "That agent took too long to answer." };
-  const asked = parseResult(harness, result.stdout, model);
+  const asked = parseResult(harness, result.stdout, model, options.maxChars ?? MAX_ANSWER);
   if ("refused" in asked && result.exitCode !== 0) {
     const why = result.stderr.trim().split("\n")[0] ?? "";
     if (why !== "") return { refused: `Could not ask that agent: ${cut(why, 200)}`, ...(asked.usd === undefined ? {} : { tokensRead: asked.tokensRead, usd: asked.usd, model: asked.model }) };
