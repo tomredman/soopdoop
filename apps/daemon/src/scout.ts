@@ -3,6 +3,8 @@
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { ConvexHttpClient } from "convex/browser";
+import { makeFunctionReference } from "convex/server";
 import { forkEnv, spawnFork, type Run } from "./ask";
 import { readConfig, soopdoopHome } from "./config";
 import { answerCost } from "./fund";
@@ -90,7 +92,7 @@ export function scoutPrompt(since: number, now: number): string {
 
 export interface ScoutResult {
   // "ran", or why it did not: the setting is off, claude or the pairing is missing, Intercom is not signed in, it failed.
-  outcome: "ran" | "off" | "no-claude" | "not-paired" | "no-intercom" | "failed";
+  outcome: "ran" | "off" | "no-claude" | "not-paired" | "not-team" | "no-intercom" | "failed";
   lines?: number;
   usd?: number;
   // Never the model's words: they could quote a conversation.
@@ -130,6 +132,9 @@ export interface ScoutDeps {
   scoutOn(): Promise<boolean>;
   claude(): string | null;
   paired(): Promise<boolean>;
+  // The crew's plan ("free" | "team"), or undefined when it cannot be read. Props from customers come with the Team plan,
+  // so on free the scout does not spend the owner's Haiku on lines the backend would refuse.
+  plan?(): Promise<string | undefined>;
   intercom(): Promise<Record<string, unknown> | undefined>;
   bun: string;
   mcpFile: string;
@@ -146,6 +151,7 @@ export async function runScout(deps: ScoutDeps): Promise<ScoutResult> {
   const claude = deps.claude();
   if (claude === null) return { outcome: "no-claude", why: "the claude command was not found" };
   if (!(await deps.paired())) return { outcome: "not-paired", why: "this Mac is not paired with soopdoop" };
+  if (deps.plan !== undefined && (await deps.plan()) === "free") return { outcome: "not-team", why: "props from customers come with the Team plan" };
   const home = deps.home ?? soopdoopHome();
   const clock = deps.clock ?? Date.now;
   const now = clock();
@@ -186,4 +192,18 @@ export function scoutLogLine(r: ScoutResult, at: number): string {
 // Whether this Mac is paired, for the scout's props.
 export async function isPaired(): Promise<boolean> {
   return (await readConfig().catch(function () { return null; })) !== null;
+}
+
+const crewForDaemon = makeFunctionReference<"query">("crews:forDaemon");
+
+// The crew's plan from the backend, or undefined when this Mac is not paired or the backend cannot be reached.
+export async function readPlan(): Promise<string | undefined> {
+  const config = await readConfig().catch(function () { return null; });
+  if (config === null) return undefined;
+  try {
+    const raw: unknown = await new ConvexHttpClient(config.convexUrl).query(crewForDaemon, { token: config.token });
+    return isRecord(raw) && typeof raw.plan === "string" ? raw.plan : undefined;
+  } catch {
+    return undefined;
+  }
 }

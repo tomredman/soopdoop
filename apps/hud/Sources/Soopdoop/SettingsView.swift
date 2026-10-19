@@ -34,7 +34,7 @@ struct MacSettings: View {
                             ? "Haiku writes this Mac's ledger lines from now on."
                             : "Ledger lines come from the prompts and files from now on, with no model call.")
                     }))
-                    CrewCaption("When an agent finishes a task, a short Haiku call on your own Claude account writes its line for the crew's ledger: about a fifth of a cent a line. Off, the line is made from the first and last prompts and the files. Either way you can edit or delete it.")
+                    CrewCaption("When an agent finishes a task, a short Haiku call on your own Claude account writes its line for the crew's ledger: about a fiftieth of a cent a line. Off, the line is made from the first and last prompts and the files. Either way you can edit or delete it.")
                 } header: {
                     Text("Ledger")
                 }

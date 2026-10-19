@@ -246,3 +246,18 @@ for await (const chunk of Bun.stdin.stream()) {
   }
 }
 `;
+
+describe("the scout and the plan", function () {
+  test("on the free plan it does not run: the backend would refuse its lines", async function () {
+    const result = await runScout({
+      async scoutOn() { return true; },
+      claude() { return "/usr/bin/true"; },
+      async paired() { return true; },
+      async plan() { return "free"; },
+      async intercom() { return undefined; },
+      bun: "bun",
+      mcpFile: "mcp.ts",
+    });
+    expect(result).toEqual({ outcome: "not-team", why: "props from customers come with the Team plan" });
+  });
+});

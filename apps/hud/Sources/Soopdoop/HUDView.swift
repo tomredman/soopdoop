@@ -438,7 +438,7 @@ enum AddFriend {
         let handle = result["handle"] as? String ?? typed
         if result["kind"] as? String == "asked" {
             let via = result["viaSuperset"] as? Bool == true ? " (@\(typed) on Superset)" : ""
-            return "Asked @\(handle)\(via) to be friends. They join your crew when they accept."
+            return "Asked @\(handle)\(via) to be friends. Once you are, the crew leader can add them to the crew."
         }
         if let message = result["message"] as? String {
             NSPasteboard.general.clearContents()
@@ -1021,11 +1021,19 @@ enum WireLines {
         PRs.url(raw).map { WireLink(label: label, url: $0) }
     }
 
-    // "email metrics" from the heads-up's line, "Jimmy's agent is on email metrics right now (packages/email)".
+    // The areas or files from the heads-up's line, which the daemon writes as "@jimmy's agent is on this now (packages/email,
+    // apps/web/metrics)", "@jimmy worked on this area on 15 Oct (apps/web/export)" or "@ada's agent is changing the same
+    // files right now: apps/web/quote/Form.tsx".
     static func headsupTopic(_ line: String) -> String? {
-        guard let range = line.range(of: #"is on (.+?) right now"#, options: .regularExpression) else { return nil }
-        let topic = line[range].dropFirst("is on ".count).dropLast(" right now".count)
-        return topic.isEmpty ? nil : String(topic)
+        if let open = line.firstIndex(of: "("), let close = line[open...].firstIndex(of: ")"), close > line.index(after: open) {
+            let topic = line[line.index(after: open)..<close].trimmingCharacters(in: .whitespaces)
+            return topic.isEmpty ? nil : topic
+        }
+        if let range = line.range(of: "right now: ") {
+            let topic = line[range.upperBound...].trimmingCharacters(in: .whitespaces)
+            return topic.isEmpty ? nil : topic
+        }
+        return nil
     }
 
     // The scout's line ("thanked us for the CSV export fix"), or Intercom's, which already says "got props from a customer".

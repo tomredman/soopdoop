@@ -29,7 +29,7 @@ import {
   setScoutService, unload, waitFor, writePlist,
 } from "./service";
 import { installSkill, removeSkill, skillDir, skillInstalled } from "./skill";
-import { INTERCOM_URL, isPaired, lastRunPath, readIntercomServer, runScout, scoutLogLine } from "./scout";
+import { INTERCOM_URL, isPaired, lastRunPath, readIntercomServer, readPlan, runScout, scoutLogLine } from "./scout";
 import { branchOf, isPrivate, repoRoot, withPrivacy } from "./privacy";
 import { apply, isRecord, parseHookEvent, reapplyPrivacy, sweep, toReport, type AgentRecord, type HookEvent, type Subset } from "./state";
 import { makeWalkthrough } from "./walkthrough";
@@ -748,6 +748,7 @@ async function scoutCommand(args: string[]): Promise<void> {
       async scoutOn() { return (await readSettings()).scout; },
       claude() { return findRealClaude(); },
       paired: isPaired,
+      plan: readPlan,
       intercom() { return readIntercomServer(); },
       bun: process.execPath,
       mcpFile: MCP_FILE,
@@ -763,7 +764,7 @@ async function scoutCommand(args: string[]): Promise<void> {
       console.log("The scout is off. Nothing reads your help desk.");
       return;
     }
-    console.log("The scout is on. Every hour, Claude Haiku on your own Claude plan reads the Intercom conversations closed or rated since " +
+    console.log("The scout is on (it needs your crew on the Team plan; on the free plan it skips its runs). Every hour, Claude Haiku on your own Claude plan reads the Intercom conversations closed or rated since " +
       "its last run, and sends one line to your crew's wire for each thank-you or turnaround. It never names a customer, and nothing " +
       "else about the conversations leaves this Mac. It costs a few cents a day on your own plan (about $0.003 for a quiet hour).");
     if ((await readIntercomServer()) === undefined) {
