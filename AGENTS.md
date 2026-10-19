@@ -9,7 +9,8 @@ soopdoop is a multiplayer layer on top of Superset. Read `README.md`, then `docs
 ## Boundaries
 
 - Never import from the Superset repository or vendor its code. Use public surfaces only: harness lifecycle hooks, the Superset MCP server and SDK, Pages, Remote Access. This is a licence requirement (ELv2), not a preference.
-- The daemon may send a transcript slice off the machine only for an agent the owner marked open, only to the Operator, only for one answer. Never persist transcript content server-side. Log every read (`~/.soopdoop/logs/reads.log`, sizes only). The one exception the spec allows is the routing summary: one line per open agent, at most 600 characters, built on the owner's machine and shown to the owner in the HUD.
+- The daemon may send a transcript slice off the machine only for an agent the owner marked open, only to the Operator, only for one answer. Never persist transcript content server-side. Log every read (`~/.soopdoop/logs/reads.log`, sizes only). Two exceptions are allowed. The routing summary: one line per open agent, at most 600 characters, built on the owner's machine and shown to the owner in the HUD. The ledger line: one line per finished task, 240 characters, built on the owner's Mac, shown to the owner first, editable, inside the crew only; above the crew, work only, never people.
+- Prompts are read locally for heads-ups and never leave the Mac for them: a heads-up sends only its card line, built from what the crewmate already shares.
 - No purple before a relay exists. No token counts on personal or crew boards. Above the crew level, summaries describe work, never people.
 - Every interruption has an expiry enforced by a scheduled function, not by the client.
 
