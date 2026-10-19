@@ -90,6 +90,13 @@ export function handoffPrompt(fromHandle: string, text: string, handoffId: strin
     "If you cannot do it, call report_back with what stopped you.";
 }
 
+// Whether a prompt is a hand-off a daemon delivered (handoffPrompt above): its opening words near the start, also after a
+// harness's own words in front ("Another Claude session sent a message:") or with its lines joined (a Superset terminal),
+// and its report_back line.
+export function isHandoffPrompt(prompt: string): boolean {
+  return /^[\s\S]{0,200}?soopdoop hand-off from @[a-z0-9-]+ \(/.test(prompt) && prompt.includes("call the report_back tool with handoff_id ");
+}
+
 // What a copy of the session is asked when the agent stopped without calling report_back.
 export function reportPrompt(handoffId: string): string {
   return [
