@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>soopdoop Crews Plan</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+  /* Layout: one reading column, same look as docs/plan.html (a dark harness: mono headings, three LED colours). Single dark theme by choice. */
+  :root { color-scheme: dark; --bg:#0b0d12; --panel:#10141a; --line:#242a33; --text:#d5dbe3; --muted:#8b95a5; --dim:#5a6372; --green:#4ade80; --blue:#60a5fa; --purple:#a78bfa; --amber:#fbbf24; --red:#f87171; --mono:"JetBrains Mono",ui-monospace,Menlo,monospace; --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; }
+  html,body { background:var(--bg); color:var(--text); }
+  body { font:15px/1.55 var(--sans); padding-block:40px 80px; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); margin:0; }
+  .wrap { max-width:900px; margin:0 auto; display:grid; gap:36px; min-width:0; }
+  h1 { font:700 30px/1.15 var(--mono); margin:0 0 6px; letter-spacing:-0.02em; text-wrap:balance; }
+  h1 span { color:var(--purple); }
+  h2 { font:700 20px/1.2 var(--mono); margin:0 0 14px; border-top:1px solid var(--line); padding-top:22px; text-wrap:balance; }
+  h3 { font:600 15px var(--mono); margin:22px 0 8px; color:var(--text); }
+  h4 { font:600 13px var(--mono); margin:14px 0 6px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+  p, li { color:var(--text); }
+  p { margin:0 0 10px; max-width:72ch; }
+  .lede { color:var(--muted); font-size:16px; max-width:70ch; }
+  .tag { font:500 11px var(--mono); color:var(--amber); text-transform:uppercase; letter-spacing:.08em; }
+  ul, ol { margin:0 0 10px; padding-left:22px; display:grid; gap:6px; }
+  li { max-width:80ch; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:9px 10px; border-top:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font:500 12px var(--mono); text-transform:uppercase; letter-spacing:.06em; border-top:0; }
+  .scroll { overflow-x:auto; min-width:0; }
+  code { font:13px var(--mono); background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:1px 5px; }
+  pre { font:13px/1.5 var(--mono); background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px; overflow-x:auto; margin:0 0 10px; }
+  pre code { background:none; border:0; padding:0; }
+  .box { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; min-width:0; }
+  .box.decision { border-color:var(--purple); }
+  .box.risk { border-color:var(--amber); }
+  .box.rule { border-color:var(--green); }
+  .box h3 { margin-top:0; }
+  .box p:last-child, .box ul:last-child { margin-bottom:0; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .k { color:var(--muted); }
+  .g { color:var(--green); } .b { color:var(--blue); } .pu { color:var(--purple); } .a { color:var(--amber); } .r { color:var(--red); }
+  .phase { display:grid; grid-template-columns:130px 1fr; gap:14px; padding:14px 0; border-top:1px solid var(--line); min-width:0; }
+  .phase .n { font:700 13px var(--mono); color:var(--purple); }
+  .phase .n small { display:block; color:var(--dim); font-weight:400; margin-top:4px; }
+  .phase h3 { margin:0 0 6px; }
+  .phase > div { min-width:0; }
+  .small { font-size:13px; color:var(--muted); }
+  .numbers { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; }
+  .numbers .num { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; min-width:0; }
+  .numbers .num b { display:block; font:700 22px/1.1 var(--mono); color:var(--green); font-variant-numeric:tabular-nums; }
+  .numbers .num span { display:block; font-size:12px; color:var(--muted); margin-top:4px; }
+  .led { display:inline-block; width:9px; height:9px; border-radius:50%; vertical-align:middle; margin-right:5px; }
+  .led.g { background:var(--green); } .led.b { background:var(--blue); } .led.p { background:var(--purple); } .led.x { background:var(--dim); }
+  .hud { font:12.5px/1.45 var(--mono); background:#0d1117; border:1px solid var(--line); border-radius:8px; padding:12px 14px; overflow-x:auto; white-space:pre; color:var(--text); margin:0 0 10px; }
+  .hud i { color:var(--muted); font-style:normal; }
+  .toc { columns:2; column-gap:24px; font-size:14px; }
+  .toc li { break-inside:avoid; }
+  a { color:var(--blue); }
+  @media (max-width:700px) { .grid2 { grid-template-columns:1fr; } .phase { grid-template-columns:1fr; } .numbers { grid-template-columns:1fr 1fr; } .toc { columns:1; } }
+  @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body class="dark">
+<div class="wrap">
+  <header>
+    <span class="tag">Build plan · 16 Oct 2026 · draft for Mr. Tom</span>
+    <h1>soop<span>doop</span> for crews</h1>
+    <p class="lede">How soopdoop becomes something a team of four developers, each running 3 to 10 agents, pays for and uses all day. It is based on the code as it is at v0.13.1, on what Claude Code 2.1.301, Codex 0.160.0 and Grok 1.0.46 can do on Mr. Tom's Mac today, and on a read of how other harness companies make money.</p>
+  </header>
+
+  <section>
+    <h2>0. The short version</h2>
+    <p>Today soopdoop shows who is online, lets one agent ask another a question through the Operator, and keeps score with XP. That is a nice layer for friends. A team pays for something else: <b>not doing the same work twice, handing work to the agent that already knows the area, and staying in touch without sitting in Slack.</b></p>
+    <p>The plan adds six things, in this order:</p>
+    <ol>
+      <li><b>Every agent on the wire.</b> Codex and Grok agents show up next to Claude Code agents, answer questions, and take work. Today half of a mixed team is invisible.</li>
+      <li><b>The ledger.</b> A crew memory of who did what, one line per finished task, built on each person's Mac. It answers "who knows about pricing and plans?" even when that person's agents are off.</li>
+      <li><b>Heads-ups and hand-offs.</b> When you start on something a crewmate's agent is already deep in, soopdoop says so before you start, and you can hand the task to that agent. The owner approves it, and it runs on their account.</li>
+      <li><b>Crew notes.</b> Live shared instructions (design rules, pricing facts, decisions) that reach every running agent on every harness at its next prompt. Nobody's agent is stuck on last month's rules.</li>
+      <li><b>The room.</b> The wire gets ships, props from customers, saves, shouts and a daily digest, posted to Slack. You can be heads-down and still be seen.</li>
+      <li><b>The business.</b> Crews as the paid unit at $10 a member a month, with the Operator as a real agent that keeps the crew's memory and writes the digest. The free tier stays for friends.</li>
+    </ol>
+    <p>The value has to be on screen, or a team asks what this is even doing. So every surface (the HUD, the menu bar, the weekly digest) shows four numbers, and they only count things soopdoop did:</p>
+    <div class="numbers">
+      <div class="num"><b>212</b><span>questions answered by crewmates' agents · ~9M tokens saved</span></div>
+      <div class="num"><b>14</b><span>hand-offs done by the agent that knew the area</span></div>
+      <div class="num"><b>3</b><span>heads-ups acted on: duplicate or clashing work caught early</span></div>
+      <div class="num"><b>27</b><span>ships this week, 9 with walkthroughs</span></div>
+    </div>
+    <p class="small">Sample numbers. "Tokens saved" stays an estimate and never a score (AGENTS.md: no token counts on boards). The other three are counts of real events.</p>
+  </section>
+
+  <section>
+    <h2>Contents</h2>
+    <ol class="toc">
+      <li><a href="#now">1. Where we are</a></li>
+      <li><a href="#goals">2. What the team asked for</a></li>
+      <li><a href="#harness">3. Every agent on the wire</a></li>
+      <li><a href="#ledger">4. The ledger</a></li>
+      <li><a href="#headsup">5. Heads-ups</a></li>
+      <li><a href="#handoff">6. Hand-offs</a></li>
+      <li><a href="#notes">7. Crew notes</a></li>
+      <li><a href="#room">8. The room and the Slack bridge</a></li>
+      <li><a href="#menubar">9. The menu bar</a></li>
+      <li><a href="#operator">10. The Operator as the crew's agent</a></li>
+      <li><a href="#crews">11. Crews as objects</a></li>
+      <li><a href="#business">12. The business</a></li>
+      <li><a href="#order">13. Build order</a></li>
+      <li><a href="#rules">14. Rules that do not bend</a></li>
+      <li><a href="#questions">15. Decisions for Mr. Tom</a></li>
+    </ol>
+  </section>
+
+  <section id="now">
+    <h2>1. Where we are (v0.13.1)</h2>
+    <div class="grid2">
+      <div class="box">
+        <h3 class="g">Built and running</h3>
+        <ul>
+          <li>Mac app: menu bar icon, the HUD, the Operator chat, Settings. Five LaunchAgents. Self-updating releases.</li>
+          <li>Daemon with Claude Code hooks: presence (working / idle / waiting), one routing summary per open agent, introductions at session start, the private switch.</li>
+          <li>The Operator: routes a question (Opus 5.5), the owner's Mac asks a fork of the agent (Sonnet 5.5), the answer comes back. Who-questions from the summaries. The fund caps what crewmates can spend.</li>
+          <li>Friends, invites, knocks, flicks, XP, the board, the wire, tokens saved.</li>
+          <li>Sign in with Superset. Linked Superset profiles.</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h3 class="a">Missing for a team</h3>
+        <ul>
+          <li>Only Claude Code. Codex and Grok sessions do not exist to soopdoop. On Mr. Tom's Mac both are installed and Superset already runs their hooks.</li>
+          <li>No memory past the current session. When an agent closes, what it knew is gone from the crew.</li>
+          <li>Questions only. The Operator turns away every "do this for me".</li>
+          <li>No shared instructions. Every person's agents read their own CLAUDE.md at their own commit.</li>
+          <li>Nothing reaches Slack. Nothing about ships, customers or support.</li>
+          <li>No crews, only friends. No plan, no billing, no reason to pay.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="small" style="margin-top:12px">One fact that shapes the plan: Mr. Tom's Superset organization has one member (himself). His crewmates are not in it. So anything that leans on Superset's org features (Remote Access, org-visible Pages, Tasks, Slack-triggered automations) does not reach the real crew today. soopdoop's own channels have to carry everything.</p>
+  </section>
+
+  <section id="goals">
+    <h2>2. What the team asked for, and what answers it</h2>
+    <div class="scroll"><table>
+      <tr><th>Goal</th><th>What soopdoop does</th><th>Where you see it</th></tr>
+      <tr><td>Stop wasting tokens on duplicate work</td><td>Heads-ups at prompt time (§5), the ledger (§4), hand-offs (§6), answers from the agent that already read the code (today).</td><td>A card before you start. The heads-up count. Tokens saved.</td></tr>
+      <tr><td>Ask my team's agents to do things</td><td>Hand-offs: a task goes to a crewmate's agent, the crewmate approves (or pre-approves you), it runs on their account, and reports back (§6).</td><td>The hand-off card, the wire, the count.</td></tr>
+      <tr><td>Works with Claude, Codex, Grok</td><td>Hooks, transcripts, forks and hand-off delivery for all three (§3). Gemini, Cursor and OpenCode follow the same pattern later.</td><td>Harness badge on each agent.</td></tr>
+      <tr><td>Camaraderie; replace Slack for people heads-down</td><td>The room: the wire with shouts, props, ships, customer props, saves; the menu bar as an always-on glance; knocks (§8, §9).</td><td>Menu bar lights. The wire. "Yesterday".</td></tr>
+      <tr><td>Daily "look what we did" in Slack</td><td>The Operator writes a digest from the wire and the ledger and posts it to a Slack channel (§8).</td><td>Slack, the HUD, the menu bar.</td></tr>
+      <tr><td>Props from customers; saves</td><td>A scout that runs on your Mac with your own email or support connector and sends one line to the wire (§8).</td><td>The wire, the digest.</td></tr>
+      <tr><td>Show what Ada shipped, with visuals</td><td>Ships from merged PRs, with a walkthrough page the owner's agent writes (§8).</td><td>Ship cards with links.</td></tr>
+      <tr><td>Shared memory; nobody stuck on old rules</td><td>Crew notes, delivered live to every harness (§7).</td><td>"Crew notes changed" at the next prompt.</td></tr>
+      <tr><td>Who knows the most about X right now</td><td>The ledger, searched by the Operator (§4).</td><td>Ask the Operator, or your agent asks it.</td></tr>
+      <tr><td>A business, not a toy</td><td>Crews, plans, the Operator with memory and the digest as the paid part (§11, §12).</td><td>The crew's cost line; the four numbers.</td></tr>
+    </table></div>
+  </section>
+
+  <section id="harness">
+    <h2>3. Every agent on the wire: Claude, Codex, Grok</h2>
+    <p>This comes first because a team is mixed. Everything else (summaries, questions, hand-offs, the ledger) is built per harness on top of the same three pieces: a <b>hook</b> that tells the daemon about sessions, a <b>transcript</b> on disk the daemon can read, and a <b>fork</b> command that asks a throwaway copy of a session a question. All three exist for all three harnesses. Checked on Mr. Tom's Mac on 16 Oct 2026 (installed versions, their help text, Grok's local user guide) and against the official docs of each tool the same day; not yet run end to end.</p>
+    <div class="scroll"><table>
+      <tr><th></th><th>Claude Code 2.1.301</th><th>Codex 0.160.0</th><th>Grok 1.0.46</th></tr>
+      <tr><td>Hooks</td><td><code>~/.claude/settings.json</code>. Ours are installed.</td><td><code>~/.codex/hooks.json</code>, same event names (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, Interrupt, SessionEnd). The payload has <code>session_id</code>, <code>cwd</code>, <code>transcript_path</code> (sometimes null) and the prompt. Superset already wrote one. A user must trust a hook once in <code>/hooks</code>, keyed to a hash of the hook's definition, so the command text must never change; Superset passes <code>--dangerously-bypass-hook-trust</code> for the sessions it starts.</td><td><code>~/.grok/hooks/*.json</code>, same event names. Payload keys are camelCase (<code>sessionId</code>, <code>cwd</code>) and there is no transcript path: the daemon finds the session folder from the cwd and the id. The parser takes both spellings.</td></tr>
+      <tr><td>Transcript</td><td><code>~/.claude/projects/&lt;slug&gt;/&lt;id&gt;.jsonl</code> (read today).</td><td><code>~/.codex/sessions/YYYY/MM/DD/rollout-&lt;time&gt;-&lt;id&gt;.jsonl</code>. The first line (<code>session_meta</code>) has the cwd and the git branch. Also <code>~/.codex/memories/</code>: Codex's own notes per task group, a good source for ledger lines.</td><td><code>~/.grok/sessions/&lt;url-encoded cwd&gt;/&lt;id&gt;/updates.jsonl</code>, plus <code>summary.json</code> with a generated title. <code>grok export &lt;id&gt;</code> gives Markdown.</td></tr>
+      <tr><td>Fork (a question)</td><td><code>claude -p --resume ID --fork-session --no-session-persistence --safe-mode --tools ""</code> (today).</td><td><code>codex exec fork ID "question" --ephemeral --json -c sandbox_mode="read-only" -o answer.txt</code>. Usage comes in the JSON events.</td><td><code>grok -p "question" -r ID --fork-session --output-format json --effort low --max-turns 1 --disallowed-tools …</code>. The JSON has <code>usage</code> like Claude's.</td></tr>
+      <tr><td>Context at session start</td><td>Hook <code>additionalContext</code> on SessionStart and UserPromptSubmit (today).</td><td>Hook <code>additionalContext</code> (or plain stdout) on SessionStart and UserPromptSubmit, like Claude: the official hooks doc says so. Also a managed block in <code>~/.codex/AGENTS.md</code> for the notes (§7).</td><td>Hook stdout is ignored on SessionStart and UserPromptSubmit (its docs say so). <code>~/.grok/rules/*.md</code> is loaded in every project, so the daemon writes <code>~/.grok/rules/soopdoop.md</code>. PostToolUse hooks can add <code>additionalContext</code> mid-session.</td></tr>
+      <tr><td>Deliver a hand-off into a running session</td><td>The <b>inbox socket</b>, an official feature since 2.1.224: every session listens on a Unix socket and tells its hooks where (<code>CLAUDE_CODE_MESSAGING_SOCKET</code> and a token in the hook's environment, which our hook already sees). The docs say it is for "a script or hook to post into a session": a message is read between tool calls, or starts a new turn when the session is idle, and the owner's <code>crossSessionInbound</code> setting (accept, hold, refuse) and the permission mode decide whether it is held for approval. The daemon keeps the socket path per session (on the Mac only) and posts the hand-off there. Fallbacks: in a Superset terminal, <code>superset terminals send --local --workspace W --terminal T --text …</code> (the hook sees <code>SUPERSET_TERMINAL_ID</code> and <code>SUPERSET_WORKSPACE_ID</code> too); a background session takes <code>claude --resume ID "prompt"</code> as its next turn; last, the prompt on the clipboard plus a notification. Channels (a research preview for plugins) are not needed.</td><td><code>codex queue --thread ID --message "…"</code> queues a message for an existing session (in the installed CLI's help; not in the docs yet). Sessions under the local app-server daemon also take <code>turn/start</code> and <code>turn/steer</code> over JSON-RPC. Same Superset path when inside a terminal.</td><td>No queue command found. Superset path when inside a terminal; otherwise clipboard plus notification. Later: the ACP agent mode (<code>grok agent</code>) can load a session.</td></tr>
+      <tr><td>Prices for the fund</td><td>Known (fund.ts).</td><td>Add OpenAI prices per model.</td><td>Add xAI prices per model.</td></tr>
+    </table></div>
+    <h3>Hook hygiene (the part that bites)</h3>
+    <ul>
+      <li>Cursor and Devin replay Claude's hooks, and Grok can too. Each soopdoop hook command names its harness inline (<code>SOOPDOOP_HARNESS=codex bun hook.ts …</code>), the way Superset's <code>SUPERSET_HOOK_HARNESS</code> does, and the hook drops an event when the environment says another tool is running it (<code>CURSOR_AGENT</code>, <code>CURSOR_VERSION</code>, a Claude session's <code>CLAUDECODE</code> around a Codex hook). A Codex run started by Claude's Bash tool is a sub-agent, not a new agent.</li>
+      <li>The hook forwards a few more fields to the daemon, when present: <code>SUPERSET_TERMINAL_ID</code> and <code>SUPERSET_WORKSPACE_ID</code>, Claude's <code>CLAUDE_CODE_MESSAGING_SOCKET</code> and its token, Grok's <code>GROK_SESSION_ID</code>. They stay on the machine. They are how hand-offs find the session.</li>
+      <li>Claude Code and Grok also take hooks of type <code>http</code>, which post the payload straight to a URL. Switching our Claude hooks from a <code>bun</code> process per event to an <code>http</code> hook to <code>127.0.0.1:47311/hook</code> saves a process start on every tool call in every session. Worth doing in R1 while the hook files are being rewritten; Codex keeps the command form.</li>
+      <li>Codex hooks are keyed by the exact command text (trust). The command string must not change between releases; it already points at a fixed path (<code>~/.soopdoop/app/apps/daemon/src/hook.ts</code>).</li>
+      <li>Setup writes the Codex and Grok hook files beside Superset's, with the same backup-first rule as for Claude, and <code>soopdoop uninstall</code> removes only ours.</li>
+    </ul>
+    <h3>Code</h3>
+    <ul>
+      <li><code>apps/daemon/src/transcript.ts</code> becomes <code>transcripts/claude.ts</code>, <code>codex.ts</code>, <code>grok.ts</code> behind one <code>Parsed</code> shape. Routing summaries and ledger lines come from that shape, so they look the same for every harness.</li>
+      <li><code>ask.ts</code> grows one <code>askArgs</code> per harness and one result parser per harness. The fund prices by harness and model.</li>
+      <li><code>state.ts</code> already carries <code>harness</code>. The HUD shows a small badge (C, X, G) per agent. <code>AppState</code> only gains fields.</li>
+      <li>Gemini CLI, Cursor CLI, Copilot CLI and Factory Droid all have hooks with session-start context; Droid has a fork command too (<code>droid exec --fork</code>); OpenCode has an HTTP server that can push a prompt into a running TUI. Each is one release on the R1 pattern, if the team uses it.</li>
+    </ul>
+    <p><b>Done when:</b> a Codex session and a Grok session on Mr. Tom's Mac show in a crewmate's HUD with summaries, and that crewmate's Claude agent gets a real answer from the Codex agent through <code>ask_operator</code>, logged in <code>reads.log</code> with a price.</p>
+  </section>
+
+  <section id="ledger">
+    <h2>4. The ledger: the crew's memory of who did what</h2>
+    <p>Routing summaries describe agents that are running now. A team also needs the past: who built the quote page, who touched Lob pricing, who fixed email metrics last week. That is the ledger: <b>one line per finished piece of work, per person</b>, kept for 90 days.</p>
+    <div class="hud">16 Oct · @adalovelace · codex · vibes@quote-redesign · redesigned the quote page; new M09/M10 mocks · areas: apps/web/quote, docs/changelog · 14 files · PR #412
+15 Oct · @jimmy · claude · vibes@email-metrics · fixed delivery counts double-counting bounces · areas: packages/email, apps/web/metrics · 6 files
+15 Oct · @tom  · claude · soopdoop@main · v0.13.1: Settings → Account box for the Superset handle · areas: apps/hud · 2 files · PR #88</div>
+    <h3>How a line is made</h3>
+    <ul>
+      <li>On the owner's Mac, when a session ends or has been idle for 10 minutes after a turn, the daemon reads the transcript and writes the line: date, harness, workspace@branch, what was done, the areas (top-level folders of the files touched), how many files, and a PR link if the transcript shows <code>gh pr create</code> or <code>gh pr merge</code> output.</li>
+      <li>The "what was done" part comes from the first and last prompts and the files for free. With the owner's permission (Settings, on by default when Claude Code is installed) a Haiku call on the owner's own account writes a better one; it costs about a fifth of a cent. Codex's own <code>~/.codex/memories/</code> and Grok's <code>summary.json</code> title are used when present.</li>
+      <li>Secrets are taken out (<code>lib/summaries.ts</code>). Private projects never get a line. The owner sees every line in the HUD (This Mac → Ledger) before and after it goes out, and can edit or delete it. A line is at most 240 characters.</li>
+      <li>Nothing else leaves the Mac. The transcript stays where it is.</li>
+    </ul>
+    <h3>What it is used for</h3>
+    <ul>
+      <li><b>Who-questions with memory.</b> "Who knows about pricing and plans?" ranks crewmates by their ledger lines (areas, words, recency) and the live summaries: "Ada: 6 pieces of work on pricing this month, last one Tuesday (lob-pricing.md, the quote page). His agent on it is off right now. Knock him?"</li>
+      <li><b>Routing when nobody is live.</b> The Operator today says "no crewmate has an open agent". With the ledger it says who did the work and offers a knock or a hand-off for when they are back.</li>
+      <li><b>Heads-ups</b> (§5) and the <b>digest</b> (§8) read it.</li>
+      <li><b>Onboarding.</b> A new crewmate's agent can ask "what has the crew done on billing?" and get the last month in five lines.</li>
+    </ul>
+    <h3>Backend</h3>
+    <p>A <code>ledger</code> table (hacker, at, harness, workspace, branch, did, areas[], files, pr, sessionKey), indexed by hacker and time, and by crew and time. <code>ledger:mine</code>, <code>ledger:edit</code>, <code>ledger:forget</code> for the owner; <code>ledger:search</code> for the Operator (crew only). Lines older than the plan's retention are dropped by a daily cron. The Operator's router gets the ledger's top matches as extra candidates marked "not running".</p>
+    <div class="box decision">
+      <h3 class="pu">A boundary change Mr. Tom has to approve</h3>
+      <p>AGENTS.md allows one thing built from transcripts to leave the Mac: the routing summary, one line per open agent. The ledger is a second thing of the same kind: one line per finished task, 240 characters, built on the owner's Mac, shown to the owner first, editable, inside the crew only. The rule "above the crew: work only, never people" still holds: a ledger line never goes up the tree. If Mr. Tom says yes, AGENTS.md and README get the new exception in the same words.</p>
+    </div>
+  </section>
+
+  <section id="headsup">
+    <h2>5. Heads-ups: catch duplicate work before it starts</h2>
+    <p>Mr. Tom's example: he is about to start a bug ticket on wrong email-delivery metrics, and Jimmy's agent has been deep in email metrics for two hours. soopdoop should say so <b>before</b> he starts, not after.</p>
+    <h3>How it works</h3>
+    <ul>
+      <li>At every prompt (UserPromptSubmit), the daemon on the owner's Mac reads the prompt from the hook payload, locally, and scores it against the crew's live summaries and the last two weeks of the ledger: shared file paths, module names and words of four letters or more (the same scoring the Operator's fake mode uses today). No model call, no network, under 5 ms. The prompt still never leaves the Mac.</li>
+      <li>Over the threshold, two things happen. The HUD shows a card for 10 minutes: <span class="k">"Jimmy's agent is on email metrics right now (packages/email, apps/web/metrics). Ask it · Hand off · Not now."</span> And on Claude Code the agent gets a note in its context: <span class="k">"soopdoop: @jimmy's agent is on this area now; ask it (ask_operator @jimmy) or hand it off (hand_off @jimmy) before you build."</span> The skill tells the agent to say it plainly to its user and offer both.</li>
+      <li>Codex and Grok agents get the same note at the start of their next session (the file channel) and the HUD card at once. On Grok a PostToolUse hook can add the note mid-session; that is a later refinement.</li>
+      <li>A heads-up counts as "acted on" when the human or the agent asks that agent, hands the task off, or knocks within 10 minutes. That is the number on the HUD. Dismissed cards are not counted and are not shown again for the same pair of agents for an hour.</li>
+    </ul>
+    <p>The same scoring also warns about <b>collisions</b>: two crewmates' agents with changes in the same files right now ("Ada's agent is editing apps/web/quote/Form.tsx too"). Same card, one more line.</p>
+    <p><b>Done when:</b> on two Macs, one prompt about an area the other's agent is working in shows the card and the context note within two seconds, and acting on it is counted once.</p>
+  </section>
+
+  <section id="handoff">
+    <h2>6. Hand-offs: ask a crewmate's agent to do the work</h2>
+    <p>Today the Operator refuses every work order before any agent is read. That rule protected crewmates' accounts. The team wants the opposite, with consent: <b>the crewmate agrees, and the task runs on their account, in their agent, with their context.</b> That keeps it inside every provider's terms, because the developer runs a prompt they chose to run.</p>
+    <h3>The flow</h3>
+    <ol>
+      <li><b>Offer.</b> From an agent (a new MCP tool, <code>hand_off</code>: the crewmate, the task, why them), from a heads-up card, from a crewmate's row in the HUD ("Hand off…"), or from the Operator chat ("hand this to Jimmy's email agent"). The text is shown verbatim; nothing is rewritten.</li>
+      <li><b>Approve.</b> The crewmate's Mac shows a card, a notification, and a badge in the menu bar: <span class="k">"@tom hands you: 'Fix the double-counted bounces in delivery metrics (VIB-123)' → your email-metrics agent, idle. Run now · Run when idle · Decline · Reply…"</span> Settings per crewmate: <i>Ask me each time</i> (default), <i>Run automatically when my agent is idle</i>, <i>Never</i>. An offer expires after 24 hours (a scheduled function, like every interruption).</li>
+      <li><b>Run.</b> The daemon delivers the prompt into the chosen session by the best channel for its harness (§3): the Superset terminal, <code>codex queue</code>, a background copy on Claude, or the clipboard. The prompt is prefixed: <span class="k">"soopdoop hand-off from @tom (he approved this text, you approved running it): … When you are done, call report_back with a short summary and any PR link."</span></li>
+      <li><b>Report back.</b> The agent calls the new <code>report_back</code> tool (handoff id, summary, links). The hand-off is done, the wire says <span class="k">"Jimmy's agent did Tom's hand-off: fixed VIB-123 (PR #418)"</span>, Tom gets a notification, Jimmy gets an assist worth 20 XP. If the agent forgets, the Stop hook notices the session ended after a hand-off and the daemon asks a fork "what did you do for the hand-off?" (within the fund).</li>
+    </ol>
+    <h3>Rules for hand-offs</h3>
+    <ul>
+      <li>Never without the owner's consent for that crewmate, never hidden: the card shows the exact text and which session will get it.</li>
+      <li>Always on the owner's account. A separate allowance (default $10 a day, <code>soopdoop fund</code>) caps what hand-offs may cost, counted from the report-back usage where the harness reports it.</li>
+      <li>Logged on the owner's Mac (<code>~/.soopdoop/logs/handoffs.log</code>: who, which agent, when, size, cost; never the text). The backend keeps the offer text, the status and the summary, nothing else.</li>
+      <li>Private agents cannot be chosen. A hand-off to someone with no fitting agent becomes a knock with the text attached.</li>
+    </ul>
+    <h3>What to verify first</h3>
+    <ul>
+      <li>The Claude inbox socket: the message line format (the docs show the auth line, not the message shape), what a held message looks like to the owner, and that our hooks fire for the turn it starts.</li>
+      <li><code>superset terminals send</code> from the daemon into a Claude Code terminal that Superset started, on the same Mac.</li>
+      <li><code>codex queue --thread</code> into an interactive Codex session: does the message run at the next idle, and does the hook fire for it?</li>
+      <li><code>claude --resume ID "prompt"</code> against a background session: that it lands as the next turn (the docs say it does from 2.1.285), and what happens when the session is not in the background.</li>
+    </ul>
+    <p><b>Done when:</b> an agent on one Mac hands a task to a crewmate's running Codex agent on another Mac, the crewmate approves it in the HUD, the task runs, <code>report_back</code> lands, and the wire shows it on both Macs.</p>
+  </section>
+
+  <section id="notes">
+    <h2>7. Crew notes: shared memory that reaches every agent</h2>
+    <p>A CLAUDE.md in git is the right place for a repository's rules. It is also the reason agents get stuck on old rules: it lands per repo, only after a merge and a pull, under one name for Claude and another for Codex, and it cannot say "Ada owns the quote page this week" or "the Lob prices changed on Tuesday". Crew notes are the live layer beside it.</p>
+    <h3>What a note is</h3>
+    <ul>
+      <li>Up to 400 characters, an author, a date, optional tags (design, pricing, infra, process, people), an optional "confirm by" date, and an optional "applies when" line (a folder, a repository, a word): a note about the quote page is delivered only to sessions in that area, so the 2 KB that reaches a session is the 2 KB that matters. Devin's shared Knowledge works this way (each entry carries a trigger), and it is the one part of that product worth copying. A crew keeps at most 60 live notes.</li>
+      <li>Anyone in the crew writes one in the HUD. An agent can propose one with a new MCP tool, <code>crew_note</code>; it shows up for its owner to approve with one click before the crew sees it (a trusted crewmate's agents can post straight away, a per-crewmate setting of the leader's).</li>
+      <li>Age shows next to every note. At 30 days the author gets a "still true?" nudge in the HUD; an unconfirmed note stops being delivered after 45 days but stays in the history. A note can retire another ("replaces: design rules v2").</li>
+    </ul>
+    <h3>How notes reach agents</h3>
+    <ul>
+      <li><b>Claude Code:</b> the SessionStart hook adds the live notes (at most 2 KB, newest first) under the crew introduction. When a note changes, the next prompt gets one line: <span class="k">"soopdoop: a crew note changed. @adalovelace (16 Oct): the quote page uses the M10 components; do not touch the old Form.tsx."</span></li>
+      <li><b>Codex and Grok:</b> the daemon keeps <code>~/.soopdoop/crew.md</code> fresh (crewmates' agents, notes, how to ask) and points each harness at it: a managed block in <code>~/.codex/AGENTS.md</code>, and a rule file in <code>~/.grok/rules/soopdoop.md</code> (loaded in every project). Changes land at the next session; a PostToolUse note on Grok can come later.</li>
+      <li><b>Any harness, any time:</b> the MCP tool <code>crew_notes</code> returns all of them, and the Operator answers "what are our design rules?" from them.</li>
+    </ul>
+    <p>The skill grows one paragraph: a note from the crew outranks the agent's memory of the same fact, and a note with a date is the current one.</p>
+    <p><b>Done when:</b> Mr. Tom changes a note in the HUD, and within one prompt a Claude session on Ada's Mac and, at its next start, a Codex session on Jimmy's Mac both repeat the new rule when asked.</p>
+  </section>
+
+  <section id="room">
+    <h2>8. The room, and the Slack bridge</h2>
+    <p>Slack stays. The point is that a person buried in agents can still be seen and still see others, without Slack. The wire becomes the room: things that happened, newest first, four lines in the HUD, all of them in the menu bar, and a digest once a day in Slack for everyone who lives there.</p>
+    <h3>New things on the wire</h3>
+    <div class="scroll"><table>
+      <tr><th>Event</th><th>Where it comes from</th><th>What it looks like</th></tr>
+      <tr><td>Ship</td><td>The owner's transcript shows a PR opened or merged (<code>gh pr create</code>, <code>gh pr merge</code>, a merge into main), written into the ledger line. Later: a GitHub App on the org, so ships land even when no agent did the merge.</td><td><span class="led g"></span>Ada shipped the quote page redesign (PR #412) · walkthrough · + props</td></tr>
+      <tr><td>Walkthrough</td><td>After a ship, the HUD asks the owner once: "Make a walkthrough for #412? Your agent writes a short page." On yes, a fork of the session that did the work writes a self-contained HTML page (what changed, why, before and after). It goes where the owner says: a Superset Page (same org only), an Artifact link, or soopdoop's own drops host (§12).</td><td>a link on the ship card and in the digest</td></tr>
+      <tr><td>Hand-off done</td><td>§6</td><td><span class="led g"></span>Jimmy's agent did Tom's hand-off: VIB-123 fixed</td></tr>
+      <tr><td>Heads-up acted on</td><td>§5</td><td><span class="led b"></span>Tom asked Jimmy's agent before starting on email metrics</td></tr>
+      <tr><td>Note added</td><td>§7</td><td><span class="led b"></span>Ada added a crew note: the quote page uses M10 components</td></tr>
+      <tr><td>Shout</td><td>A person types one line in the HUD or the menu bar ("ship it", "lunch?", "CI is red, looking"). No threads, no reactions except props. Gone from the wire after 24 hours.</td><td><span class="led b"></span>@tom: CI is red, looking</td></tr>
+      <tr><td>Props</td><td>One tap on any wire line gives its person props (5 XP). Props from a customer come from the scout below.</td><td><span class="led g"></span>Tom got props from a customer: thanked for fixing their CSV export</td></tr>
+      <tr><td>Save</td><td>The scout, when a thread went from upset to thanks.</td><td><span class="led g"></span>Grace may have just saved the Acme account</td></tr>
+    </table></div>
+    <h3>The scout: props from customers, on your own connectors</h3>
+    <p>Support people use Claude with their own Gmail or help-desk connectors already. The scout is a small skill that runs on their Mac every hour (a LaunchAgent, like the updater): <code>claude -p</code> on Haiku, with the person's own Gmail or help-desk connector, looking at replies since the last run for thanks or for a turnaround, and calling the soopdoop MCP tool <code>props</code> with one line and no names of customers. Nothing about the email reaches soopdoop's backend but that line. It costs the person a few cents a day on their own plan, and it is off until they turn it on in Settings. Which help desk the team uses decides the first connector (§15). For a help desk with a rating event, a webhook is the cheaper second path:</p>
+    <div class="scroll"><table>
+      <tr><th>Help desk</th><th>A "customer rated it" event to subscribe to</th></tr>
+      <tr><td>Help Scout</td><td><code>satisfaction.ratings</code> webhook (Great / Okay / Bad, the comment, the ticket)</td></tr>
+      <tr><td>Intercom</td><td><code>conversation.rating.added</code> (then fetch the conversation for the rating text)</td></tr>
+      <tr><td>Zendesk</td><td><code>ticket.csat_received</code></td></tr>
+      <tr><td>Plain, Pylon</td><td>a workflow or trigger on "CSAT survey answered" that posts a webhook</td></tr>
+      <tr><td>Front</td><td>no rating event; the scout reads replies instead</td></tr>
+      <tr><td>Gmail</td><td>no rating; the scout reads replies with the person's own connector (Gmail's push API only says "something changed")</td></tr>
+    </table></div>
+    <p class="small" style="margin-top:8px">A rating event names the ticket, not who shipped the fix. Tying the thanks to the person who did the work is what the ledger adds (the ticket number or the area in a ledger line), and it is something no help desk does today.</p>
+    <h3>The Slack bridge</h3>
+    <ul>
+      <li>The crew leader pastes a Slack incoming-webhook URL into Settings → Crew (five minutes, no app review). A Slack app with <code>chat:write</code> can come later if threads or edits matter.</li>
+      <li><b>The digest.</b> At a time the crew sets (default 9:00 local), the Operator writes "Yesterday in &lt;crew&gt;" from the wire and the ledger: ships with walkthrough links, hand-offs done, questions answered (a count), heads-ups, props and saves, notes added. Positive only. Names inside the crew are fine; the same digest above the crew describes work only. It posts to Slack, shows in the HUD under "Yesterday", and is the menu bar's first item in the morning.</li>
+      <li><b>Live mirror</b> (off by default): ships, props and saves go to the channel as they happen.</li>
+      <li><b>Weekly:</b> the four numbers, so the people who never open the HUD still see what soopdoop did.</li>
+      <li>Inbound later: a slash command (<code>/soopdoop who knows pricing?</code>) answered by the Operator in Slack, for the support team.</li>
+    </ul>
+    <p><b>Done when:</b> a digest with a real ship, a hand-off and a shout from the day posts to the team's Slack at the set time, and the same text is under "Yesterday" in each HUD.</p>
+  </section>
+
+  <section id="menubar">
+    <h2>9. The menu bar</h2>
+    <p>The menu bar is the Slack-presence replacement: a glance, not a window. Today the icon is a hexagon that becomes an antenna or a bell. It should show the crew.</p>
+    <div class="hud"><i>icon</i>   ●●●○  <i>(one dot per crewmate: green working, blue idle, grey off; a purple pulse while a relay runs; a count badge for hand-offs waiting; the bell for a knock)</i>
+
+<i>menu</i>   @tom · hacker · 412 XP
+       ─────────────────────────────
+       <span class="led g"></span>@adalovelace · 4 agents · the quote page redesign
+       <span class="led b"></span>@jimmy · 2 agents · email metrics, idle
+       <span class="led x"></span>@sam · off since 17:40
+       ─────────────────────────────
+       Yesterday: 3 ships, 2 hand-offs, 41 questions   ›
+       1 hand-off waiting for you                      ›
+       ─────────────────────────────
+       Ask the crew…        Hand off…        Shout…
+       Focus ›     Invite someone new     Settings…</div>
+    <ul>
+      <li>Each crewmate line is one glance: light, agent count, and the summary of their most active agent (only what they share). Click a line to open their row in the HUD.</li>
+      <li>"Ask the crew…" opens the Operator chat. "Hand off…" and "Shout…" are one-line composers in a small panel under the menu bar, so neither needs the HUD.</li>
+      <li>The icon is drawn as a template image with colour dots layered on it, so it stays readable on light and dark menu bars. The app already has the LED colours and the pulse.</li>
+    </ul>
+  </section>
+
+  <section id="operator">
+    <h2>10. The Operator as the crew's agent</h2>
+    <p>Today the Operator is a router and a chat. For a crew it becomes an agent with a memory and a few tools, and that is the part a team pays for. It still never reads a conversation; forks answer on their owners' Macs.</p>
+    <div class="grid2">
+      <div class="box">
+        <h3>What it knows</h3>
+        <ul>
+          <li>Live summaries (today).</li>
+          <li>The ledger: 90 days of who did what.</li>
+          <li>Crew notes.</li>
+          <li>The wire: a week of events.</li>
+          <li>The crew: handles, names, who is in focus, who shares what.</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h3>What it can do</h3>
+        <ul>
+          <li>Answer who- and what-questions itself.</li>
+          <li>Ask an agent (a relay, as today).</li>
+          <li>Offer a hand-off (the owner still approves).</li>
+          <li>Knock, with the question attached, when nobody's agent is live.</li>
+          <li>Write the daily digest and the weekly numbers.</li>
+          <li>Search the ledger and the notes for an agent's question.</li>
+        </ul>
+      </div>
+    </div>
+    <ul style="margin-top:12px">
+      <li>Model: Sonnet 5.5 for routing and chat (today Opus; the routing prompt is small, and Sonnet handles it), Opus 5.5 for the digest once a day. The chat gets tool use instead of the one-shot JSON reply, so a question can be answered in two steps (search the ledger, then ask the agent).</li>
+      <li>The crew sees its Operator's cost for the month in Settings → Crew, as the spec asked. On the Team plan it is included; the number is still shown.</li>
+      <li>It speaks in the HUD chat, in agents' <code>ask_operator</code> answers, in the digest, and later in Slack.</li>
+    </ul>
+  </section>
+
+  <section id="crews">
+    <h2>11. Crews as objects</h2>
+    <p>Today "crew" means "my friends". For a team, a crew is a thing with a name, a leader, up to 8 members, settings and a plan. Friends stay as the social graph; the crew is the scope for the ledger, the notes, hand-offs, the digest and billing.</p>
+    <div class="scroll"><table>
+      <tr><th>Table</th><th>Fields</th></tr>
+      <tr><td><code>crews</code></td><td>name, leaderId, members (≤ 8), plan (free / team), digestHour, timezone, slackWebhook (encrypted), handoffDefault, whoMayPostNotes, stripeCustomerId, createdAt</td></tr>
+      <tr><td><code>ledger</code></td><td>§4</td></tr>
+      <tr><td><code>notes</code></td><td>crewId, authorId, text, tags[], confirmBy, replaces, retiredAt, createdAt</td></tr>
+      <tr><td><code>handoffs</code></td><td>crewId, fromId, toId, targetAgentId, text, status (offered / accepted / declined / expired / running / done / failed), summary, links[], usd, createdAt, decidedAt, finishedAt, expiresAt</td></tr>
+      <tr><td><code>headsups</code></td><td>hackerId, otherId, otherAgentId, kind (same area / same files), actedAt, at (kept 7 days, for the count)</td></tr>
+      <tr><td><code>feed</code></td><td>gains kinds: ship, walkthrough, handoff, headsup, note, shout, props, save</td></tr>
+      <tr><td><code>digests</code></td><td>crewId, day, text, postedAt</td></tr>
+    </table></div>
+    <ul style="margin-top:12px">
+      <li>The first inviter becomes the leader (the spec). The leader can hand the role over. A member can leave; the leader can remove.</li>
+      <li>Introductions, the Operator's candidates, heads-ups and the wire all scope to the crew. A hacker in no crew keeps today's friends behaviour. One crew per hacker in v1; a second crew (consultants) later.</li>
+      <li>Everything that costs money has a line in Settings → Crew: the Operator's calls, the digest, drops storage.</li>
+    </ul>
+  </section>
+
+  <section id="business">
+    <h2>12. The business</h2>
+    <p>Mr. Tom's test: justify $10 a member a month by doing work that costs us something and that a "dumb connector" or the users' own agents could not do. The honest answer is that most of soopdoop's value is produced on the members' Macs, by their own agents, on their own plans. That is also the moat (nothing central reads anyone's work). What the crew pays for is the part that has to live in one place and remember: the Operator with the crew's memory, the digest, the bridge to Slack, and the hosting.</p>
+
+        <h3>How the others make money (their pages, read 16 Oct 2026)</h3>
+    <div class="scroll"><table>
+      <tr><th>Product</th><th>Free</th><th>Paid, and what the money buys</th></tr>
+      <tr><td>Superset</td><td>the desktop app, "free forever"; one user</td><td>Pro $20 a user a month ($15 yearly), per active seat: unlimited users, Remote Access through their relay, Automations, Linear and Slack integrations, the phone app. Enterprise: SSO, SCIM, audit logs, SOC 2. Tokens are never resold. The marketplace holds themes and agent configs, no prices, no take rate.</td></tr>
+      <tr><td>T3 Code</td><td>everything (MIT)</td><td>Nothing. Theo says there is no paid tier and will be none; the company runs on his content business, is not profitable, and the best case is "selling the company or adding a paid feature".</td></tr>
+      <tr><td>Conductor</td><td>parallel agents, local workspaces</td><td>Pro $50 a month: cloud workspaces, multiplayer for up to 5, an API, mobile. Teams $60 a user: live collaboration, admin, central billing.</td></tr>
+      <tr><td>Claude Code</td><td>none (Pro $20 and Max include it)</td><td>Team $25 a seat ($20 yearly): SSO, usage analytics with a per-user leaderboard, a managed CLAUDE.md that individuals cannot turn off, private plugin marketplaces, spend controls. Enterprise $20 a seat plus API usage. Managed Agents: $0.08 per session-hour plus tokens.</td></tr>
+      <tr><td>Codex</td><td>none (Plus $20 includes it)</td><td>Business $25 a user: a workspace, SSO, admin tools, credits by model.</td></tr>
+      <tr><td>Cursor (now SpaceX)</td><td>a free tier</td><td>Teams from $30 a user: SSO, analytics, a team marketplace for rules, skills and plugins that admins can make required. Bugbot is metered at $1 to $1.50 a run.</td></tr>
+      <tr><td>Devin</td><td>1 user, limited</td><td>Teams $40 a seat ($80 minimum): org-wide Knowledge (now moving into Skills), DeepWiki, spend limits. Memory stays per person and is never shared.</td></tr>
+      <tr><td>Amp, Zed, Warp, Factory</td><td>Amp: bring your own key, no fees</td><td>Amp Teams: no extra charge (thread sharing, shared skills, SSO). Zed Pro $10, Business $30. Warp Business $50. Factory Teams $60 a team plus $40 a seat.</td></tr>
+      <tr><td>Digest and presence tools</td><td>Geekbot and Range free for small teams</td><td>Geekbot $3 a user, DailyBot $2.40 to $6.50, Range $8: standup answers posted to a Slack thread. Gather $12 to $15: a video office with "Live App Status". Around, Campsite, Cord and Multi all shut down; Basecamp's Campfire went from $299 to free.</td></tr>
+      <tr><td>Linear, Raycast, Notion, Tuple, Loom</td><td>Linear: unlimited members and the agent platform</td><td>Linear Basic $10 a user (yearly): teams, admin roles. Raycast Teams $12 to $15: shared commands and snippets. Notion Plus $10. Loom $18 to $24. Tuple $30. SSO and SCIM start at $16 and usually $30 and up.</td></tr>
+    </table></div>
+    <h3>What that says</h3>
+    <ul>
+      <li><b>The seat buys the layer around the agents, never the tokens.</b> Superset, Conductor, Zed, Warp, Linear and Letta all charge per seat for orgs, sharing, admin and SSO, and leave model usage on the user's own plan. soopdoop already works that way: forks run on the owners' plans. Keep it.</li>
+      <li><b>$10 is a real price for shared objects plus roles</b> (Linear Basic, Raycast, Notion Plus, Zed Pro). It is below the line where buyers expect SSO and audit logs ($16 to $30 and up). A crew of eight at $10 is $80 a month, less than one Superset Pro seat times four.</li>
+      <li><b>Shared knowledge is everyone's switching cost, and nobody charges for it by name.</b> Devin's org Knowledge, Cursor's team marketplace, Claude's managed CLAUDE.md and private marketplaces, Letta's shared agents, Entire's checkpoints. Each is one vendor, one tool. None of them is a memory of <i>who</i> did what. That gap is soopdoop's product (§4, §7).</li>
+      <li><b>Admin analytics is the Team hook, and it ranks people.</b> Claude Code's dashboard has a per-user leaderboard. soopdoop's rule is the opposite (positive signals, no counts above the crew), which is a selling point to the developers who choose the tool, not the managers who buy it. The digest is how both sides see value.</li>
+      <li><b>Hosted compute is the other upsell</b> (Conductor, Factory, Warp, Claude Managed Agents, Linear sandboxes). soopdoop's hosted work is small on purpose: the Operator's routing, the digest, drops. That is the cost base below.</li>
+      <li><b>Free with no plan to charge is not a model.</b> T3 Code is the proof. Amp's ad-funded tier ended in March because ads "don't pay for enough frontier tokens".</li>
+      <li><b>The closest thing to a hand-off is Amp's thread sharing:</b> tag a teammate into your thread and they can prompt your agent, on your bill. The reverse (send a task into a teammate's agent, they approve) exists only as an open proposal (relay issue #1860). Claude Code channels, Codex in Slack and Linear's delegate agents all hand work to a shared cloud agent or into one owner's own session.</li>
+      <li><b>Superset is the platform and could build the crew loop.</b> They have org-wide terminal read and send, Pages, automations and a Slack integration. Their orgs are single-company and their standup is per person. soopdoop's answer is in the moat list below.</li>
+    </ul>
+
+    <div class="box decision">
+      <h3 class="pu">What nobody ships yet (searched 16 Oct 2026)</h3>
+      <ul>
+        <li>A memory of <b>who is on what, from live agent work</b>. Every expertise finder reads git blame, CODEOWNERS or documents (Sourcegraph Own, GitHub's suggested reviewers, Unblocked, Glean). Nothing answers "who is on email metrics right now" from agents. soopdoop does today; the ledger adds "last month".</li>
+        <li><b>Presence from agent work</b> without video. Gather shows an app name inside a video office; Discord Rich Presence shows a file. Nothing quiet, nothing from what the agents are doing.</li>
+        <li><b>A hand-off into a teammate's agent that the teammate approves.</b> Only an open issue.</li>
+        <li><b>Learnings that travel between people's agents.</b> Claude's memory is machine-local, its Projects are single-user, Cursor's team rules are admin-typed with no API, Devin's Knowledge is hand-written. Crew notes with agent proposals and owner approval fill it.</li>
+        <li><b>Ship digests with visuals, and thanks tied to the engineer.</b> PostHog's merged-PRs-to-Thursday-Slack-cards pipeline is the closest, and it is their internal handbook, not a product. Every help desk exposes a rating event; none links it to who shipped the fix.</li>
+      </ul>
+      <p>Five gaps, and the plan's six things cover all five. That is the strongest reason to believe a team pays.</p>
+    </div>
+
+    <h3>What a seat pays for</h3>
+    <div class="scroll"><table>
+      <tr><th></th><th>Free · friends</th><th>Team · $10 a member a month</th><th>Company · later</th></tr>
+      <tr><td>Presence, knocks, flicks, XP, the wire</td><td>yes</td><td>yes</td><td>yes</td></tr>
+      <tr><td>Questions between agents (the Operator)</td><td>20 a day per crew, routed on Sonnet</td><td>fair use (a soft cap at 500 a day per crew, raised on request)</td><td>same, with a company budget</td></tr>
+      <tr><td>Introductions, heads-ups</td><td>yes</td><td>yes</td><td>yes</td></tr>
+      <tr><td>The ledger</td><td>7 days</td><td>90 days</td><td>a year, with export</td></tr>
+      <tr><td>Hand-offs</td><td>5 a day per crew</td><td>unlimited (owners' accounts do the work)</td><td>unlimited</td></tr>
+      <tr><td>Crew notes</td><td>10 live notes</td><td>60 live notes, agents may propose</td><td>per-crew sets, shared sets</td></tr>
+      <tr><td>The digest and the Slack bridge</td><td>no</td><td>daily digest, weekly numbers, live mirror</td><td>plus the Operator in Slack</td></tr>
+      <tr><td>The scout (customer props, saves)</td><td>no</td><td>yes</td><td>yes</td></tr>
+      <tr><td>Walkthroughs and drops hosting</td><td>links only</td><td>5 GB per crew</td><td>more, with retention rules</td></tr>
+      <tr><td>The tree, work-only summaries, admin, SSO</td><td>no</td><td>no</td><td>yes</td></tr>
+    </table></div>
+    <p class="small" style="margin-top:8px">Why the free tier keeps questions at all: asking is the thing that makes people invite others, and the spec says asking must stay cheap. Why it is capped: every question costs us a routing call.</p>
+
+    <h3>What it costs us, per member per month</h3>
+    <div class="scroll"><table>
+      <tr><th>Item</th><th>Estimate</th><th>Basis</th></tr>
+      <tr><td>Routing and chat (Sonnet 5.5, small prompts)</td><td>$0.50 to $1.50</td><td>30 to 100 questions a day per crew of four at about half a cent each</td></tr>
+      <tr><td>The digest (Opus 5.5, once a day per crew)</td><td>$0.75</td><td>about $0.10 a day, shared by four</td></tr>
+      <tr><td>Ledger and notes storage, the wire, Convex</td><td>under $0.25</td><td>a few thousand small rows per crew; Convex's usage pricing at this size</td></tr>
+      <tr><td>Drops storage and egress</td><td>under $0.25</td><td>object storage on Cloudflare; walkthrough pages are small</td></tr>
+      <tr><td>Slack, GitHub, Stripe</td><td>Stripe's cut only</td><td>webhooks and apps are free; Stripe takes about 3% plus 30¢</td></tr>
+      <tr><td><b>Total</b></td><td><b>about $2 to $3</b></td><td>a 70 to 80% gross margin at $10, before support and our own time</td></tr>
+    </table></div>
+    <p class="small" style="margin-top:8px">The members' own costs stay on their plans and are shown to them: a fork's answer ($0.03 to $0.31 on Sonnet, measured), a hand-off (whatever the task costs), the scout (a few cents a day), the ledger line (a fifth of a cent). This is why the seat can be cheap: the heavy tokens never run on our bill.</p>
+
+    <h3>Where the moat is</h3>
+    <ol>
+      <li><b>The crew's memory.</b> The ledger and the notes are a record of who knows what, across every harness, that lives nowhere else: not in git (which has code, not people), not in Slack (which has talk, not work), not in any one vendor's memory (which is per person, per tool). Every month of use makes it worth more and harder to leave.</li>
+      <li><b>Cross-harness, cross-org.</b> Anthropic, OpenAI and xAI each build inside their own tool. Superset is one org at a time. A crew on soopdoop spans tools and companies by design (Mr. Tom's own crewmates are outside his Superset org today).</li>
+      <li><b>Nothing central reads your work.</b> Conversations stay on Macs; forks answer there; the backend holds lines and events. That is a sentence a security review can accept, and a hosted competitor that centralizes transcripts cannot say it.</li>
+      <li><b>The social layer is sticky.</b> XP, props, the wire and the digest make helping the rewarding thing to do, and every digest in Slack is also the pitch to the people who are not on soopdoop yet.</li>
+      <li><b>Distribution is built in.</b> An invite is one line; a crew is full at eight; the tree is the upsell.</li>
+    </ol>
+
+    <div class="box risk">
+      <h3 class="a">Risks, plainly</h3>
+      <ul>
+        <li><b>Superset builds it.</b> They have org-wide terminal read and send, Pages and automations; a "ask a teammate's agent" feature is one plan away. soopdoop's answers: cross-org, cross-harness, the people layer, and shipping the whole loop with Mr. Tom's crew as the proof before they do. If they do build it, the upstream path from the first plan (contribute the hooks and the friend grant) is still open.</li>
+        <li><b>A harness vendor adds team memory.</b> It will be per vendor. Mixed teams stay ours.</li>
+        <li><b>$10 × 4 is $40 a month.</b> One crew is not a business. The plan's bet is that the digest and the invite line bring the next crew. The tree and the Company tier are where the price grows.</li>
+        <li><b>Hand-offs can feel like surveillance or hijacking.</b> Consent per crewmate, exact text, owner's account, the allowance, and the log are not optional.</li>
+        <li><b>Hooks and flags change under us.</b> Codex and Grok ship weekly. Every release re-runs the three forks on real sessions before it ships (the release script can do it on the releasing Mac).</li>
+        <li><b>The name.</b> Still needs the check with Superset.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="order">
+    <h2>13. Build order</h2>
+    <p>Ten releases, each cut with <code>bun run release</code> and installed on the crew's Macs within six hours, each ending with something the team uses the next morning. The order puts the things that make value visible first and keeps every release compatible with the one before (RELEASING.md: add, never rename or remove in the same release). At the pace of the last three weeks (103 commits in five working days), a release is two to four days of work.</p>
+
+    <div class="phase">
+      <div class="n">R1<small>every agent on the wire</small></div>
+      <div>
+        <h3>Codex and Grok agents show up, answer, and are priced</h3>
+        <ul>
+          <li>Hook files for Codex (<code>~/.codex/hooks.json</code>) and Grok (<code>~/.grok/hooks/*.json</code>), written by setup beside Superset's; hook hygiene (harness named inline, foreign replays dropped); the Superset ids, the Claude inbox socket and the Grok session id forwarded; Claude's hooks moved to the <code>http</code> type.</li>
+          <li>Transcript readers for Codex rollouts and Grok sessions behind one shape; routing summaries for both; forks for both; prices for both in the fund.</li>
+          <li>HUD: a harness badge per agent. <code>AppState</code> gains nothing else.</li>
+        </ul>
+        <p class="small">Verify on two Macs with one Claude, one Codex and one Grok session each. Not until then: claim that Grok's <code>--disallowed-tools</code> really leaves the fork without tools.</p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="n">R2<small>crews</small></div>
+      <div>
+        <h3>A crew with a name, a leader and settings; the menu bar shows it</h3>
+        <ul>
+          <li><code>crews</code> table and the scoping of introductions, candidates and the wire to the crew. Migration: the first inviter among today's friends becomes the leader of a crew named after them; nothing else changes for people in no crew.</li>
+          <li>Menu bar: the crew lights icon, the glance menu, the "Ask the crew…", "Hand off…" (disabled until R5) and "Shout…" composers.</li>
+          <li>Settings → Crew: members, leader, digest hour, Slack webhook (used from R7).</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="n">R3<small>the ledger</small></div>
+      <div>
+        <h3>Who did what, for 90 days</h3>
+        <ul>
+          <li>Ledger lines from all three harnesses at session end or after ten idle minutes; the Haiku "what was done" line behind a setting; the owner's view with edit and delete; the daily retention cron.</li>
+          <li>Who-questions and routing read the ledger; "not running: knock or hand off" answers; <code>ledger:search</code> for the Operator.</li>
+          <li>AGENTS.md and README gain the new exception, in the words of §4, once Mr. Tom approves it.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="n">R4<small>heads-ups</small></div>
+      <div>
+        <h3>Duplicate and clashing work caught at the prompt</h3>
+        <ul>
+          <li>Local scoring at UserPromptSubmit against live summaries and the ledger; the HUD card with Ask / Hand off (R5) / Not now; the context note on Claude; the file channel for Codex and Grok.</li>
+          <li>The "heads-ups acted on" count on the HUD and in the menu; <code>headsups</code> rows kept a week.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="n">R5<small>hand-offs</small></div>
+      <div>
+        <h3>Ask a crewmate's agent to do the work</h3>
+        <ul>
+          <li>Offers from the <code>hand_off</code> tool, the HUD, the menu bar and the Operator chat; the receiver's card and notification; per-crewmate consent in Settings; 24-hour expiry by a scheduled function.</li>
+          <li>Delivery per harness (the Claude inbox socket, <code>codex queue</code>, the Superset terminal, a background session, the clipboard); <code>report_back</code>; the Stop-hook fallback; <code>handoffs.log</code>; the hand-off allowance in the fund.</li>
+          <li>Wire events and 20 XP per assist by hand-off. The Operator stops refusing work orders and offers a hand-off instead.</li>
+        </ul>
+        <p class="small">The three checks in §6 come before any of this is built on.</p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="n">R6<small>crew notes</small></div>
+      <div>
+        <h3>Live shared instructions on every harness</h3>
+        <ul>
+          <li><code>notes</code> table, the HUD editor, the <code>crew_note</code> and <code>crew_notes</code> tools with owner approval, age and "still true?" nudges, the 2 KB delivery cap.</li>
+          <li>Delivery: SessionStart and next-prompt news on Claude; <code>~/.soopdoop/crew.md</code> with the managed block in <code>~/.codex/AGENTS.md</code> and the rule file in <code>~/.grok/rules/</code>. The skill's new paragraph.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="n">R7<small>the room</small></div>
+      <div>
+        <h3>Ships, shouts, props, and the digest in Slack</h3>
+        <ul>
+          <li>Ships from transcripts into ledger lines and the wire; shouts (24 hours); props on wire lines; "Yesterday" in the HUD and the menu.</li>
+          <li>The digest: written by the Operator at the crew's hour, posted to the Slack webhook, kept in <code>digests</code>; the weekly numbers; the optional live mirror.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="n">R8<small>the scout</small></div>
+      <div>
+        <h3>Props from customers, and saves</h3>
+        <ul>
+          <li>The scout skill and its hourly LaunchAgent on the person's Mac, off by default; the <code>props</code> tool; the first connector the team's help desk decides (§15).</li>
+          <li>Walkthroughs: the ship card's "Make a walkthrough?" and the fork that writes the page; links accepted from anywhere in this release.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="n">R9<small>drops</small></div>
+      <div>
+        <h3>soopdoop hosts the pages a cross-org crew shares</h3>
+        <ul>
+          <li>Walkthroughs and other pages uploaded through the backend to object storage on the soopdoop.com Cloudflare account, served at an unguessable link, listed on the crew's shelf (the spec's drops). Superset Pages stay the choice inside one org.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="n">R10<small>the business</small></div>
+      <div>
+        <h3>Plans, billing, and the front door</h3>
+        <ul>
+          <li>Stripe billing per crew (the leader pays, per member, monthly or yearly); plan gates: retention, the digest, hand-offs, drops, the Operator's model; the cost line in Settings → Crew.</li>
+          <li>soopdoop.com gets a teams page with the four numbers and the install line; the invite flow starts the crew at the first accepted invite.</li>
+          <li>Terms, a privacy page that says exactly what leaves a Mac (§14), and the name check with Superset.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>After that</h3>
+    <ul>
+      <li>Gemini CLI, Cursor CLI and OpenCode, one release each, on the R1 pattern.</li>
+      <li>Jack in (watch, comment, co-drive) through Superset Remote Access, for crews inside one Superset org.</li>
+      <li>The tree: pairs of crews, work-only summaries, heads-ups across crews, the company tracker.</li>
+      <li>The Operator in Slack (slash command) for the people who never open the HUD.</li>
+    </ul>
+
+    <h3>The first release, in order</h3>
+    <ol>
+      <li>Write the Codex and Grok transcript readers against real files on this Mac, with tests from redacted samples.</li>
+      <li>Run a Codex fork and a Grok fork by hand with the §3 commands; keep the exact flags that worked in <code>ask.ts</code>, and the prices in <code>fund.ts</code>.</li>
+      <li>Write the hook files and the hygiene checks; install with <code>soopdoop setup</code> on this Mac; confirm Superset's hooks still fire.</li>
+      <li>Report both harnesses through the real daemon to the dev deployment; look at them in the HUD snapshot; then one <code>ask_operator</code> from a second test hacker to each.</li>
+      <li>Release. Install on Mr. Tom's Mac. Write what was and was not checked in <code>docs/spikes.md</code>.</li>
+    </ol>
+  </section>
+
+  <section id="rules">
+    <h2>14. Rules that do not bend</h2>
+    <div class="box rule">
+      <ul>
+        <li><b>A conversation never leaves the Mac.</b> Three one-line things built from it do, each made on the owner's Mac, shown to the owner, editable by the owner, and kept inside the crew: the routing summary (one per open agent), the ledger line (one per finished task), and the answer a fork writes to one question. Prompts are read locally for heads-ups and go nowhere.</li>
+        <li><b>Nothing runs on your account without your say.</b> A hand-off runs only with consent for that crewmate, shows its exact text first, runs on your plan, and is logged on your Mac. The fund and the hand-off allowance are checked on your Mac, so neither a crewmate nor the backend can get around them.</li>
+        <li><b>Agents never talk to each other directly.</b> Every question and every hand-off goes through the Operator, and the Operator never reads a conversation.</li>
+        <li><b>Private agents never leave the machine.</b> No summary, no ledger line, no heads-up, no hand-off.</li>
+        <li><b>Every interruption expires</b> by a scheduled function: knocks 30 s, heads-up cards 10 min, hand-off offers 24 h, shouts 24 h.</li>
+        <li><b>Above the crew: work only.</b> No names, no counts, no ledger lines. The digest that leaves the crew describes work.</li>
+        <li><b>No token counts on boards.</b> Tokens saved stays one estimate per person and per crew.</li>
+        <li><b>Positive signals only.</b> The wire and the digest carry ships, assists, props, saves and notes. Never "idle since", never "fewest", never a ranking by output.</li>
+        <li><b>Nothing from Superset's code.</b> Hooks, the CLI, Pages and Remote Access only. <code>superset terminals send</code> is the CLI.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="questions">
+    <h2>15. Decisions for Mr. Tom</h2>
+    <ol>
+      <li><b>The ledger as a new boundary exception.</b> One 240-character line per finished task leaves the Mac, inside the crew, owner-editable (§4). Yes or no decides R3, R4 and the who-questions.</li>
+      <li><b>Hand-off default.</b> This plan picks "ask me each time" per crewmate, with "run automatically when idle" as an opt-in. The other way round makes hand-offs faster and riskier.</li>
+      <li><b>Which help desk first</b> for the scout: Gmail only, Help Scout, Intercom, Front or Zendesk. The connector decides a week of R8.</li>
+      <li><b>Slack: webhook now, app later?</b> A webhook posts in five minutes with no review. Threads, edits and the slash command need an app.</li>
+      <li><b>Price and tiers</b> as in §12: Free for friends, Team at $10 a member a month, Company later. Yearly at ten months.</li>
+      <li><b>Drops hosting</b> on the soopdoop.com Cloudflare account (R9), or links only until a crew asks.</li>
+      <li><b>The name.</b> "soopdoop" contains Superset's mark. Selling needs the check with them that the first plan already asked for.</li>
+      <li><b>Model for the Operator.</b> Sonnet 5.5 for routing and chat (cheaper, enough) and Opus 5.5 for the digest, or Opus throughout as today.</li>
+    </ol>
+    <p class="small">What this plan did not check: no Codex or Grok fork, queue or hook was run; the flags come from the installed help text, Grok's local user guide and the official docs read on 16 Oct 2026. The Claude inbox socket, <code>claude --resume ID "prompt"</code> into a background session and <code>superset terminals send</code> from the daemon were not run. Prices and features of other products are from their public pages the same day (§12) and can change.</p>
+  </section>
+
+  <footer class="small">soopdoop · docs/plan-crews.html · 16 Oct 2026. The first build plan is docs/plan.html; the spec is docs/spec.md.</footer>
+</div>
+
+</body>
+</html>
