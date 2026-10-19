@@ -2,6 +2,9 @@
 // ABOUTME: and a small bonus for recent work. The Operator searches the crew's ledger with it; hand-offs pick an agent with it.
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+// A folder the question writes out is worth more than all the words a line shares with it, as a rule.
+const PATH_SCORE = 5;
+const PART_SCORE = 2;
 // Work this old gets no recency bonus.
 const RECENT_MS = 30 * DAY_MS;
 // Under 1, so recency only orders lines that match equally well.
@@ -62,7 +65,8 @@ function readQuery(text: string): Query {
   const tokens = text
     .toLowerCase()
     .split(/\s+/)
-    .map(function (t) { return t.replace(/^[^a-z0-9._/-]+|[^a-z0-9._/-]+$/g, "").replace(/\/+$/, ""); });
+    // Without what ends a sentence: "apps/web/quote." is the folder apps/web/quote.
+    .map(function (t) { return t.replace(/^[^a-z0-9._/-]+|[^a-z0-9_/-]+$/g, "").replace(/[./]+$/, ""); });
   const words = terms(text);
   const parts = new Set(words);
   const paths: string[] = [];
@@ -95,13 +99,13 @@ function scoreOf(q: Query, line: LedgerText): number {
   for (const raw of line.areas) {
     const area = raw.toLowerCase().replace(/\/+$/, "");
     if (q.paths.some(function (p) { return p === area || p.startsWith(`${area}/`) || area.startsWith(`${p}/`); })) {
-      score += 3;
+      score += PATH_SCORE;
       continue;
     }
     for (const part of pathParts(area)) {
       if (seen.has(part) || !q.parts.has(part)) continue;
       seen.add(part);
-      score += 2;
+      score += PART_SCORE;
     }
   }
   for (const w of terms(`${line.workspace ?? ""} ${line.branch ?? ""}`)) if (q.words.has(w) && !seen.has(w)) score += 1;

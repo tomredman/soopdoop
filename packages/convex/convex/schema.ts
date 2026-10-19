@@ -326,6 +326,8 @@ export default defineSchema({
     walkthroughAsked: v.optional(v.boolean()),
     // The owner rewrote the line in the HUD: the daemon must not replace it again.
     editedByOwner: v.optional(v.boolean()),
+    // The owner deleted the line: its words are gone, and this marker stops the daemon's next send from bringing it back.
+    forgotten: v.optional(v.boolean()),
   })
     .index("by_hacker_at", ["hackerId", "at"])
     .index("by_hacker_session", ["hackerId", "sessionKey"])

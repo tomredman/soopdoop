@@ -149,6 +149,29 @@ describe("heads-ups", function () {
     expect(must((await rows(t))[0]).action).toBe("ask");
   });
 
+  test("asking one of a crewmate's agents acts only on cards about that agent, and on cards whose agent cannot be told apart", async function () {
+    const t = harness();
+    const { tomToken } = await crew(t);
+    const aboutA1 = await t.mutation(api.headsups.record, headsUp(tomToken));
+    const aboutA2 = await t.mutation(api.headsups.record, headsUp(tomToken, "a2", "Jimmy's agent is on taxes"));
+    // A card that names the agent some other way (here, by a key the daemon got for it).
+    const aboutKey = await t.mutation(api.headsups.record, headsUp(tomToken, "k7f3", "Jimmy's agent is on bounce counts"));
+    const relayId = await t.mutation(api.operator.ask, { token: tomToken, question: "Where are the email metrics bounce counts fixed?" });
+    await t.action(internal.operator.route, { relayId });
+    const byId = new Map((await rows(t)).map(function (h) { return [h._id, h]; }));
+    expect(byId.get(aboutA1)?.action).toBe("ask");
+    expect(byId.get(aboutA2)?.actedAt).toBeUndefined();
+    expect(byId.get(aboutKey)?.action).toBe("ask");
+  });
+
+  test("a private agent's prompts make no heads-up", async function () {
+    const t = harness();
+    const { tom } = await crew(t);
+    const token = await machine(t, tom, "mb2", [{ ...agent("p1", "secret-stuff"), open: false }]);
+    await expect(t.mutation(api.headsups.record, { ...headsUp(token), agentId: "p1" })).rejects.toThrow("private agent");
+    expect(await rows(t)).toEqual([]);
+  });
+
   test("handing the task off from the card acts on it", async function () {
     const t = harness();
     const { tom, tomToken } = await crew(t);

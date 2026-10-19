@@ -10,15 +10,18 @@ import { acceptedFriendIds, areFriends } from "./friends";
 import { markActed } from "./headsups";
 import { hasOpenKnock, insertKnock, KNOCK_MS } from "./knocks";
 import { hitView, searchLedger } from "./ledger";
+import { allowanceGroup } from "./lib/allowance";
 import { requireDaemon, requireHacker } from "./lib/auth";
 import {
   absentNote,
   answerFrom,
+  askersWords,
   chatTurn,
   type ChatTurn,
   describeError,
   handoffNote,
   type Meter,
+  mentionedHandles,
   mentionNote,
   NOT_CONFIGURED,
   operatorMode,
@@ -41,12 +44,12 @@ const LEDGER_DAYS = 14;
 const NOTES_SHOWN = 10;
 const NOTE_STALE_MS = 45 * DAY_MS;
 
-// The crew's questions to the Operator in the last day, counted up to `limit`. A chat message the Operator answered
-// itself is a relay too, but it is not a question to the crew, so it does not count.
-async function questionsToday(ctx: QueryCtx, asker: Id<"hackers">, since: number, limit: number): Promise<number> {
+// Questions to the Operator in the last day by the people who share the asker's allowance (lib/allowance.ts), counted
+// up to `limit`. A chat message the Operator answered itself is a relay too, but not a question to the crew, so it does
+// not count; everything else does, an agent's question the Operator answered from the summaries or the ledger included.
+async function questionsToday(ctx: QueryCtx, askers: Id<"hackers">[], since: number, limit: number): Promise<number> {
   let n = 0;
-  // TODO(crews): crewmateIds. The crew's questions; for now the asker's and their friends'.
-  for (const id of [asker, ...(await acceptedFriendIds(ctx, asker))]) {
+  for (const id of askers) {
     const recent = ctx.db
       .query("relays")
       .withIndex("by_asker", function (r) {
@@ -55,7 +58,7 @@ async function questionsToday(ctx: QueryCtx, asker: Id<"hackers">, since: number
       .order("desc");
     for await (const r of recent) {
       if (r.createdAt < since) break;
-      if (r.byOperator !== true) n += 1;
+      if (!(r.via === "chat" && r.byOperator === true)) n += 1;
       if (n >= limit) return n;
     }
   }
@@ -82,10 +85,10 @@ async function startRelay(ctx: MutationCtx, asker: Doc<"hackers">, question: str
     .take(PER_MINUTE);
   const oldest = recent[PER_MINUTE - 1];
   if (oldest !== undefined && now - oldest.createdAt < 60_000) throw new ConvexError("That is a lot of questions. Wait a minute.");
-  const crew = await crewOf(ctx, asker._id);
-  const perDay = limitsFor(crew).questionsPerDay;
-  if ((await questionsToday(ctx, asker._id, now - DAY_MS, perDay)) >= perDay) {
-    throw new ConvexError(`Your crew used today's questions (${perDay} on the ${crew?.plan ?? "free"} plan).`);
+  const group = await allowanceGroup(ctx, asker._id);
+  const perDay = limitsFor(group.crew).questionsPerDay;
+  if ((await questionsToday(ctx, group.ids, now - DAY_MS, perDay)) >= perDay) {
+    throw new ConvexError(`Your crew used today's questions (${perDay} on the ${group.crew?.plan ?? "free"} plan).`);
   }
   const id = await ctx.db.insert("relays", {
     askerHackerId: asker._id,
@@ -405,7 +408,12 @@ export const candidates = internalQuery({
     }
     crew.sort(function (a, b) { return a.handle.localeCompare(b.handle); });
     const live = new Set(out.map(function (c) { return c.hackerId; }));
-    const ledger = (await searchLedger(ctx, relay.askerHackerId, relay.question, LEDGER_DAYS)).map(function (l) {
+    // A question about @someone looks at their lines only, so other crewmates' newer work cannot crowd theirs out.
+    const named = mentionedHandles(resolveMentions(relay.question, crew, asker).question);
+    const among = named.length === 0
+      ? undefined
+      : crew.filter(function (c) { return named.includes(c.handle); }).map(function (c) { return c.hackerId; });
+    const ledger = (await searchLedger(ctx, relay.askerHackerId, relay.question, LEDGER_DAYS, among)).map(function (l) {
       return { ...l, live: live.has(l.hackerId) };
     });
     return {
@@ -462,7 +470,7 @@ export const route = internalAction({
       await ctx.runMutation(internal.operator.finish, { relayId: args.relayId, status: "answered", answer, byOperator: true, handoffId, usd: spent() });
       return null;
     }
-    async function askAgent(c: (typeof found.candidates)[number], routedQuestion: string | undefined): Promise<null> {
+    async function askAgent(c: (typeof found.candidates)[number], routedQuestion: string | undefined, handoffId?: Id<"handoffs">): Promise<null> {
       await ctx.runMutation(internal.operator.setTarget, {
         relayId: args.relayId,
         targetHackerId: c.hackerId,
@@ -470,24 +478,31 @@ export const route = internalAction({
         targetAgentId: c.agentId,
         targetAgentName: c.shareAgentNames ? c.agentName : undefined,
         routedQuestion,
+        handoffId,
         usd: spent(),
       });
       return null;
     }
-    // A work order becomes an offer from the asker to a crewmate (to their agent, when one was picked). The crewmate
-    // approves it before anything runs. Returns the hand-off and what to tell the asker, or why it could not be made.
-    async function offer(toId: Id<"hackers">, task: string, targetAgentId?: string): Promise<{ handoffId: Id<"handoffs">; said: string } | { problem: string }> {
+    // A work order becomes an offer from the asker to a crewmate (to their agent, when one was picked), in the asker's
+    // own words. The crewmate approves it before anything runs. Returns the hand-off and what to tell the asker, or why
+    // it could not be made.
+    async function offer(
+      toId: Id<"hackers">,
+      text: string,
+      targetAgentId?: string,
+    ): Promise<{ handoffId: Id<"handoffs">; toHandle: string; said: string } | { problem: string }> {
       try {
         const made = await ctx.runMutation(internal.handoffs.offerInternal, {
           fromId: found.askerId,
           toId,
-          text: task,
+          text,
           targetAgentId,
           relayId: args.relayId,
           fromMachine: found.askerMachine,
           fromAgentId: found.askerAgentId,
         });
-        return { handoffId: made.handoffId, said: handoffNote(made.toHandle, made.targetAgentName, found.askerMachine !== undefined) };
+        // Only a session the daemon can name hears back at its next prompt.
+        return { handoffId: made.handoffId, toHandle: made.toHandle, said: handoffNote(made.toHandle, made.targetAgentName, found.askerAgentId !== undefined) };
       } catch (e) {
         return { problem: reasonOf(e) };
       }
@@ -501,8 +516,9 @@ export const route = internalAction({
       return found.via === "chat" ? await reply(note) : await end("nobody", note, found.crew.length > 0 ? true : undefined);
     }
     const question = mentions.question;
-    // Past work whose owner has no agent running: the Operator may answer from it, or offer a hand-off to its owner.
-    const past = found.ledger.filter(function (l) { return !l.live; });
+    // The crew's past work that fits: the Operator may answer from it, or offer a hand-off to whoever did it. A line
+    // counts even when its owner has another agent running now.
+    const past = found.ledger;
     // A chat message: the Operator answers it itself (after searching the ledger or reading the notes, if it likes),
     // asks one agent a question that stands alone, offers a hand-off or knocks.
     if (found.via === "chat") {
@@ -521,32 +537,41 @@ export const route = internalAction({
       } catch (e) {
         return await end("error", describeError(e));
       }
-      // The offer and the knock the turn decided on. When one cannot be made (consent off, the day's limit, focus
-      // mode), the asker reads why instead of the reply that assumed it went.
+      // Carry out what the turn decided. The knock first: an offer to the same crewmate then adds no second knock.
+      // When something cannot be done (consent off, the day's limit, focus mode), the asker reads why, and what did go
+      // out, instead of the reply that assumed it all went; and no agent is asked on top of it.
+      const failures: string[] = [];
+      if (turn.knocked !== undefined) {
+        try {
+          await ctx.runMutation(internal.operator.knock, { relayId: args.relayId, fromId: found.askerId, toHandle: turn.knocked.handle, note: turn.knocked.note });
+        } catch (e) {
+          failures.push(reasonOf(e));
+        }
+      }
       let handoffId: Id<"handoffs"> | undefined;
-      let problem: string | undefined;
+      let offeredTo: string | undefined;
       const offered = turn.offered;
       if (offered !== undefined) {
         const live = offered.agent === undefined ? undefined : found.candidates[offered.agent];
         const toId = live?.hackerId ?? found.crew.find(function (c) { return c.handle === offered.handle; })?.hackerId;
-        const made = toId === undefined ? { problem: "I couldn't find that crewmate." } : await offer(toId, offered.task, live?.agentId);
-        if ("problem" in made) problem = made.problem;
-        else handoffId = made.handoffId;
-      }
-      if (turn.knocked !== undefined) {
-        try {
-          await ctx.runMutation(internal.operator.knock, { fromId: found.askerId, toHandle: turn.knocked.handle, note: turn.knocked.note });
-        } catch (e) {
-          problem = problem ?? reasonOf(e);
+        const made = toId === undefined ? { problem: "I couldn't find that crewmate." } : await offer(toId, askersWords(offered.task, question), live?.agentId);
+        if ("problem" in made) failures.push(made.problem);
+        else {
+          handoffId = made.handoffId;
+          offeredTo = made.toHandle;
         }
       }
-      if ("reply" in turn) return await reply(problem ?? turn.reply, handoffId);
+      if (failures.length > 0) {
+        const went = offeredTo === undefined ? [] : [`The hand-off to @${offeredTo} went out.`];
+        return await reply([...failures, ...went].join(" "), handoffId);
+      }
+      if ("reply" in turn) return await reply(turn.reply, handoffId);
       const picked = found.candidates[turn.ask];
       if (picked === undefined) return await end("nobody", "I couldn't find the right agent for that.");
-      return await askAgent(picked, turn.question);
+      return await askAgent(picked, turn.question, handoffId);
     }
-    if (found.candidates.length === 0 && found.ledger.length === 0) return await end("nobody", "No crewmate has an open agent running right now.");
-    const absent = absentNote(question, found.candidates, found.asker, found.ledger);
+    if (found.candidates.length === 0 && past.length === 0) return await end("nobody", "No crewmate has an open agent running right now.");
+    const absent = absentNote(question, found.candidates, found.asker, past);
     if (absent !== null) return await end("nobody", absent);
     if (operatorMode() === null) return await end("error", NOT_CONFIGURED);
     let routed: Route;
@@ -557,12 +582,12 @@ export const route = internalAction({
     }
     // "What is @jimmy working on?", or a who-question the ledger answers: no agent is asked.
     if (routed !== null && "reply" in routed) return await reply(routed.reply);
-    // A work order: offered to the crewmate whose agent (or past work) fits it.
+    // A work order: offered, in the asker's own words, to the crewmate whose agent (or past work) fits it.
     if (routed !== null && "handoff" in routed) {
       const live = found.candidates[routed.handoff];
       const toId = live?.hackerId ?? past[routed.handoff - found.candidates.length]?.hackerId;
       if (toId === undefined) return await end("nobody", "None of your crewmates' agents seems to know about this.");
-      const made = await offer(toId, routed.task, live?.agentId);
+      const made = await offer(toId, askersWords(routed.task, question), live?.agentId);
       return "problem" in made ? await end("nobody", made.problem) : await reply(made.said, made.handoffId);
     }
     const chosen = routed === null ? undefined : found.candidates[routed.ask];
@@ -589,6 +614,8 @@ export const setTarget = internalMutation({
     targetAgentId: v.string(),
     targetAgentName: v.optional(v.string()),
     routedQuestion: v.optional(v.string()),
+    // A chat turn that offered a hand-off and then asked an agent too.
+    handoffId: v.optional(v.id("handoffs")),
     usd: v.optional(v.number()),
   },
   returns: v.null(),
@@ -597,8 +624,8 @@ export const setTarget = internalMutation({
     if (relay === null || relay.status !== "routing") return null;
     const { relayId, usd, ...target } = args;
     await ctx.db.patch("relays", relayId, { ...target, status: "reading", usd: plusUsd(relay.usd, usd) });
-    // Asking a crewmate's agent right after a heads-up about their work is acting on it.
-    await markActed(ctx, relay.askerHackerId, args.targetHackerId, "ask");
+    // Asking a crewmate's agent right after a heads-up about that agent's work is acting on it.
+    await markActed(ctx, relay.askerHackerId, args.targetHackerId, "ask", args.targetAgentId);
     return null;
   },
 });
@@ -634,11 +661,15 @@ export const finish = internalMutation({
   },
 });
 
-// A knock the chat sends for the asker (its knock tool), under the same rules as knocks.send.
+// A knock the chat sends for the asker (its knock tool), under the same rules as knocks.send. With the chat message's
+// relay, only while that message is still being answered.
 export const knock = internalMutation({
-  args: { fromId: v.id("hackers"), toHandle: v.string(), note: v.string() },
+  args: { fromId: v.id("hackers"), toHandle: v.string(), note: v.string(), relayId: v.optional(v.id("relays")) },
   returns: v.id("knocks"),
   handler: async function (ctx, args) {
+    if (args.relayId !== undefined && (await ctx.db.get("relays", args.relayId))?.status !== "routing") {
+      throw new ConvexError("That message ran out of time before the knock went out.");
+    }
     const from = await ctx.db.get("hackers", args.fromId);
     const to = await ctx.db
       .query("hackers")

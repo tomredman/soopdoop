@@ -9,9 +9,10 @@ import { addToFeed } from "./feed";
 import { acceptedFriendIds, areFriends } from "./friends";
 import { markActed } from "./headsups";
 import { hasOpenKnock, insertKnock, KNOCK_MS } from "./knocks";
+import { allowanceGroup } from "./lib/allowance";
 import { requireDaemon, requireHacker } from "./lib/auth";
 import { fitScore } from "./lib/ledgerSearch";
-import { crewOf, limitsFor } from "./lib/plan";
+import { limitsFor } from "./lib/plan";
 import { redactSecrets } from "./lib/summaries";
 import { handoffMode, handoffStatus } from "./schema";
 import { supersetCard } from "./superset";
@@ -117,11 +118,10 @@ async function consentOf(ctx: QueryCtx, receiver: Id<"hackers">, sender: Id<"hac
   return row?.mode ?? "ask";
 }
 
-// Offers made by the sender's crew in the last day, counted up to `limit`.
-async function offersToday(ctx: QueryCtx, sender: Id<"hackers">, since: number, limit: number): Promise<number> {
+// Offers made in the last day by the people who share the sender's allowance (lib/allowance.ts), counted up to `limit`.
+async function offersToday(ctx: QueryCtx, senders: Id<"hackers">[], since: number, limit: number): Promise<number> {
   let n = 0;
-  // TODO(crews): crewmateIds. The crew's offers; for now the sender's and their friends'.
-  for (const id of [sender, ...(await acceptedFriendIds(ctx, sender))]) {
+  for (const id of senders) {
     const rows = await ctx.db
       .query("handoffs")
       .withIndex("by_from", function (q) {
@@ -134,9 +134,22 @@ async function offersToday(ctx: QueryCtx, sender: Id<"hackers">, since: number, 
   return n;
 }
 
+// Whether that Mac lists the agent as private now. A private agent's work stays on its Mac: it neither hands work off
+// nor runs a hand-off, even one accepted before it went private.
+async function isPrivateOn(ctx: QueryCtx, hackerId: Id<"hackers">, machineName: string, agentId: string): Promise<boolean> {
+  const subset = await ctx.db
+    .query("subsets")
+    .withIndex("by_hacker_machine", function (q) {
+      return q.eq("hackerId", hackerId).eq("machineName", machineName);
+    })
+    .unique();
+  return subset?.agents.some(function (a) { return a.agentId === agentId && !a.open; }) === true;
+}
+
+// A note or a reason: trimmed, anything that looks like a key taken out, cut short. Undefined when empty.
 function optionalText(text: string | undefined, max: number): string | undefined {
   if (text === undefined) return undefined;
-  const t = text.trim().slice(0, max);
+  const t = redactSecrets(text.trim()).slice(0, max);
   return t === "" ? undefined : t;
 }
 
@@ -159,13 +172,16 @@ async function makeOffer(ctx: MutationCtx, from: Doc<"hackers">, to: Doc<"hacker
   const text = o.text.trim();
   if (text === "") throw new ConvexError("Say what the task is.");
   if (text.length > MAX_TASK) throw new ConvexError("Keep a hand-off under 2,000 characters.");
+  if (o.fromMachine !== undefined && o.fromAgentId !== undefined && (await isPrivateOn(ctx, from._id, o.fromMachine, o.fromAgentId))) {
+    throw new ConvexError("A private agent's work stays on its Mac, so it cannot hand work off.");
+  }
   const consent = await consentOf(ctx, to._id, from._id);
   if (consent === "never") throw new ConvexError(`@${to.handle} has turned hand-offs from you off.`);
   const now = Date.now();
-  const crew = await crewOf(ctx, from._id);
-  const limits = limitsFor(crew);
-  if ((await offersToday(ctx, from._id, now - DAY_MS, limits.handoffsPerDay)) >= limits.handoffsPerDay) {
-    throw new ConvexError(`Your crew has made today's hand-offs (${limits.handoffsPerDay} a day on the ${crew?.plan ?? "free"} plan).`);
+  const group = await allowanceGroup(ctx, from._id);
+  const limits = limitsFor(group.crew);
+  if ((await offersToday(ctx, group.ids, now - DAY_MS, limits.handoffsPerDay)) >= limits.handoffsPerDay) {
+    throw new ConvexError(`Your crew has made today's hand-offs (${limits.handoffsPerDay} a day on the ${group.crew?.plan ?? "free"} plan).`);
   }
   const agent = pickAgent(await openAgents(ctx, to._id, now), text, o.targetAgentId);
   // "Run when my agent is idle" needs an agent to run in; without one, the receiver picks one when they accept.
@@ -238,16 +254,6 @@ export const offerFromAgent = mutation({
   returns: offeredView,
   handler: async function (ctx, args) {
     const { hacker, daemon } = await requireDaemon(ctx, args.token);
-    if (args.agentId !== undefined) {
-      const subset = await ctx.db
-        .query("subsets")
-        .withIndex("by_hacker_machine", function (q) {
-          return q.eq("hackerId", hacker._id).eq("machineName", daemon.machineName);
-        })
-        .unique();
-      const agent = subset?.agents.find(function (a) { return a.agentId === args.agentId; });
-      if (agent !== undefined && !agent.open) throw new ConvexError("A private agent's work stays on its Mac, so it cannot hand work off.");
-    }
     const to = await hackerByHandle(ctx, args.toHandle);
     return await makeOffer(ctx, hacker, to, {
       text: args.text,
@@ -289,6 +295,9 @@ export const offerInternal = internalMutation({
       if (same !== undefined) {
         return { handoffId: same._id, status: same.status, toHandle: to.handle, targetAgentName: to.shareAgentNames ? same.targetAgentName : undefined };
       }
+      // A question that ran out of time (the asker already read that) makes no offer behind their back.
+      const relay = await ctx.db.get("relays", args.relayId);
+      if (relay === null || relay.status !== "routing") throw new ConvexError("That question ran out of time before the hand-off went out.");
     }
     return await makeOffer(ctx, from, to, {
       text: args.text,
@@ -329,20 +338,24 @@ export const decide = mutation({
       return a.agentId === agentId && (machine === undefined || a.machineName === machine);
     });
     if (agent === undefined) throw new ConvexError("That agent is not open right now. Pick another one.");
+    // Accepted: it has a day from now to run, however late in its offer's day it was accepted.
     await ctx.db.patch("handoffs", h._id, {
       status: "accepted",
       decidedAt: now,
+      expiresAt: now + OFFER_MS,
       note,
       targetMachine: agent.machineName,
       targetAgentId: agent.agentId,
       targetAgentName: agent.agentName,
       targetHarness: agent.harness,
     });
+    await ctx.scheduler.runAfter(OFFER_MS, internal.handoffs.expire, { handoffId: h._id });
     return null;
   },
 });
 
-// What this machine's daemon should run: accepted hand-offs for its agents. It runs each when its agent is idle.
+// What this machine's daemon should run: accepted hand-offs for its agents that are not private now. It runs each when
+// its agent is idle.
 export const toRun = query({
   args: { token: v.string() },
   returns: v.array(v.object({
@@ -364,6 +377,7 @@ export const toRun = query({
     const out = [];
     for (const h of rows) {
       if (h.targetMachine !== daemon.machineName || h.targetAgentId === undefined) continue;
+      if (await isPrivateOn(ctx, hacker._id, daemon.machineName, h.targetAgentId)) continue;
       const from = await ctx.db.get("hackers", h.fromId);
       out.push({ handoffId: h._id, targetAgentId: h.targetAgentId, text: h.text, fromHandle: from?.handle ?? "", why: h.why, targetHarness: h.targetHarness });
     }
@@ -378,6 +392,13 @@ async function receiversHandoff(ctx: QueryCtx, hacker: Doc<"hackers">, id: Id<"h
   return h;
 }
 
+// The agent it runs in went private after it was accepted: it neither runs nor reports back to the crew.
+async function refuseIfPrivate(ctx: QueryCtx, h: Doc<"handoffs">): Promise<void> {
+  if (h.targetMachine !== undefined && h.targetAgentId !== undefined && (await isPrivateOn(ctx, h.toId, h.targetMachine, h.targetAgentId))) {
+    throw new ConvexError("That agent is private now, so the hand-off stays off it.");
+  }
+}
+
 // The daemon delivered it to the agent. It has a day from now to report back.
 export const started = mutation({
   args: { token: v.string(), handoffId: v.id("handoffs") },
@@ -388,6 +409,7 @@ export const started = mutation({
     if (h.targetMachine !== daemon.machineName) throw new ConvexError("This Mac has no such hand-off.");
     if (h.status === "running") return null;
     if (h.status !== "accepted") throw new ConvexError("This hand-off is not waiting to run.");
+    await refuseIfPrivate(ctx, h);
     const now = Date.now();
     await ctx.db.patch("handoffs", h._id, { status: "running", startedAt: now, expiresAt: now + OFFER_MS });
     await ctx.scheduler.runAfter(OFFER_MS, internal.handoffs.expire, { handoffId: h._id });
@@ -421,6 +443,7 @@ export const reportBack = mutation({
     const h = await receiversHandoff(ctx, hacker, args.handoffId);
     if (h.status === "done") throw new ConvexError("This hand-off was already reported back.");
     if (h.status !== "accepted" && h.status !== "running" && h.status !== "failed") throw new ConvexError("This hand-off is not running.");
+    await refuseIfPrivate(ctx, h);
     const summary = redactSecrets(args.summary.trim()).slice(0, MAX_SUMMARY);
     if (summary === "") throw new ConvexError("Say what was done.");
     const links = cleanLinks(args.links);

@@ -253,6 +253,66 @@ describe("hand-offs", function () {
     expect(await t.query(api.handoffs.finishedForDaemon, { token: jimmyToken })).toEqual([]);
   });
 
+  test("an agent that went private after accepting neither runs the hand-off nor reports it back", async function () {
+    const t = harness();
+    const { tom, jimmy, jimmyToken } = await crew(t);
+    const id = await tom.mutation(api.handoffs.offer, { toHandle: "jimmy", text: TASK, via: "hud" });
+    await jimmy.mutation(api.handoffs.decide, { handoffId: id, outcome: "accept" });
+    const all = [agent("a1", "email-metrics", false), agent("a2", "taxes", false), agent("a3", "quote-page")];
+    await t.mutation(api.subsets.report, { token: jimmyToken, agents: all });
+    expect(await t.query(api.handoffs.toRun, { token: jimmyToken })).toEqual([]);
+    await expect(t.mutation(api.handoffs.started, { token: jimmyToken, handoffId: id })).rejects.toThrow("private now");
+    await expect(t.mutation(api.handoffs.reportBack, { token: jimmyToken, handoffId: id, summary: "done" })).rejects.toThrow("private now");
+    // Open again: it runs.
+    await t.mutation(api.subsets.report, { token: jimmyToken, agents: [agent("a1", "email-metrics"), ...all.slice(1)] });
+    expect((await t.query(api.handoffs.toRun, { token: jimmyToken })).map(function (h) { return h.handoffId; })).toEqual([id]);
+  });
+
+  test("accepting gives a hand-off a day from then; the reason and notes lose anything that looks like a key", async function () {
+    const t = harness();
+    const { tom, jimmy } = await crew(t);
+    const key = `ghp_${"c".repeat(36)}`;
+    const id = await tom.mutation(api.handoffs.offer, { toHandle: "jimmy", text: TASK, why: `you have the token ${key}`, via: "hud" });
+    await t.run(async function (ctx) { await ctx.db.patch("handoffs", id, { expiresAt: Date.now() + 60_000 }); });
+    const before = Date.now();
+    await jimmy.mutation(api.handoffs.decide, { handoffId: id, outcome: "accept", note: `using ${key}` });
+    const accepted = await handoff(t, id);
+    expect(accepted.expiresAt).toBeGreaterThanOrEqual(before + OFFER_MS);
+    expect(accepted.why).toBe("you have the token [secret]");
+    expect(accepted.note).toBe("using [secret]");
+  });
+
+  test("a crew's hand-offs never count against a friend outside the crew", async function () {
+    const t = harness();
+    const { tom, jimmy } = await crew(t);
+    const tomId = await idOf(t, "tom");
+    const jimmyId = await idOf(t, "jimmy");
+    const sam = await hackerNamed(t, "sam");
+    await befriend(sam, tom, "tom");
+    await befriend(sam, jimmy, "jimmy");
+    await t.run(async function (ctx) {
+      const crewId = await ctx.db.insert("crews", { name: "vibes", leaderId: tomId, plan: "free", digestHour: 9, timezone: "America/Toronto", createdAt: Date.now() });
+      await ctx.db.insert("crewMembers", { crewId, hackerId: tomId, role: "leader", joinedAt: Date.now() });
+      await ctx.db.insert("crewMembers", { crewId, hackerId: jimmyId, role: "member", joinedAt: Date.now() });
+    });
+    for (let i = 0; i < 5; i++) await tom.mutation(api.handoffs.offer, { toHandle: "jimmy", text: `${TASK} ${i}`, via: "hud" });
+    await expect(jimmy.mutation(api.handoffs.offer, { toHandle: "tom", text: "Review the rail", via: "hud" })).rejects.toThrow("today's hand-offs");
+    // Sam is in no crew: his own allowance.
+    await sam.mutation(api.handoffs.offer, { toHandle: "jimmy", text: "Translate the guide", via: "hud" });
+  });
+
+  test("the Operator's offer for a question that ran out of time is not made", async function () {
+    const t = harness();
+    const { tom } = await crew(t);
+    const tomId = await idOf(t, "tom");
+    const jimmyId = await idOf(t, "jimmy");
+    const relayId = await t.run(async function (ctx) {
+      return await ctx.db.insert("relays", { askerHackerId: tomId, question: TASK, status: "timeout", createdAt: Date.now() });
+    });
+    await expect(t.mutation(internal.handoffs.offerInternal, { fromId: tomId, toId: jimmyId, text: TASK, relayId })).rejects.toThrow("ran out of time");
+    expect((await tom.query(api.handoffs.mine, {})).outgoing).toEqual([]);
+  });
+
   test("an offer nobody takes expires after 24 hours through its scheduled function", async function () {
     jest.useFakeTimers();
     try {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { answerFrom, chatTurn, MAX_TOOL_ROUNDS, type Meter, ROUTE_MODEL, routeQuestion } from "./claude";
+import { answerFrom, askersWords, chatTurn, MAX_TOOL_ROUNDS, type Meter, parseRoute, ROUTE_MODEL, routeQuestion } from "./claude";
 
 // These run the Operator's Claude code paths with the real SDK against a stand-in for the Messages API: `fetch` is
 // replaced, so nothing leaves the machine, and each request is kept to check what would have been sent.
@@ -182,11 +182,30 @@ describe("the Operator chat with tools, against a stand-in for the API", functio
     expect(messagesOf(asked[1])[2]?.content).toEqual([{ type: "tool_result", tool_use_id: "tu0", content: "- Coupons round half up." }]);
   });
 
-  test("a refusal is a short reply; an answer in the old JSON form is still read", async function () {
+  test("a refusal is a short reply and does nothing it had decided; an answer in the old JSON form is still read", async function () {
     replies = [message([], "refusal")];
     expect(await chatTurn("something it will not do", [], candidates, "tom")).toEqual({ reply: "I'll pass on that one." });
+    replies = [
+      message([toolUse("tu1", "offer_handoff", { agent: "@hedy", task: "do the thing" }), toolUse("tu2", "knock", { handle: "hedy", note: "look" })], "tool_use"),
+      message([], "refusal"),
+    ];
+    expect(await chatTurn("hand hedy this: do the thing", [], candidates, "tom", { past, notes: [], crew, now: NOW })).toEqual({ reply: "I'll pass on that one." });
     replies = [message([text('{"ask": 2, "question": "Is the quote page done?"}')], "end_turn")];
     expect(await chatTurn("is the quote page done?", [], candidates, "tom")).toEqual({ ask: 1, question: "Is the quote page done?" });
+  });
+});
+
+describe("the asker's own words, and the router's answer read strictly", function () {
+  test("a hand-off's text is the task as the asker wrote it, or their whole message", function () {
+    const said = "hey, hand this to Jimmy: Fix the bounce counts in VIB-123, thanks";
+    expect(askersWords("fix the bounce counts in VIB-123", said)).toBe("Fix the bounce counts in VIB-123");
+    expect(askersWords("Repair the bounce counting", said)).toBe(said);
+    expect(askersWords("  ", `  ${said} `)).toBe(said);
+  });
+
+  test("a bare number is an agent only when it is the whole answer; prose with numbers in it is nobody", function () {
+    expect(parseRoute(" 2 ", 2)).toEqual({ ask: 1 });
+    expect(parseRoute("Ada did 2 pieces of work on that, the last 1 day ago.", 2)).toBeNull();
   });
 });
 

@@ -860,5 +860,170 @@ describe("the Operator's words for hand-offs and past work", function () {
   });
 });
 
+describe("the Operator's hand-offs and the ledger, after review", function () {
+  test("a crewmate with another agent running still gets their past work: answered from the ledger, and offered the work order", async function () {
+    const t = harness();
+    const { tom } = await crew(t);
+    const { hedy, hedyToken } = await withHedy(t, tom);
+    await t.mutation(api.subsets.report, { token: hedyToken, agents: [agent("o1", "onboarding", true)] });
+    await t.mutation(api.routing.update, { token: hedyToken, agentId: "o1", summary: "vibes · onboarding emails for new teams" });
+    const who = await tom.mutation(api.operator.askAsHacker, { question: "Who knows about the coupon code?" });
+    await routeOnce(t);
+    expect((await logged(tom, who))?.answer).toBe("@hedy did 2 pieces of work on that in the last two weeks, the last today. Their agent on it is off right now. Knock them, or hand it off?");
+    const order = await tom.mutation(api.operator.askAsHacker, { question: "Fix the coupon code rounding at checkout" });
+    await routeOnce(t);
+    expect((await logged(tom, order))?.answer).toBe("Offered as a hand-off to @hedy; they approve it in soopdoop. You will hear back on the wire.");
+    expect((await hedy.query(api.handoffs.mine, {})).incoming).toMatchObject([{ text: "Fix the coupon code rounding at checkout" }]);
+  });
+
+  test("a question about @someone looks at their past work only, so newer work by others cannot crowd it out", async function () {
+    const t = harness();
+    const { tom, jimmyToken } = await crew(t);
+    await withHedy(t, tom);
+    for (let i = 0; i < 8; i++) {
+      await t.mutation(api.ledger.report, { token: jimmyToken, sessionKey: `j${i}`, harness: "claude-code", did: `coupon code report ${i}`, areas: ["convex/coupons"], files: 1 });
+    }
+    const relayId = await tom.mutation(api.operator.askAsHacker, { question: "Where does @hedy keep the coupon code?" });
+    await routeOnce(t);
+    expect((await logged(tom, relayId))?.note).toBe(
+      "@hedy has no open agent running right now. They did 2 pieces of work on that in the last two weeks, the last today. Knock them, or hand it off?",
+    );
+  });
+
+  test("a work order from a private agent is not handed off, and only a session the daemon names hears back at its next prompt", async function () {
+    const t = harness();
+    const { tom } = await crew(t);
+    const tomToken = await machine(t, tom, "mbp16", [agent("t1", "rail", true), agent("t2", "secret-stuff", false)]);
+    const fromPrivate = await t.mutation(api.operator.ask, { token: tomToken, question: "Fix the market update listings filter", agentId: "t2" });
+    await routeOnce(t);
+    expect(await t.query(api.operator.relay, { token: tomToken, relayId: fromPrivate })).toMatchObject({
+      status: "nobody", note: "A private agent's work stays on its Mac, so it cannot hand work off.",
+    });
+    const unnamed = await t.mutation(api.operator.ask, { token: tomToken, question: "Fix the market update listings filter for good" });
+    await routeOnce(t);
+    expect((await t.query(api.operator.relay, { token: tomToken, relayId: unnamed }))?.answer).toBe(
+      "Offered as a hand-off to @jimmy; they approve it in soopdoop. You will hear back on the wire.",
+    );
+  });
+
+  test("the daily cap counts an agent's question the Operator answered itself, and a crew's questions never count against a friend outside it", async function () {
+    const t = harness();
+    const { tom, jimmy } = await crew(t);
+    const tomId = await idOf(t, "tom");
+    const jimmyId = await idOf(t, "jimmy");
+    const hour = 60 * 60 * 1000;
+    await t.run(async function (ctx) {
+      for (let i = 0; i < 20; i++) await ctx.db.insert("relays", { askerHackerId: tomId, question: `who ${i}`, status: "answered", byOperator: true, createdAt: Date.now() - hour });
+    });
+    await expect(tom.mutation(api.operator.askAsHacker, { question: "Anyone?" })).rejects.toThrow("Your crew used today's questions");
+
+    // Tom and Jimmy become a crew; Sam, their friend in no crew, has his own allowance.
+    const sam = await hackerNamed(t, "sam");
+    await befriend(sam, tom, "tom");
+    await t.run(async function (ctx) {
+      const crewId = await ctx.db.insert("crews", { name: "vibes", leaderId: tomId, plan: "free", digestHour: 9, timezone: "America/Toronto", createdAt: Date.now() });
+      await ctx.db.insert("crewMembers", { crewId, hackerId: tomId, role: "leader", joinedAt: Date.now() });
+      await ctx.db.insert("crewMembers", { crewId, hackerId: jimmyId, role: "member", joinedAt: Date.now() });
+    });
+    await expect(jimmy.mutation(api.operator.askAsHacker, { question: "Anyone?" })).rejects.toThrow("Your crew used today's questions");
+    await sam.mutation(api.operator.askAsHacker, { question: "Anyone?" });
+  });
+
+  test("the chat's knock is not sent for a message that ran out of time", async function () {
+    const t = harness();
+    await crew(t);
+    const tomId = await idOf(t, "tom");
+    const relayId = await t.run(async function (ctx) {
+      return await ctx.db.insert("relays", { askerHackerId: tomId, question: "knock @jimmy", status: "timeout", via: "chat", createdAt: Date.now() });
+    });
+    await expect(t.mutation(internal.operator.knock, { relayId, fromId: tomId, toHandle: "jimmy", note: "look" })).rejects.toThrow("ran out of time");
+  });
+});
+
+// The Operator's Claude path, run by `route` itself, against a stand-in for the Messages API: `fetch` is replaced for
+// the test, so nothing leaves the machine, and the real SDK builds and reads every request.
+describe("the Operator's Claude path, against a stand-in for the API", function () {
+  let replies: unknown[] = [];
+  let realFetch: typeof fetch;
+  let savedKey: string | undefined;
+
+  // Answers each request with the next canned message, whatever was asked.
+  async function standIn(_input: string | URL | Request, _init?: RequestInit): Promise<Response> {
+    const next = replies.shift();
+    if (next === undefined) return Response.json({ type: "error", error: { type: "invalid_request_error", message: "no reply left" } }, { status: 400 });
+    return Response.json(next, { headers: { "request-id": "req_test" } });
+  }
+
+  function message(content: unknown[], stopReason: string) {
+    return {
+      id: "msg_test", type: "message", role: "assistant", model: "claude-sonnet-5-5", content, stop_reason: stopReason, stop_sequence: null,
+      usage: { input_tokens: 1_000, output_tokens: 100, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+    };
+  }
+
+  beforeEach(function () {
+    replies = [];
+    savedKey = process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPERATOR_FAKE;
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test-not-a-real-key";
+    realFetch = globalThis.fetch;
+    globalThis.fetch = standIn as typeof fetch;
+  });
+
+  afterEach(function () {
+    globalThis.fetch = realFetch;
+    if (savedKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = savedKey;
+  });
+
+  test("a chat turn that knocks and offers to the same crewmate does both, with one knock, and says its own reply", async function () {
+    const t = harness();
+    const { tom } = await crew(t);
+    const { hedy } = await withHedy(t, tom);
+    replies = [
+      message([
+        { type: "tool_use", id: "tu1", name: "knock", input: { handle: "@hedy", note: "a hand-off is coming your way" } },
+        { type: "tool_use", id: "tu2", name: "offer_handoff", input: { agent: "@hedy", task: "fix the coupon code rounding" } },
+      ], "tool_use"),
+      message([{ type: "text", text: "Knocked on Hedy and offered her the rounding fix." }], "end_turn"),
+    ];
+    const relayId = await tom.mutation(api.operator.chat, { text: "knock hedy, and hand her this: fix the coupon code rounding" });
+    await routeOnce(t);
+    const turn = must((await tom.query(api.operator.chatLog, {})).find(function (r) { return r._id === relayId; }));
+    expect(turn).toMatchObject({ status: "answered", byOperator: true, answer: "Knocked on Hedy and offered her the rounding fix." });
+    expect((await hedy.query(api.handoffs.mine, {})).incoming).toMatchObject([{ _id: must(turn.handoffId), text: "fix the coupon code rounding" }]);
+    const knocks = await t.run(async function (ctx) { return await ctx.db.query("knocks").collect(); });
+    expect(knocks.map(function (k) { return k.note; })).toEqual(["a hand-off is coming your way"]);
+    // The relay keeps what the two calls cost: $0.003 each on Sonnet 5.5.
+    expect(must(await t.run(async function (ctx) { return await ctx.db.get("relays", relayId); })).usd).toBeCloseTo(0.006, 10);
+  });
+
+  test("a chat turn that offers a hand-off and then asks an agent keeps the hand-off on the relay", async function () {
+    const t = harness();
+    const { tom, jimmy, jimmyToken } = await crew(t);
+    replies = [
+      message([{ type: "tool_use", id: "tu1", name: "offer_handoff", input: { agent: "1", task: "fix the market update listings filter" } }], "tool_use"),
+      message([{ type: "tool_use", id: "tu2", name: "ask_agent", input: { agent: 1, question: "Where are expired listings filtered?" } }], "tool_use"),
+    ];
+    const relayId = await tom.mutation(api.operator.chat, { text: "hand jimmy this: fix the market update listings filter. Also, where are expired listings filtered?" });
+    await routeOnce(t);
+    expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([{ relayId, agentId: "a1", question: "Where are expired listings filtered?", asker: "tom" }]);
+    const turn = must((await tom.query(api.operator.chatLog, {})).find(function (r) { return r._id === relayId; }));
+    expect(turn.handoffId).toBeDefined();
+    expect((await jimmy.query(api.handoffs.mine, {})).incoming).toMatchObject([{ text: "fix the market update listings filter" }]);
+  });
+
+  test("a work order is offered in the asker's own words, never in Claude's rewording", async function () {
+    const t = harness();
+    const { tom, jimmy } = await crew(t);
+    replies = [message([{ type: "text", text: '{"handoff": 1, "task": "Fix the expired-listings filter in the market update"}' }], "end_turn")];
+    const question = "please fix how the market update drops expired listings, it misses some";
+    const relayId = await tom.mutation(api.operator.askAsHacker, { question });
+    await routeOnce(t);
+    expect((await logged(tom, relayId))?.answer).toBe("Offered as a hand-off to @jimmy; they approve it in soopdoop. You will hear back on the wire.");
+    expect((await jimmy.query(api.handoffs.mine, {})).incoming).toMatchObject([{ text: question, targetAgentId: "a1" }]);
+  });
+});
+
 // Keeps the Id import used for readers checking relay ids in this file's assertions.
 export type RelayId = Id<"relays">;

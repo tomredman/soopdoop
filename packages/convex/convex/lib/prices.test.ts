@@ -19,8 +19,9 @@ describe("what the Operator's Claude calls cost", function () {
     expect(priceOf("claude-sonnet-5-5", { input_tokens: 10, output_tokens: 0, cache_read_input_tokens: null, cache_creation_input_tokens: null })).toBeCloseTo(0.00002, 12);
   });
 
-  test("a model the table does not know is priced as Opus 5.5", function () {
+  test("a model the table does not know is priced as Opus 5.5; Sonnet 5, where a Sonnet 5.5 fallback can land, as itself", function () {
     expect(priceOf("claude-something-new", { input_tokens: 1_000_000, output_tokens: 0 })).toBeCloseTo(4, 10);
+    expect(priceOf("claude-sonnet-5", { input_tokens: 1_000_000, output_tokens: 0 })).toBeCloseTo(2, 10);
   });
 
   test("a response that fell back to another model is priced step by step, each as its own model", function () {

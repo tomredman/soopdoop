@@ -138,6 +138,27 @@ describe("the ledger", function () {
     expect(await feedOf(t)).toEqual([]);
   });
 
+  test("a forgotten line stays forgotten when the daemon sends it again, and keeps none of its words", async function () {
+    const t = harness();
+    const { tom, jimmy, jimmyToken, tomToken } = await crew(t);
+    const id = await t.mutation(api.ledger.report, { token: jimmyToken, ...line("s1", "fixed bounces", { shipped: true, pr: "https://example.com/pr/1" }) });
+    await jimmy.mutation(api.ledger.forget, { ledgerId: id });
+    expect(await t.mutation(api.ledger.report, { token: jimmyToken, ...line("s1", "fixed bounces", { shipped: true }) })).toBe(id);
+    expect(await jimmy.query(api.ledger.mine, {})).toEqual([]);
+    expect(await feedOf(t)).toEqual([]);
+    expect(await t.query(api.ledger.crewRecent, { token: tomToken })).toEqual([]);
+    expect(await t.query(internal.ledger.search, { hackerId: await idOf(t, "tom"), query: "bounces", days: 14 })).toEqual([]);
+    const stored = must(await t.run(async function (ctx) { return await ctx.db.get("ledger", id); }));
+    expect(stored).toMatchObject({ forgotten: true, did: "", areas: [], files: 0 });
+    expect(stored.pr).toBeUndefined();
+    expect(stored.workspace).toBeUndefined();
+    await expect(jimmy.mutation(api.ledger.edit, { ledgerId: id, did: "back again" })).rejects.toThrow("Not your ledger line");
+    // Another session is a new line as usual.
+    await t.mutation(api.ledger.report, { token: jimmyToken, ...line("s2", "tuned the webhook") });
+    expect((await jimmy.query(api.ledger.mine, {})).map(function (l) { return l.did; })).toEqual(["tuned the webhook"]);
+    void tom;
+  });
+
   test("a walkthrough goes on the line and on the wire once; asking about one is remembered", async function () {
     const t = harness();
     const { tom, jimmy, jimmyToken } = await crew(t);

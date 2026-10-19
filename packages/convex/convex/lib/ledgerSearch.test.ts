@@ -31,6 +31,16 @@ describe("searching the ledger", function () {
     expect(who("who is on quote-redesign")).toEqual(["adalovelace"]);
   });
 
+  test("a folder written out at the end of a sentence still matches, and outweighs a few shared words", function () {
+    expect(who("Is anyone still on apps/web/quote.")).toEqual(["adalovelace"]);
+    const lines2 = [
+      { name: "words", did: "metrics delivery bounce counts tuned", areas: [], at: NOW },
+      { name: "folder", did: "small fix", areas: ["apps/web/metrics"], at: NOW - 5 * DAY },
+    ];
+    const ranked = search("who changed apps/web/metrics/delivery.ts for bounce counts metrics?", lines2, NOW);
+    expect(ranked.map(function (r) { return r.line.name; })).toEqual(["folder", "words"]);
+  });
+
   test("a question about nothing in the ledger finds nothing", function () {
     expect(who("who knows about that work?")).toEqual([]);
     expect(who("billing webhooks")).toEqual([]);

@@ -11,6 +11,8 @@ interface Price {
 const PRICES: Record<string, Price> = {
   "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.2 },
   "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.2 },
+  // Sonnet 5.5's server-side fallback can answer on the Sonnet before it, at the same prices.
+  "claude-sonnet-5": { input: 2, output: 10, cacheRead: 0.2 },
 };
 
 // A model this table does not know (a server-side fallback after a refusal can answer on another model) is priced as

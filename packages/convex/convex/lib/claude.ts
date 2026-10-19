@@ -227,6 +227,15 @@ export function handoffNote(toHandle: string, agentName: string | undefined, toA
   return `Offered as a hand-off to ${to}; they approve it in soopdoop. You will hear back ${back}.`;
 }
 
+// A hand-off's text, in the asker's own words: the task as Claude picked it out, when the asker wrote exactly that
+// (in any case), else the asker's whole message. The crewmate approves exactly this text, so it is never Claude's
+// rewording of what the asker said.
+export function askersWords(task: string, said: string): string {
+  const t = task.trim();
+  const at = t === "" ? -1 : said.toLowerCase().indexOf(t.toLowerCase());
+  return at === -1 ? said.trim() : said.slice(at, at + t.length);
+}
+
 // A message that asks a crewmate's agent to do work instead of telling what it knows. Only fake mode uses this; Claude
 // reads that from the message itself.
 export function isWorkOrder(text: string): boolean {
@@ -247,9 +256,9 @@ const ROUTER =
   "to know. When a summary only hints at the answer, ask that agent instead of guessing or saying what the summary " +
   "leaves out. Only an open agent can be asked, never a past work line. Offer a hand-off when the question asks a " +
   "crewmate's agent to do work for the asker (write, change, fix or review code, documents or plans) instead of " +
-  "telling what it knows: pick the open agent, or else the past work line, whose owner fits the work best, and give " +
-  "the task in the asker's words. The owner approves it before anything runs. Say nobody knows when no agent or past " +
-  "work is likely to know, or nobody fits the work. A question about one person can only be answered from that " +
+  "telling what it knows: pick the open agent, or else the past work line, whose owner fits the work best, and copy " +
+  "the task word for word from the question. The owner approves it before anything runs. Say nobody knows when no " +
+  "agent or past work is likely to know, or nobody fits the work. A question about one person can only be answered from that " +
   "person's own agents and past work. A reply sounds like a teammate in a chat: one or two short sentences, about the " +
   "people and their work, with the person's first name when you know it and their @handle once. To a who-question, " +
   "say who has an agent on it and end with \"What would you like to know?\", for example: \"Ada (@adalovelace) has an " +
@@ -261,8 +270,8 @@ const ROUTER =
   "agents, never describe the list of agents (how many there are, or whose), and never talk about summaries, " +
   "statuses, past work lines or what you can see. Never confirm or deny what the summaries and past work do not say, " +
   "and never make up facts about code or people. Reply with JSON only, one of {\"reply\": \"<your answer>\"}, " +
-  "{\"ask\": <agent number>}, {\"handoff\": <agent or past work number>, \"task\": \"<the task, in the asker's " +
-  "words>\"} or {\"nobody\": true}.";
+  "{\"ask\": <agent number>}, {\"handoff\": <agent or past work number>, \"task\": \"<the task, copied word for word " +
+  "from the question>\"} or {\"nobody\": true}.";
 
 function answerer(owner: { handle: string; name?: string }): string {
   const who = `@${owner.handle}`;
@@ -318,9 +327,11 @@ function chatter(me: string): string {
     `or who to ask, say who has an agent on it and ask what they would like to know; their answer goes to that agent. ` +
     `When nobody's agent is running for it, say who did that work and offer to knock them or hand it off. When @${me} ` +
     `wants a crewmate's agent to do work for them (write, change, fix or review code, documents or plans), offer a ` +
-    `hand-off to the agent or crewmate that fits, with the task in @${me}'s words, and say the crewmate approves it in ` +
-    `soopdoop. Knock only when @${me} asks you to. Keep a reply to three short sentences, plain and a little playful, ` +
-    `about the people and their work. Never name the agents, never describe the list of agents, and never talk about ` +
+    `hand-off to the agent or crewmate that fits, with the task copied word for word from @${me}'s new message (the ` +
+    `crewmate sees exactly those words), and say the crewmate approves it in soopdoop; when that message does not say ` +
+    `the task itself, ask @${me} to write it out first. Knock only when @${me} asks you to. Keep a reply to three ` +
+    `short sentences, plain and a little playful, about the people and their work. Never name the agents, never ` +
+    `describe the list of agents, and never talk about ` +
     `summaries, tools or what you can see. Never make up facts about code or people.`
   );
 }
@@ -363,7 +374,7 @@ const CHAT_TOOLS: Anthropic.Beta.BetaTool[] = [
       type: "object",
       properties: {
         agent: { type: "string", description: "The number of an open agent or a past work line in the lists, or the crewmate's @handle." },
-        task: { type: "string", description: "The task, in the words of the person you are chatting with." },
+        task: { type: "string", description: "The task, copied word for word from the new message of the person you are chatting with." },
       },
       required: ["agent", "task"],
     },
@@ -579,7 +590,8 @@ export async function chatTurn(
       messages,
     });
     spend(tools.meter, response);
-    if (response.stop_reason === "refusal") return { reply: "I'll pass on that one.", ...effects };
+    // A refused turn does nothing, not even what it had decided before the refusal.
+    if (response.stop_reason === "refusal") return { reply: "I'll pass on that one." };
     const uses = response.content.filter(function (b): b is Anthropic.Beta.BetaToolUseBlock { return b.type === "tool_use"; });
     if (uses.length === 0) {
       const said = textOf(response.content);
@@ -616,13 +628,13 @@ export function describeError(e: unknown): string {
 // work: a past line's index is the number of candidates plus its own), or neither (null) when nobody is likely to know.
 export type Route = { reply: string } | { ask: number } | { handoff: number; task: string } | null;
 
-// The router's JSON, for `agents` listed agents and `past` past work lines numbered after them. A bare number is read as
-// an agent, the way the router used to answer; anything else as nobody. A hand-off's task may be empty (the question is
-// the task then).
+// The router's JSON, for `agents` listed agents and `past` past work lines numbered after them. A bare number (the whole
+// answer) is read as an agent, the way the router used to answer; anything else as nobody, including prose with numbers
+// in it. A hand-off's task may be empty (the question is the task then).
 export function parseRoute(text: string, agents: number, past: number = 0): Route {
   const json = /\{[\s\S]*\}/.exec(text)?.[0];
   if (json === undefined) {
-    const n = Number(/\d+/.exec(text)?.[0] ?? "0");
+    const n = /^\s*\d+\s*$/.test(text) ? Number(text) : 0;
     return Number.isInteger(n) && n >= 1 && n <= agents ? { ask: n - 1 } : null;
   }
   try {

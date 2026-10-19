@@ -18,6 +18,7 @@ import type * as headsups from "../headsups.js";
 import type * as http from "../http.js";
 import type * as knocks from "../knocks.js";
 import type * as ledger from "../ledger.js";
+import type * as lib_allowance from "../lib/allowance.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_claude from "../lib/claude.js";
 import type * as lib_friendships from "../lib/friendships.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   knocks: typeof knocks;
   ledger: typeof ledger;
+  "lib/allowance": typeof lib_allowance;
   "lib/auth": typeof lib_auth;
   "lib/claude": typeof lib_claude;
   "lib/friendships": typeof lib_friendships;

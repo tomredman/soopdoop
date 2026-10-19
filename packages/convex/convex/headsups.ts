@@ -35,11 +35,15 @@ export const record = mutation({
   },
   returns: v.id("headsups"),
   handler: async function (ctx, args) {
-    const { hacker } = await requireDaemon(ctx, args.token);
+    const { hacker, daemon } = await requireDaemon(ctx, args.token);
+    // A private agent's prompts make no heads-up.
+    if (args.agentId !== undefined && (await agentsOn(ctx, hacker._id, daemon.machineName)).some(function (a) { return a.agentId === args.agentId && !a.open; })) {
+      throw new ConvexError("A private agent's work stays on its Mac, so it makes no heads-up.");
+    }
     const other = await ctx.db
       .query("hackers")
       .withIndex("by_handle", function (q) {
-        return q.eq("handle", args.otherHandle.replace(/^@/, "").toLowerCase());
+        return q.eq("handle", args.otherHandle.trim().replace(/^@/, "").toLowerCase());
       })
       .unique();
     // TODO(crews): isCrewmate
@@ -94,20 +98,25 @@ export const dismiss = mutation({
   },
 });
 
-// The agent's name, only when its owner shares agent names.
-async function agentName(ctx: QueryCtx, owner: Doc<"hackers">, agentId: string): Promise<string | undefined> {
-  if (!owner.shareAgentNames) return undefined;
+// A hacker's agents, on one machine or on all of them.
+async function agentsOn(ctx: QueryCtx, hackerId: Id<"hackers">, machineName?: string): Promise<Doc<"subsets">["agents"]> {
   const subsets = await ctx.db
     .query("subsets")
     .withIndex("by_hacker_machine", function (q) {
-      return q.eq("hackerId", owner._id);
+      return machineName === undefined ? q.eq("hackerId", hackerId) : q.eq("hackerId", hackerId).eq("machineName", machineName);
     })
     .collect();
-  for (const s of subsets) {
-    const agent = s.agents.find(function (a) { return a.agentId === agentId && a.open; });
-    if (agent !== undefined) return agent.name;
-  }
-  return undefined;
+  return subsets.flatMap(function (s) { return s.agents; });
+}
+
+// The agent's name, only when its owner shares agent names. The card may name the agent by its session id or by the
+// key its routing summary has (what a daemon is told about crewmates' agents).
+async function agentName(ctx: QueryCtx, owner: Doc<"hackers">, agentId: string): Promise<string | undefined> {
+  if (!owner.shareAgentNames) return undefined;
+  const summaryId = ctx.db.normalizeId("routingSummaries", agentId);
+  const summary = summaryId === null ? null : await ctx.db.get("routingSummaries", summaryId);
+  const id = summary !== null && summary.hackerId === owner._id ? summary.agentId : agentId;
+  return (await agentsOn(ctx, owner._id)).find(function (a) { return a.agentId === id && a.open; })?.name;
 }
 
 // My open cards, newest first: not dismissed, not acted on, not ended.
@@ -156,8 +165,10 @@ export const cards = query({
 });
 
 // A heads-up counts as acted on when its owner asks that crewmate's agent, hands the task off or knocks within 10
-// minutes of it (operator.setTarget, handoffs, knocks.send call this). Dismissed cards do not count. With an agent, only
-// cards about that agent. The wire hears about it once. Returns how many cards it marked.
+// minutes of it (operator.setTarget, handoffs, knocks.send call this). Dismissed cards do not count. With an agent (an
+// ask), a card about another of that crewmate's open agents does not count; one whose agent cannot be told apart (the
+// daemon named it another way, or it came from the ledger) does. The wire hears about it once. Returns how many cards
+// it marked.
 export async function markActed(
   ctx: MutationCtx,
   hackerId: Id<"hackers">,
@@ -172,11 +183,13 @@ export async function markActed(
       return q.eq("hackerId", hackerId).gte("at", now - CARD_MS);
     })
     .collect();
+  const theirs = rows.filter(function (h) { return h.otherId === otherId && h.dismissedAt === undefined && h.actedAt === undefined; });
+  if (theirs.length === 0) return 0;
+  const known = otherAgentId === undefined ? new Set<string>() : new Set((await agentsOn(ctx, otherId)).map(function (a) { return a.agentId; }));
   let first: Doc<"headsups"> | undefined;
   let marked = 0;
-  for (const h of rows) {
-    if (h.otherId !== otherId || h.dismissedAt !== undefined || h.actedAt !== undefined) continue;
-    if (otherAgentId !== undefined && h.otherAgentId !== otherAgentId) continue;
+  for (const h of theirs) {
+    if (otherAgentId !== undefined && h.otherAgentId !== otherAgentId && known.has(h.otherAgentId)) continue;
     await ctx.db.patch("headsups", h._id, { actedAt: now, action });
     first = first ?? h;
     marked += 1;

@@ -126,6 +126,8 @@ export const report = mutation({
         return q.eq("hackerId", hacker._id).eq("sessionKey", sessionKey);
       })
       .unique();
+    // Its owner forgot this session's line: it stays forgotten.
+    if (existing?.forgotten === true) return existing._id;
     const harness = clean(args.harness, 40);
     const at = args.at !== undefined && Number.isFinite(args.at) ? Math.min(args.at, now) : now;
     // A PR link stays once seen, and a ship stays a ship.
@@ -162,20 +164,25 @@ export const mine = query({
   returns: v.array(lineView),
   handler: async function (ctx) {
     const me = await requireHacker(ctx);
-    const rows = await ctx.db
+    const lines = [];
+    const newestFirst = ctx.db
       .query("ledger")
       .withIndex("by_hacker_at", function (q) {
         return q.eq("hackerId", me._id);
       })
-      .order("desc")
-      .take(50);
-    return rows.map(lineOf);
+      .order("desc");
+    for await (const l of newestFirst) {
+      if (l.forgotten === true) continue;
+      lines.push(lineOf(l));
+      if (lines.length === 50) break;
+    }
+    return lines;
   },
 });
 
 async function ownLine(ctx: QueryCtx, me: Doc<"hackers">, id: Id<"ledger">): Promise<Doc<"ledger">> {
   const line = await ctx.db.get("ledger", id);
-  if (line === null || line.hackerId !== me._id) throw new ConvexError("Not your ledger line.");
+  if (line === null || line.hackerId !== me._id || line.forgotten === true) throw new ConvexError("Not your ledger line.");
   return line;
 }
 
@@ -205,7 +212,9 @@ export const edit = mutation({
   },
 });
 
-// The owner deletes a line, and its ship and walkthrough leave the wire with it.
+// The owner deletes a line: its words go, and its ship and walkthrough leave the wire with it. A marker for its session
+// stays (no words, no folders), so the daemon sending the line again does not bring it back. The daily prune drops the
+// marker with the plan's other old lines.
 export const forget = mutation({
   args: { ledgerId: v.id("ledger") },
   returns: v.null(),
@@ -213,7 +222,17 @@ export const forget = mutation({
     const me = await requireHacker(ctx);
     const line = await ownLine(ctx, me, args.ledgerId);
     for (const e of await eventsOf(ctx, line)) await ctx.db.delete("feed", e._id);
-    await ctx.db.delete("ledger", line._id);
+    await ctx.db.replace("ledger", line._id, {
+      hackerId: line.hackerId,
+      at: line.at,
+      harness: line.harness,
+      machineName: line.machineName,
+      sessionKey: line.sessionKey,
+      did: "",
+      areas: [],
+      files: 0,
+      forgotten: true,
+    });
     return null;
   },
 });
@@ -278,6 +297,7 @@ export const crewRecent = query({
         .order("desc")
         .take(CREW_RECENT_MAX);
       for (const l of rows) {
+        if (l.forgotten === true) continue;
         out.push({
           handle: owner.handle,
           name,
@@ -317,14 +337,22 @@ export interface LedgerHit {
 }
 
 // The crewmates' lines of the last `days` that best match the query, best first, at most 8. Never the asker's own:
-// the Operator only tells a hacker about their crewmates' work. The folder and branch count, and show, only when their
-// owner shares folder names.
-export async function searchLedger(ctx: QueryCtx, hackerId: Id<"hackers">, queryText: string, days: number): Promise<LedgerHit[]> {
+// the Operator only tells a hacker about their crewmates' work. With `among`, only those crewmates' lines (a question
+// about @someone), so other crewmates' newer work cannot crowd theirs out. The folder and branch count, and show, only
+// when their owner shares folder names.
+export async function searchLedger(
+  ctx: QueryCtx,
+  hackerId: Id<"hackers">,
+  queryText: string,
+  days: number,
+  among?: Id<"hackers">[],
+): Promise<LedgerHit[]> {
   const now = Date.now();
   const since = now - daysWithin(days) * DAY_MS;
   const lines = [];
   // TODO(crews): crewmateIds
   for (const id of await acceptedFriendIds(ctx, hackerId)) {
+    if (among !== undefined && !among.includes(id)) continue;
     const owner = await ctx.db.get("hackers", id);
     if (owner === null) continue;
     const rows = await ctx.db
@@ -335,6 +363,7 @@ export async function searchLedger(ctx: QueryCtx, hackerId: Id<"hackers">, query
       .order("desc")
       .take(SEARCHED_PER_CREWMATE);
     for (const row of rows) {
+      if (row.forgotten === true) continue;
       const shared = owner.shareWorkspaceNames;
       lines.push({ row, owner, did: row.did, areas: row.areas, at: row.at, workspace: shared ? row.workspace : undefined, branch: shared ? row.branch : undefined });
     }
