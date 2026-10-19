@@ -9,6 +9,8 @@ import { makeFunctionReference } from "convex/server";
 import { appBinaryPath, appBundlePath, buildApp, removeApp, watcherBinaryPath } from "./app";
 import { configPath, configStamp, invitePath, readConfig, readSettings, soopdoopHome, writeConfig, writeSettings, type Config } from "./config";
 import { readFund, readSpends, spentToday, writeFund } from "./fund";
+import { handoffsCommand, readHandoffLog, spentOnHandoffs } from "./handoff-log";
+import { handoffsLocal, type HandoffsLocal } from "./handoffs-local";
 import { forwardHook } from "./hook";
 import { introducer, type Introducer } from "./intro";
 import { claudeSettingsPath, findClaude, guardedHook, installClaudeHooks, prefixedHook, uninstallClaudeHooks } from "./hooks";
@@ -44,6 +46,12 @@ const reportSubset = makeFunctionReference<"mutation">("subsets:report");
 // The crew's running agents, to introduce them to this machine's sessions.
 const crewAgents = makeFunctionReference<"query">("routing:crew");
 
+// Everything soopdoop adds to a session's context at one hook event, in one reply. Null when there is nothing.
+function joinContext(parts: (string | null)[]): string | null {
+  const present = parts.filter(function (p): p is string { return p !== null && p !== ""; });
+  return present.length === 0 ? null : present.join("\n\n");
+}
+
 function tilde(p: string): string {
   const home = homedir();
   return p.startsWith(home + "/") ? "~" + p.slice(home.length) : p;
@@ -65,7 +73,7 @@ async function serve(): Promise<void> {
   let dirty = true;
   let reporting = false;
   // http reports presence; live follows the Operator's read requests over a WebSocket; intro tells sessions about the crew.
-  let paired: { config: Config; client: ConvexHttpClient; live: ConvexClient; stopReads: () => void; intro: Introducer } | null = null;
+  let paired: { config: Config; client: ConvexHttpClient; live: ConvexClient; stopReads: () => void; intro: Introducer; handoffs: HandoffsLocal } | null = null;
   let stamp = -1;
   // Open agents that finished a turn since the last report: their routing summaries go out after it.
   const summariesDue = new Set<string>();
@@ -79,6 +87,7 @@ async function serve(): Promise<void> {
   function unpair(): void {
     if (paired === null) return;
     paired.stopReads();
+    paired.handoffs.stop();
     void paired.live.close();
     paired = null;
   }
@@ -101,7 +110,12 @@ async function serve(): Promise<void> {
         const live = new ConvexClient(config.convexUrl);
         const client = new ConvexHttpClient(config.convexUrl);
         const intro = introducer(function () { return client.query(crewAgents, { token: config.token }); });
-        paired = { config, client, live, stopReads: answerReads(live, config.token, config.convexUrl, subset), intro };
+        const handoffs = handoffsLocal({
+          backend: { watch(query, args, onUpdate) { return live.onUpdate(query, args, onUpdate, function (e: Error) { console.error("hand-offs:", e.message); }); }, mutation(fn, args) { return client.mutation(fn, args); } },
+          token: config.token,
+          subset,
+        });
+        paired = { config, client, live, stopReads: answerReads(live, config.token, config.convexUrl, subset), intro, handoffs };
       }
       if (paired === null) console.log(`Not paired yet. Sign in on the rail (${RAIL_URL}) and it pairs this machine.`);
       else {
@@ -156,10 +170,13 @@ async function serve(): Promise<void> {
         const raw: unknown = await req.json().catch(function () { return null; });
         const ev = parseHookEvent(raw);
         if (ev === null) return new Response("bad hook payload", { status: 400 });
+        const before = subset.get(ev.session_id);
         if (apply(subset, ev, Date.now(), paired?.config.privateDirs ?? [], repoOf)) dirty = true;
         if (ev.hook_event_name === "Stop" && subset.get(ev.session_id)?.open === true) summariesDue.add(ev.session_id);
-        // A session that starts hears what the crew's agents work on; at a prompt, about agents that started since.
-        const context = paired === null ? null : await paired.intro.contextFor(ev.hook_event_name, ev.session_id);
+        paired?.handoffs.onHook(ev, before);
+        // A session that starts hears what the crew's agents work on; at a prompt, about agents that started since, and how
+        // the hand-offs it offered ended.
+        const context = paired === null ? null : joinContext([await paired.intro.contextFor(ev.hook_event_name, ev.session_id), await paired.handoffs.contextFor(ev)]);
         return context === null ? new Response("ok") : Response.json({ context });
       }
       // The HUD's private switch, through the local agent: keep an agent's repository private, or stop.
@@ -538,6 +555,8 @@ async function status(): Promise<void> {
   const fund = await readFund();
   const spent = spentToday(await readSpends(), Date.now()).total;
   console.log(`fund    $${spent.toFixed(2)} of $${fund.dailyUsd.toFixed(2)} spent answering crewmates in the last 24 hours · soopdoop fund`);
+  const handoffUsd = spentOnHandoffs(await readHandoffLog(), Date.now());
+  console.log(`handoffs $${handoffUsd.toFixed(2)} of $${settings.handoffDailyUsd.toFixed(2)} spent on crewmates' hand-offs in the last 24 hours · soopdoop handoffs`);
 }
 
 // `soopdoop fund` shows the anti-hijacking fund and what it paid for in the last 24 hours. `soopdoop fund <dollars>
@@ -661,6 +680,7 @@ soopdoop update [--to <version>]                install the newest release (or m
 soopdoop auto-update [on|off]                   whether new releases install themselves (on by default)
 soopdoop auto-open [on|off]                     whether soopdoop opens when Superset opens (on by default)
 soopdoop fund [<dollars> [share]]               what this Mac's agents may spend answering crewmates in 24 hours ($5, half each)
+soopdoop handoffs [<dollars>]                   what crewmates' hand-offs may cost this Mac's agents in 24 hours ($10)
 soopdoop start | stop | restart                 the background services
 soopdoop uninstall                              remove the hooks, the background services, the app, the ask_operator tool and the skill
 soopdoop pair <convex-url> <token>              pair by hand (the rail does this for you)
@@ -733,6 +753,9 @@ try {
     }
     case "fund":
       await fundCommand(rest);
+      break;
+    case "handoffs":
+      await handoffsCommand(rest);
       break;
     case "uninstall":
       await uninstall();
