@@ -2,6 +2,7 @@
 // ABOUTME: Two dots in the file name keep Convex from bundling it as a function module (it skips multi-dot names).
 import { convexTest } from "convex-test";
 import { api } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 
 const modules = {
@@ -29,8 +30,17 @@ const modules = {
   "./crons.ts": function () {
     return import("./crons");
   },
+  "./crews.ts": function () {
+    return import("./crews");
+  },
+  "./digests.ts": function () {
+    return import("./digests");
+  },
   "./feed.ts": function () {
     return import("./feed");
+  },
+  "./intercom.ts": function () {
+    return import("./intercom");
   },
   "./lib/auth.ts": function () {
     return import("./lib/auth");
@@ -38,14 +48,32 @@ const modules = {
   "./lib/claude.ts": function () {
     return import("./lib/claude");
   },
+  "./lib/crew.ts": function () {
+    return import("./lib/crew");
+  },
+  "./lib/digest.ts": function () {
+    return import("./lib/digest");
+  },
   "./lib/friendships.ts": function () {
     return import("./lib/friendships");
+  },
+  "./lib/localTime.ts": function () {
+    return import("./lib/localTime");
+  },
+  "./lib/numbers.ts": function () {
+    return import("./lib/numbers");
+  },
+  "./lib/plan.ts": function () {
+    return import("./lib/plan");
   },
   "./lib/summaries.ts": function () {
     return import("./lib/summaries");
   },
   "./lib/supersetProfile.ts": function () {
     return import("./lib/supersetProfile");
+  },
+  "./notes.ts": function () {
+    return import("./notes");
   },
   "./operator.ts": function () {
     return import("./operator");
@@ -58,6 +86,9 @@ const modules = {
   },
   "./schema.ts": function () {
     return import("./schema");
+  },
+  "./slack.ts": function () {
+    return import("./slack");
   },
   "./subsets.ts": function () {
     return import("./subsets");
@@ -106,6 +137,36 @@ export async function befriend(a: Actor, b: Actor, bHandle: string): Promise<voi
 export function must<T>(x: T | null | undefined): T {
   if (x === null || x === undefined) throw new Error("Expected a value");
   return x;
+}
+
+// A hacker's id by handle.
+export async function idOf(t: Harness, handle: string): Promise<Id<"hackers">> {
+  const row = await t.run(async function (ctx) {
+    return await ctx.db.query("hackers").withIndex("by_handle", function (q) { return q.eq("handle", handle); }).unique();
+  });
+  return must(row)._id;
+}
+
+// `invitee` uses an invite link `inviter` made, the way a new crewmate joins.
+export async function invite(inviter: Actor, invitee: Actor): Promise<void> {
+  const token = await inviter.mutation(api.friends.createInvite, {});
+  await invitee.mutation(api.friends.redeemInvite, { token });
+}
+
+// The crew a hacker is in.
+export async function crewIdOf(t: Harness, handle: string): Promise<Id<"crews">> {
+  const hackerId = await idOf(t, handle);
+  const row = await t.run(async function (ctx) {
+    return await ctx.db.query("crewMembers").withIndex("by_hacker", function (q) { return q.eq("hackerId", hackerId); }).first();
+  });
+  return must(row).crewId;
+}
+
+// Puts a crew on the team plan, as billing does when the leader pays.
+export async function teamPlan(t: Harness, crewId: Id<"crews">): Promise<void> {
+  await t.run(async function (ctx) {
+    await ctx.db.patch("crews", crewId, { plan: "team" });
+  });
 }
 
 export const link = { kind: "link" as const, title: "the coupon fix", url: "https://example.com/pr/1" };

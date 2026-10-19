@@ -1,39 +1,23 @@
 // ABOUTME: Friends: request by handle (or invite someone not here yet, found on Superset when possible), accept, invite
 // ABOUTME: links (7 days, one use), and the friend list with live presence (also for an agent, by its machine's token), which respects sharing settings and focus mode.
-import { ConvexError, v } from "convex/values";
+import { ConvexError, type Infer, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { action, internalMutation, mutation, query } from "./_generated/server";
 import { hackerFor, requireDaemon, requireHacker, requireIdentity } from "./lib/auth";
+import { crewmateIds } from "./lib/crew";
+import { acceptedFriendIds, areFriends, makeFriends } from "./lib/friendships";
+import { summaryForCrew } from "./lib/summaries";
 import { normalizeHandle, type SupersetProfile } from "./lib/supersetProfile";
 import { fetchProfile, supersetCard, supersetCardView } from "./superset";
 
+// They live in lib/friendships.ts (lib/crew.ts needs them too); other modules import them from here.
+export { acceptedFriendIds, areFriends };
+
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
-export async function acceptedFriendIds(ctx: QueryCtx, me: Id<"hackers">): Promise<Id<"hackers">[]> {
-  const asA = await ctx.db
-    .query("friendships")
-    .withIndex("by_a_b", function (q) {
-      return q.eq("a", me);
-    })
-    .collect();
-  const asB = await ctx.db
-    .query("friendships")
-    .withIndex("by_b", function (q) {
-      return q.eq("b", me);
-    })
-    .collect();
-  const ids: Id<"hackers">[] = [];
-  for (const f of asA) if (f.status === "accepted") ids.push(f.b);
-  for (const f of asB) if (f.status === "accepted") ids.push(f.a);
-  return ids;
-}
-
-export async function areFriends(ctx: QueryCtx, x: Id<"hackers">, y: Id<"hackers">): Promise<boolean> {
-  const ids = await acceptedFriendIds(ctx, x);
-  return ids.includes(y);
-}
+// A machine that reported in the last 90 seconds is live.
+const LIVE_MS = 90_000;
 
 const presenceView = v.object({
   hackerId: v.id("hackers"),
@@ -53,7 +37,47 @@ const presenceView = v.object({
       }),
     ),
   ),
+  // What their most recently active open agent is on, as their crewmates' agents read it. Only for their crewmates, and
+  // not while they are in focus.
+  summary: v.optional(v.string()),
+  // When one of their machines last reported. Not while they are in focus.
+  lastSeenAt: v.optional(v.number()),
 });
+
+// The summary of this hacker's most recently updated open, live agent, as crewmates' agents see it (folder and branch
+// only when they share folder names).
+async function latestSummary(ctx: QueryCtx, hacker: Doc<"hackers">, subsets: Doc<"subsets">[], now: number): Promise<string | undefined> {
+  let best: Doc<"routingSummaries"> | null = null;
+  for (const subset of subsets) {
+    if (now - subset.updatedAt >= LIVE_MS) continue;
+    for (const agent of subset.agents) {
+      if (!agent.open) continue;
+      const row = await ctx.db
+        .query("routingSummaries")
+        .withIndex("by_hacker_agent", function (q) {
+          return q.eq("hackerId", hacker._id).eq("agentId", agent.agentId);
+        })
+        .unique();
+      if (row !== null && (best === null || row.updatedAt > best.updatedAt)) best = row;
+    }
+  }
+  if (best === null) return undefined;
+  const summary = summaryForCrew(best.summary, hacker.shareWorkspaceNames);
+  return summary === "" ? undefined : summary;
+}
+
+// The newest report from any of this hacker's machines.
+async function lastSeenAt(ctx: QueryCtx, hackerId: Id<"hackers">): Promise<number | undefined> {
+  const machines = await ctx.db
+    .query("daemonTokens")
+    .withIndex("by_hacker", function (q) {
+      return q.eq("hackerId", hackerId);
+    })
+    .collect();
+  let newest: number | undefined;
+  for (const m of machines) if (newest === undefined || m.lastSeenAt > newest) newest = m.lastSeenAt;
+  return newest;
+}
 
 function presenceFor(hacker: Doc<"hackers">, subsets: Doc<"subsets">[], now: number, superset: Awaited<ReturnType<typeof supersetCard>>) {
   const inFocus = hacker.focusUntil !== undefined && hacker.focusUntil > now;
@@ -97,7 +121,7 @@ export const list = query({
     const me = await requireHacker(ctx);
     const ids = await acceptedFriendIds(ctx, me._id);
     const now = Date.now();
-    const out = [];
+    const out: Infer<typeof presenceView>[] = [];
     for (const id of ids) {
       const hacker = await ctx.db.get("hackers", id);
       if (hacker === null) continue;
@@ -107,7 +131,18 @@ export const list = query({
           return q.eq("hackerId", id);
         })
         .collect();
-      out.push(presenceFor(hacker, subsets, now, await supersetCard(ctx, id)));
+      const presence = presenceFor(hacker, subsets, now, await supersetCard(ctx, id));
+      if (presence.inFocus) {
+        out.push(presence);
+        continue;
+      }
+      // A summary is for the people their work is shared with: their crew, or their friends when they have no crew.
+      const shared = (await crewmateIds(ctx, id)).includes(me._id);
+      out.push({
+        ...presence,
+        summary: shared ? await latestSummary(ctx, hacker, subsets, now) : undefined,
+        lastSeenAt: await lastSeenAt(ctx, id),
+      });
     }
     out.sort(function (p, q) {
       return p.handle.localeCompare(q.handle);
@@ -117,7 +152,8 @@ export const list = query({
 });
 
 // The crew as an agent sees it, through its machine's token (the crew_status tool): each crewmate's handle, the name
-// they linked and their light, so the agent can put the right @handle in a question to the Operator.
+// they linked and their light, so the agent can put the right @handle in a question to the Operator. Crewmates are the
+// crew's members, or friends for a hacker in no crew.
 export const crew = query({
   args: { token: v.string() },
   returns: v.object({
@@ -136,7 +172,7 @@ export const crew = query({
     const { hacker } = await requireDaemon(ctx, args.token);
     const now = Date.now();
     const out = [];
-    for (const id of await acceptedFriendIds(ctx, hacker._id)) {
+    for (const id of await crewmateIds(ctx, hacker._id)) {
       const friend = await ctx.db.get("hackers", id);
       if (friend === null) continue;
       const subsets = await ctx.db
@@ -346,9 +382,8 @@ export const redeemInvite = mutation({
     }
     if (invite.fromHackerId === me._id) throw new ConvexError("That is your own invite.");
     await ctx.db.patch("invites", invite._id, { usedByHackerId: me._id });
-    if (!(await areFriends(ctx, me._id, invite.fromHackerId))) {
-      await ctx.db.insert("friendships", { a: invite.fromHackerId, b: me._id, status: "accepted", createdAt: Date.now() });
-    }
+    // Friends, and in the inviter's crew when it has room (or a new crew of the two of them).
+    await makeFriends(ctx, invite.fromHackerId, me._id);
     const from = await ctx.db.get("hackers", invite.fromHackerId);
     return from === null ? "" : from.handle;
   },

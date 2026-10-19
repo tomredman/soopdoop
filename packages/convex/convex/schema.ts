@@ -276,6 +276,9 @@ export default defineSchema({
     slackWebhook: v.optional(v.string()),
     // Ships, props and saves go to Slack as they happen. Off by default.
     slackMirror: v.optional(v.boolean()),
+    // What Slack said to the last post that failed (cleared by one that goes through), and when a post last went through.
+    slackError: v.optional(v.string()),
+    slackPostedAt: v.optional(v.number()),
     // Crewmates whose agents may post crew notes without their owner's approval (the leader's choice).
     trustedNotePosters: v.optional(v.array(v.id("hackers"))),
     intercomToken: v.optional(v.string()),

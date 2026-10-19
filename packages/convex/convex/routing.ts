@@ -3,8 +3,8 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { addToFeed, announcedAgents } from "./feed";
-import { acceptedFriendIds } from "./friends";
 import { requireDaemon, requireHacker } from "./lib/auth";
+import { crewmateIds } from "./lib/crew";
 import { redactSecrets, summaryForCrew } from "./lib/summaries";
 import { supersetCard } from "./superset";
 
@@ -95,7 +95,7 @@ export const crew = query({
     const { hacker } = await requireDaemon(ctx, args.token);
     const now = Date.now();
     const found = [];
-    for (const id of await acceptedFriendIds(ctx, hacker._id)) {
+    for (const id of await crewmateIds(ctx, hacker._id)) {
       const friend = await ctx.db.get("hackers", id);
       if (friend === null || (friend.focusUntil !== undefined && friend.focusUntil > now)) continue;
       const subsets = await ctx.db

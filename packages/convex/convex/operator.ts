@@ -6,8 +6,8 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { addToFeed, tokensSaved } from "./feed";
-import { acceptedFriendIds } from "./friends";
 import { requireDaemon, requireHacker } from "./lib/auth";
+import { crewmateIds } from "./lib/crew";
 import {
   absentNote,
   answerFrom,
@@ -275,7 +275,7 @@ export const candidates = internalQuery({
     const now = Date.now();
     const crew = [];
     const out = [];
-    for (const id of await acceptedFriendIds(ctx, relay.askerHackerId)) {
+    for (const id of await crewmateIds(ctx, relay.askerHackerId)) {
       const hacker = await ctx.db.get("hackers", id);
       if (hacker === null) continue;
       const profile = await linkedProfile(ctx, id);

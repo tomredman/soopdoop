@@ -3,8 +3,8 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
-import { areFriends } from "./friends";
 import { requireHacker } from "./lib/auth";
+import { isCrewmate } from "./lib/crew";
 
 const LIFETIMES = new Set([10_000, 30_000, 120_000]);
 
@@ -29,7 +29,8 @@ export const send = mutation({
       })
       .unique();
     if (to === null) throw new ConvexError("ain’t nobody with that handle");
-    if (!(await areFriends(ctx, me._id, to._id))) throw new ConvexError("You can only knock on a friend.");
+    // A crewmate: in my crew, or a friend when I am in no crew.
+    if (!(await isCrewmate(ctx, me._id, to._id))) throw new ConvexError("You can only knock on a friend in your crew.");
     const now = Date.now();
     if (to.focusUntil !== undefined && to.focusUntil > now) throw new ConvexError("They are in focus mode. Try later.");
     const lifetimeMs = args.lifetimeMs ?? 30_000;
