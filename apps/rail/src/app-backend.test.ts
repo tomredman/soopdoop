@@ -636,6 +636,95 @@ describe("the crew in the app's state and actions", function () {
     await expect(agent.act("makeWalkthrough", { ledgerId: "l_1" })).rejects.toThrow("soopdoop's daemon is not answering on this Mac.");
   });
 
+  test("on the team plan a walkthrough becomes a drop, and the drop's link is what opens", async function () {
+    const { agent, backend, opened } = await ready();
+    backend.push(api.crews.mine, { ...CREW, plan: "team" });
+    backend.push(api.ledger.mine, [LINE]);
+    const page = path.join(home, "walkthroughs", "l_1.html");
+    await Bun.write(page, "<!doctype html><title>the quote page</title>");
+    const uploads: { type: string | null; size: number }[] = [];
+    const store = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(req) {
+        uploads.push({ type: req.headers.get("content-type"), size: (await req.arrayBuffer()).byteLength });
+        return Response.json({ storageId: "st_1" });
+      },
+    });
+    const daemon = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch() { return Response.json({ path: page }); } });
+    process.env.SOOPDOOP_PORT = String(daemon.port);
+    try {
+      backend.answers.set("drops:uploadUrl", `http://127.0.0.1:${store.port}/upload`);
+      backend.answers.set("drops:save", { dropId: "d_1", url: "https://x.convex.site/d/tok1" });
+      expect(await agent.act("makeWalkthrough", { ledgerId: "l_1" })).toBe("https://x.convex.site/d/tok1");
+      expect(uploads).toEqual([{ type: "text/html;charset=utf-8", size: Bun.file(page).size }]);
+      expect(backend.last()).toEqual({
+        name: "drops:save",
+        args: { storageId: "st_1", title: `Walkthrough: ${LINE.did}`, kind: "walkthrough", contentType: "text/html;charset=utf-8", size: Bun.file(page).size, ledgerId: "l_1" },
+      });
+      expect(opened[opened.length - 1]).toBe("https://x.convex.site/d/tok1");
+      // The upload records the walkthrough on the line itself: no second write, and no "asked" mark.
+      expect(backend.calls.some(function (c) { return c.name === "ledger:setWalkthrough" || c.name === "ledger:markWalkthroughAsked"; })).toBe(false);
+
+      // When the upload fails, the page still opens from this Mac and the line is marked asked, as on the free plan.
+      backend.answers.set("drops:uploadUrl", new Error("The crew's shelf is full."));
+      expect(await agent.act("makeWalkthrough", { ledgerId: "l_1" })).toBe(pathToFileURL(page).href);
+      expect(backend.last()).toEqual({ name: "ledger:markWalkthroughAsked", args: { ledgerId: "l_1" } });
+    } finally {
+      await daemon.stop(true);
+      await store.stop(true);
+    }
+  });
+
+  test("drops: a link for the crew, a drop opened or forgotten, only from the shelf on screen", async function () {
+    const { agent, backend, opened } = await ready();
+    backend.push(api.ledger.mine, [LINE]);
+    const drop = {
+      _id: "d_1" as Id<"drops">,
+      title: "Walkthrough: the quote page",
+      kind: "walkthrough" as const,
+      url: "https://x.convex.site/d/tok1",
+      byHandle: "tom",
+      byName: undefined,
+      createdAt: 1_760_000_000_000,
+      size: 974,
+      ledgerId: "l_1" as Id<"ledger">,
+      canForget: true,
+    };
+    backend.push(api.drops.list, [drop]);
+    expect(agent.state().drops).toEqual([drop]);
+    backend.answers.set("drops:link", { dropId: "d_2", url: "https://example.com/design" });
+    expect(await agent.act("dropLink", { title: "The design doc", url: "https://example.com/design", ledgerId: "l_1" })).toEqual({ dropId: "d_2", url: "https://example.com/design" });
+    expect(backend.last()).toEqual({ name: "drops:link", args: { title: "The design doc", url: "https://example.com/design", ledgerId: "l_1" } });
+    expect(await agent.act("openDrop", { dropId: "d_1" })).toBe("https://x.convex.site/d/tok1");
+    expect(opened[opened.length - 1]).toBe("https://x.convex.site/d/tok1");
+    await agent.act("forgetDrop", { dropId: "d_1" });
+    expect(backend.last()).toEqual({ name: "drops:forget", args: { dropId: "d_1" } });
+    const sent = backend.calls.length;
+    await expect(agent.act("openDrop", { dropId: "d_9" })).rejects.toThrow("That drop is gone.");
+    await expect(agent.act("dropLink", { title: "x", url: "https://example.com", ledgerId: "l_9" })).rejects.toThrow("That ledger line is gone.");
+    await expect(agent.act("dropLink", { title: "x" })).rejects.toThrow("Missing url.");
+    expect(backend.calls.length).toBe(sent);
+  });
+
+  test("billing opens Stripe's pages from the links the backend makes", async function () {
+    const { agent, backend, opened } = await ready();
+    backend.answers.set("billing:checkout", "https://checkout.stripe.com/c/pay/cs_test_1");
+    expect(await agent.act("billingCheckout", { yearly: true })).toBe("https://checkout.stripe.com/c/pay/cs_test_1");
+    expect(backend.last()).toEqual({ name: "billing:checkout", args: { yearly: true } });
+    expect(opened[opened.length - 1]).toBe("https://checkout.stripe.com/c/pay/cs_test_1");
+    backend.answers.set("billing:portal", "https://billing.stripe.com/p/session/1");
+    expect(await agent.act("billingPortal")).toBe("https://billing.stripe.com/p/session/1");
+    expect(backend.last()).toEqual({ name: "billing:portal", args: {} });
+    expect(opened[opened.length - 1]).toBe("https://billing.stripe.com/p/session/1");
+    const sent = backend.calls.length;
+    await expect(agent.act("billingCheckout", {})).rejects.toThrow("Missing yearly.");
+    expect(backend.calls.length).toBe(sent);
+    // The backend's own words (who may, which page) come back as they are.
+    backend.answers.set("billing:portal", new Error("Only the crew leader can do that."));
+    await expect(agent.act("billingPortal")).rejects.toThrow("Only the crew leader can do that.");
+  });
+
   test("note actions take only notes on screen: live ones, and proposals waiting for me", async function () {
     const { agent, backend } = await ready();
     backend.push(api.notes.list, NOTES);

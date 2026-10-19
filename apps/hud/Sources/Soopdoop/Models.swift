@@ -439,6 +439,21 @@ struct DigestInfo: Decodable {
     var weekly: Digest?
 }
 
+// One drop on the crew's shelf (drops.list): a walkthrough or page soopdoop stores, or a link kept for the crew.
+struct Drop: Decodable, Identifiable {
+    var id = ""
+    var title = ""
+    // walkthrough, page, file
+    var kind = "page"
+    var url = ""
+    var byHandle = ""
+    var byName: String?
+    var createdAt: Double = 0
+    var size: Double = 0
+    var ledgerId: String?
+    var canForget = false
+}
+
 struct AppState: Decodable {
     var version = ""
     // signed-out, signing-in, connecting, needs-handle, ready
@@ -471,6 +486,7 @@ struct AppState: Decodable {
     var consents: [Consent] = []
     var headsups: [Headsup] = []
     var digest = DigestInfo()
+    var drops: [Drop] = []
 
     var myRow: BoardRow? { board.first { $0.me } }
 }
@@ -840,10 +856,20 @@ extension DigestInfo {
     }
 }
 
+extension Drop {
+    enum CodingKeys: String, CodingKey { case id = "_id", title, kind, url, byHandle, byName, createdAt, size, ledgerId, canForget }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = c.value(.id, ""); title = c.value(.title, ""); kind = c.value(.kind, "page"); url = c.value(.url, "")
+        byHandle = c.value(.byHandle, ""); byName = c.maybe(.byName); createdAt = c.value(.createdAt, 0); size = c.value(.size, 0)
+        ledgerId = c.maybe(.ledgerId); canForget = c.value(.canForget, false)
+    }
+}
+
 extension AppState {
     enum CodingKeys: String, CodingKey {
         case version, phase, message, me, board, crew, requests, incoming, sent, subset, routing, wire, local, inviteWaiting, flicks, chat, feed, saved
-        case crewInfo, numbers, costs, ledger, notes, handoffs, consents, headsups, digest
+        case crewInfo, numbers, costs, ledger, notes, handoffs, consents, headsups, digest, drops
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -854,6 +880,6 @@ extension AppState {
         flicks = c.value(.flicks, Flicks()); chat = c.value(.chat, []); feed = c.value(.feed, []); saved = c.maybe(.saved)
         crewInfo = c.maybe(.crewInfo); numbers = c.maybe(.numbers); costs = c.maybe(.costs); ledger = c.value(.ledger, [])
         notes = c.value(.notes, NotesList()); handoffs = c.value(.handoffs, HandoffsList()); consents = c.value(.consents, [])
-        headsups = c.value(.headsups, []); digest = c.value(.digest, DigestInfo())
+        headsups = c.value(.headsups, []); digest = c.value(.digest, DigestInfo()); drops = c.value(.drops, [])
     }
 }

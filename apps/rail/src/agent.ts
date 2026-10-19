@@ -10,6 +10,7 @@ import { configPath, invitePath, readConfig, settingsPath, writeConfig, writeSet
 import { DAEMON_PORT, startNow, UPDATER_LABEL } from "@soopdoop/daemon/src/service";
 import { requestUpdate } from "@soopdoop/daemon/src/update";
 import { RAIL_ORIGIN } from "./config";
+import { uploadFile } from "./drops";
 import { cleanError } from "./format";
 import { inviteLink, inviteMessage } from "./invite";
 import { readLocalInfo, type LocalInfo, type LocalServer } from "./local";
@@ -69,6 +70,8 @@ export interface AppState {
   headsups: FunctionReturnType<typeof api.headsups.cards>;
   // The crew's latest daily digest and latest weekly numbers.
   digest: FunctionReturnType<typeof api.digests.latest>;
+  // The crew's shelf: walkthroughs and pages shared as drops, newest first. Older agents send none.
+  drops: FunctionReturnType<typeof api.drops.list>;
 }
 
 export interface Agent {
@@ -103,6 +106,7 @@ const EMPTY = {
   consents: [],
   headsups: [],
   digest: { daily: null, weekly: null },
+  drops: [],
 };
 
 // Where the app offered a hand-off from. The backend takes these four; anything else counts as the HUD.
@@ -239,6 +243,12 @@ function walkthroughFrom(raw: unknown): { file: string; web: string | undefined 
   return { file, web: typeof web === "string" && /^https?:\/\/\S+$/i.test(web) ? web : undefined };
 }
 
+// "Walkthrough: fixed the double-counted bounces" from the ledger line, cut so a long line stays a title.
+function walkthroughTitle(line: LedgerLine): string {
+  const did = line.did.trim();
+  return `Walkthrough: ${did.length > 80 ? `${did.slice(0, 79)}…` : did}`;
+}
+
 async function openInBrowser(url: string): Promise<void> {
   await Bun.spawn([process.platform === "darwin" ? "open" : "xdg-open", url]).exited;
 }
@@ -326,6 +336,7 @@ export function createAgent(
       c.onUpdate(api.handoffs.consents, {}, function (consents) { set({ consents }); }, logError),
       c.onUpdate(api.headsups.cards, {}, function (headsups) { set({ headsups }); }, logError),
       c.onUpdate(api.digests.latest, {}, function (digest) { set({ digest }); }, logError),
+      c.onUpdate(api.drops.list, {}, function (drops) { set({ drops }); }, logError),
     );
   }
 
@@ -588,11 +599,48 @@ export function createAgent(
       case "makeWalkthrough": {
         const line = ledgerLine(args);
         const made = walkthroughFrom(await postDaemon("/walkthrough", { ledgerId: line._id, sessionKey: line.sessionKey }));
-        const page = pathToFileURL(made.file).href;
+        // On the team plan the page becomes a drop, so the crew's link works from any Mac; the upload records the
+        // walkthrough on the ledger line itself. Otherwise the page opens from this Mac and the line is marked asked.
+        let web = made.web;
+        if (web === undefined && state.crewInfo?.plan === "team") {
+          try {
+            web = (await uploadFile(live(), made.file, walkthroughTitle(line), "walkthrough", line._id)).url;
+          } catch (e) {
+            console.error("walkthrough upload:", cleanError(e));
+          }
+        }
+        const page = web ?? pathToFileURL(made.file).href;
         await open(page);
-        if (made.web === undefined) await live().mutation(api.ledger.markWalkthroughAsked, { ledgerId: line._id });
-        else await live().mutation(api.ledger.setWalkthrough, { ledgerId: line._id, url: made.web });
-        return made.web ?? page;
+        if (web === undefined) await live().mutation(api.ledger.markWalkthroughAsked, { ledgerId: line._id });
+        else if (made.web !== undefined) await live().mutation(api.ledger.setWalkthrough, { ledgerId: line._id, url: made.web });
+        return page;
+      }
+      // Drops: the crew's shelf. A link from anywhere, a stored page opened, a drop forgotten.
+      case "dropLink": {
+        const ledgerId = optionalText(args, "ledgerId");
+        return await live().mutation(api.drops.link, {
+          title: text(args, "title"),
+          url: text(args, "url"),
+          ledgerId: ledgerId === undefined ? undefined : shown(state.ledger, ledgerId, "That ledger line is gone.")._id,
+        });
+      }
+      case "openDrop": {
+        const drop = shown(state.drops, text(args, "dropId"), "That drop is gone.");
+        await open(drop.url);
+        return drop.url;
+      }
+      case "forgetDrop":
+        return await live().mutation(api.drops.forget, { dropId: shown(state.drops, text(args, "dropId"), "That drop is gone.")._id });
+      // Billing: Stripe's pages open in the browser; the backend decides who may (the leader) and which page.
+      case "billingCheckout": {
+        const url = await live().action(api.billing.checkout, { yearly: flag(args, "yearly") });
+        await open(url);
+        return url;
+      }
+      case "billingPortal": {
+        const url = await live().action(api.billing.portal, {});
+        await open(url);
+        return url;
       }
       case "skipWalkthrough":
         return await live().mutation(api.ledger.markWalkthroughAsked, { ledgerId: ledgerLine(args)._id });
