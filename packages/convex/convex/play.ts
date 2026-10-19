@@ -1,5 +1,5 @@
 // ABOUTME: Play: XP and ranks from what hackers do for each other, and the crew board. No tokens. An assist (your agent
-// ABOUTME: answered a crewmate through the Operator) is 10 XP, a question asked 1, a flick sent 1, a knock sent 2; flicks also move XP.
+// ABOUTME: answered a crewmate) is 10 XP, a hand-off done 20, props received 5, a question 1, a flick 1, a knock 2; flicks also move XP.
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
@@ -7,7 +7,7 @@ import { query } from "./_generated/server";
 import { acceptedFriendIds } from "./friends";
 import { requireHacker } from "./lib/auth";
 
-export const XP = { assist: 10, ask: 1, flick: 1, knock: 2 };
+export const XP = { assist: 10, ask: 1, flick: 1, knock: 2, handoff: 20, props: 5 };
 
 // The spec's ranks; "n00b" is said with pride.
 export const RANKS: readonly { name: string; at: number }[] = [
@@ -40,6 +40,9 @@ interface Counts {
   knocks: number;
   // XP flicks moved (flicks.ts): what this hacker caught or superflicked from others, minus what others took from them.
   flickXp: number;
+  // Hand-offs this hacker's agents did for crewmates, and props given to them on the wire (by crewmates or customers).
+  handoffs: number;
+  props: number;
 }
 
 async function countsFor(ctx: QueryCtx, id: Id<"hackers">): Promise<Counts> {
@@ -78,12 +81,48 @@ async function countsFor(ctx: QueryCtx, id: Id<"hackers">): Promise<Counts> {
     .collect();
   // A message the Operator answered itself is a chat, not a question to the crew: it earns nothing.
   const questions = asks.filter(function (r) { return r.byOperator !== true; });
-  return { assists: assists.length, asks: questions.length, flicks: sent.length, knocks: knocks.length, flickXp };
+  const handoffs = await ctx.db
+    .query("handoffs")
+    .withIndex("by_to_status", function (q) {
+      return q.eq("toId", id).eq("status", "done");
+    })
+    .collect();
+  return {
+    assists: assists.length,
+    asks: questions.length,
+    flicks: sent.length,
+    knocks: knocks.length,
+    flickXp,
+    handoffs: handoffs.length,
+    props: await propsFor(ctx, id),
+  };
+}
+
+// Props given to a hacker: by a crewmate on one of their wire lines (otherHackerId is them), or by a customer through
+// the scout or a help desk's rating (hackerId is them, fromCustomer). Counted from the wire, which keeps a week.
+async function propsFor(ctx: QueryCtx, id: Id<"hackers">): Promise<number> {
+  const fromCrew = await ctx.db
+    .query("feed")
+    .withIndex("by_other_at", function (q) {
+      return q.eq("otherHackerId", id);
+    })
+    .collect();
+  const own = await ctx.db
+    .query("feed")
+    .withIndex("by_hacker_at", function (q) {
+      return q.eq("hackerId", id);
+    })
+    .collect();
+  return fromCrew.filter(function (e) { return e.kind === "props" && e.fromCustomer !== true; }).length +
+    own.filter(function (e) { return e.kind === "props" && e.fromCustomer === true; }).length;
 }
 
 // Never below zero: a flick only takes what is there.
 function xpFrom(c: Counts): number {
-  return Math.max(0, c.assists * XP.assist + c.asks * XP.ask + c.flicks * XP.flick + c.knocks * XP.knock + c.flickXp);
+  return Math.max(
+    0,
+    c.assists * XP.assist + c.asks * XP.ask + c.flicks * XP.flick + c.knocks * XP.knock + c.handoffs * XP.handoff + c.props * XP.props + c.flickXp,
+  );
 }
 
 export async function xpOf(ctx: QueryCtx, id: Id<"hackers">): Promise<number> {
@@ -99,6 +138,9 @@ const row = v.object({
   nextRankAt: v.union(v.number(), v.null()),
   assists: v.number(),
   asks: v.number(),
+  // Hand-offs done for crewmates, and props received.
+  handoffs: v.optional(v.number()),
+  props: v.optional(v.number()),
   tier: v.optional(v.string()),
   hidden: v.boolean(),
 });
@@ -116,7 +158,7 @@ export const board = query({
       const hidden = hacker.hideFromBoards === true;
       if (hidden && id !== me._id) continue;
       const counts = await countsFor(ctx, id);
-      const { assists, asks } = counts;
+      const { assists, asks, handoffs, props } = counts;
       const xp = xpFrom(counts);
       const rank = rankFor(xp);
       const profile = await ctx.db
@@ -134,6 +176,8 @@ export const board = query({
         nextRankAt: rank.next,
         assists,
         asks,
+        handoffs,
+        props,
         tier: profile?.tier,
         hidden,
       });

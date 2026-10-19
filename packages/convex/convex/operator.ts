@@ -7,6 +7,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { addToFeed, tokensSaved } from "./feed";
 import { acceptedFriendIds } from "./friends";
+import { markActed } from "./headsups";
 import { requireDaemon, requireHacker } from "./lib/auth";
 import {
   absentNote,
@@ -406,6 +407,8 @@ export const setTarget = internalMutation({
     if (relay === null || relay.status !== "routing") return null;
     const { relayId, ...target } = args;
     await ctx.db.patch("relays", relayId, { ...target, status: "reading" });
+    // Asking a crewmate's agent right after a heads-up about their work is acting on it.
+    await markActed(ctx, relay.askerHackerId, args.targetHackerId, "ask");
     return null;
   },
 });

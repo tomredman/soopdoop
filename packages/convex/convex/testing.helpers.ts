@@ -32,6 +32,21 @@ const modules = {
   "./feed.ts": function () {
     return import("./feed");
   },
+  "./handoffs.ts": function () {
+    return import("./handoffs");
+  },
+  "./headsups.ts": function () {
+    return import("./headsups");
+  },
+  "./ledger.ts": function () {
+    return import("./ledger");
+  },
+  "./lib/ledgerSearch.ts": function () {
+    return import("./lib/ledgerSearch");
+  },
+  "./lib/plan.ts": function () {
+    return import("./lib/plan");
+  },
   "./lib/auth.ts": function () {
     return import("./lib/auth");
   },

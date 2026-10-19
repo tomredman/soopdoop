@@ -205,6 +205,10 @@ export default defineSchema({
     handoffId: v.optional(v.id("handoffs")),
     // What the Operator's own Claude calls for this relay cost, in US dollars at API prices (the crew's cost line).
     usd: v.optional(v.number()),
+    // Asked by an agent: its machine (and its session, when the tool knows it), so a hand-off the Operator offers for
+    // it can be reported back to that session at its next prompt.
+    askerMachine: v.optional(v.string()),
+    askerAgentId: v.optional(v.string()),
   })
     .index("by_asker", ["askerHackerId"])
     .index("by_target_status", ["targetHackerId", "status"]),
@@ -242,7 +246,9 @@ export default defineSchema({
     at: v.number(),
   })
     .index("by_hacker_at", ["hackerId", "at"])
-    .index("by_at", ["at"]),
+    .index("by_at", ["at"])
+    // Events done to or for a hacker: the props they were given count toward their XP.
+    .index("by_other_at", ["otherHackerId", "at"]),
 
   knocks: defineTable({
     fromHackerId: v.id("hackers"),
@@ -401,6 +407,8 @@ export default defineSchema({
     agentId: v.optional(v.string()),
     at: v.number(),
     expiresAt: v.number(),
+    // Set by the scheduled function that ends the card, so the HUD's query drops it without a client's help.
+    expiredAt: v.optional(v.number()),
     dismissedAt: v.optional(v.number()),
     actedAt: v.optional(v.number()),
     action: v.optional(v.union(v.literal("ask"), v.literal("handoff"), v.literal("knock"))),
