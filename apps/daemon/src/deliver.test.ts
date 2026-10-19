@@ -1,3 +1,5 @@
+// ABOUTME: Tests for delivering a hand-off: the inbox socket's lines against a real Unix socket, the order of channels per harness,
+// ABOUTME: and each channel's command line (Superset, a stopped background session, codex queue, the clipboard) with stand-in commands.
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

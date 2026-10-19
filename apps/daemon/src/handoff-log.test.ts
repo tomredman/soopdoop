@@ -1,3 +1,5 @@
+// ABOUTME: Tests for the hand-off log (one JSON line per event, never the text), the 24-hour allowance and its note, and
+// ABOUTME: `soopdoop handoffs`, which shows the allowance and sets it without touching other settings.
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

@@ -1,3 +1,5 @@
+// ABOUTME: Tests for running hand-offs on the receiving Mac with a stand-in backend and real files: when one may run, the
+// ABOUTME: allowance, failures, restarts, the report-back copy, held messages, and the line the offering session hears.
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

@@ -1,3 +1,5 @@
+// ABOUTME: Tests for what a hand-off cost: Claude Code replies counted once per message id since the hand-off began, Codex
+// ABOUTME: token_count events priced on the turn's model, and no price for Grok.
 import { describe, expect, test } from "bun:test";
 import { claudeCostSince, codexCostSince, costSince } from "./handoff-cost";
 

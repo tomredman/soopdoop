@@ -1,3 +1,5 @@
+// ABOUTME: Tests for walkthroughs: the page kept as HTML only with a policy that loads nothing, secrets taken out, the size
+// ABOUTME: limit, the request's checks, and POST /walkthrough's work with a stand-in copy of the session.
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

@@ -1,3 +1,5 @@
+// ABOUTME: Tests for the hand_off and report_back MCP tools with a stand-in backend: what each sends, what the agent reads
+// ABOUTME: back, the cost from the log, and how the MCP server lists and calls them.
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
