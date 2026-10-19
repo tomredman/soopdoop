@@ -85,6 +85,7 @@ http.route({
         note: fromSlice.text === null ? (fromSlice.note ?? "The agent's conversation did not cover this.") : undefined,
         tokensRead: fromSlice.tokensRead,
         tokensSent: fromSlice.tokensSent,
+        usd: fromSlice.usd,
       });
     } catch (e) {
       await ctx.runMutation(internal.operator.finish, { relayId, status: "error", note: describeError(e) });

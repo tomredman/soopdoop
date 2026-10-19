@@ -23,6 +23,7 @@ import type * as lib_claude from "../lib/claude.js";
 import type * as lib_friendships from "../lib/friendships.js";
 import type * as lib_ledgerSearch from "../lib/ledgerSearch.js";
 import type * as lib_plan from "../lib/plan.js";
+import type * as lib_prices from "../lib/prices.js";
 import type * as lib_summaries from "../lib/summaries.js";
 import type * as lib_supersetProfile from "../lib/supersetProfile.js";
 import type * as operator from "../operator.js";
@@ -53,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   "lib/friendships": typeof lib_friendships;
   "lib/ledgerSearch": typeof lib_ledgerSearch;
   "lib/plan": typeof lib_plan;
+  "lib/prices": typeof lib_prices;
   "lib/summaries": typeof lib_summaries;
   "lib/supersetProfile": typeof lib_supersetProfile;
   operator: typeof operator;

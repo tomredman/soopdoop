@@ -47,6 +47,9 @@ const modules = {
   "./lib/plan.ts": function () {
     return import("./lib/plan");
   },
+  "./lib/prices.ts": function () {
+    return import("./lib/prices");
+  },
   "./lib/auth.ts": function () {
     return import("./lib/auth");
   },
