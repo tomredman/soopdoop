@@ -355,14 +355,14 @@ export function ledgerKeeper(deps: LedgerDeps): Ledger {
       item.tries += 1;
       if (item.tries >= MAX_TRIES) unsent.delete(item.line.sessionKey);
       else unsent.set(item.line.sessionKey, item);
-      void logLine({ sessionKey: item.line.sessionKey, harness: item.line.harness, sent: false, error: e instanceof Error ? e.message.slice(0, 200) : "send failed" });
+      await logLine({ sessionKey: item.line.sessionKey, harness: item.line.harness, sent: false, error: e instanceof Error ? e.message.slice(0, 200) : "send failed" });
       return false;
     }
     unsent.delete(item.line.sessionKey);
     const sentAt = clock();
     await record({ ...item.line, sentAt, fingerprint: item.fingerprint, source: item.source, ...(item.usd === undefined ? {} : { usd: item.usd }) });
     // Sizes and cost only, never the line's words.
-    void logLine({
+    await logLine({
       sessionKey: item.line.sessionKey, harness: item.line.harness, source: item.source, sent: true, chars: item.line.did.length,
       areas: item.line.areas.length, files: item.line.files, ...(item.usd === undefined ? {} : { usd: item.usd, model: LEDGER_MODEL }),
     });
@@ -403,7 +403,7 @@ export function ledgerKeeper(deps: LedgerDeps): Ledger {
       };
       await deliver({ line, fingerprint: print, source: words.source, ...(words.usd === undefined ? {} : { usd: words.usd }), agent, tries: 0 });
     } catch (e) {
-      void logLine({ sessionKey: agent.agentId, harness: agent.harness, sent: false, error: e instanceof Error ? e.message.slice(0, 200) : "failed" });
+      await logLine({ sessionKey: agent.agentId, harness: agent.harness, sent: false, error: e instanceof Error ? e.message.slice(0, 200) : "failed" });
     } finally {
       busy.delete(agent.agentId);
     }

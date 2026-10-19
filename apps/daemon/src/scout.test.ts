@@ -35,6 +35,12 @@ describe("the scout's LaunchAgent", function () {
     expect(serviceSpecs("/r", "/b/bun", "/h").map(function (s) { return s.name; })).not.toContain("scout");
     expect(scoutSpec("/r", "/b/bun", "/h", "/custom").env.SOOPDOOP_HOME).toBe("/custom");
   });
+
+  test.if(process.platform === "darwin")("its plist is one macOS accepts", async function () {
+    const file = path.join(await tempDir(), "com.soopdoop.scout.plist");
+    await writeFile(file, plist(scoutSpec("/Users/me/Tom & Jerry/app", "/b/bun", "/h")));
+    expect(Bun.spawnSync(["plutil", "-lint", file]).exitCode).toBe(0);
+  });
 });
 
 describe("how the scout runs claude", function () {
