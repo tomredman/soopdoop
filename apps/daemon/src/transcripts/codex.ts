@@ -2,7 +2,7 @@
 // ABOUTME: session_meta line, the hacker's prompts, the agent's replies, its model, the files it read or patched, its PRs and merges.
 import path from "node:path";
 import { isRecord } from "../state";
-import { addFile, addTurn, emptyParsed, noteCommand, oneLine, type Parsed } from "./parsed";
+import { addEdit, addFile, addTurn, emptyParsed, noteCommand, oneLine, type Parsed } from "./parsed";
 
 // Shell tools in older rollouts, whose calls and outputs are separate lines joined by call id.
 const SHELL_TOOLS = new Set(["shell", "container.exec", "local_shell", "exec_command", "shell_command"]);
@@ -70,7 +70,7 @@ function assistantText(parsed: Parsed, p: Record<string, unknown>): void {
 
 function patched(parsed: Parsed, patch: string): void {
   for (const file of patchFiles(patch)) {
-    addFile(parsed, file);
+    addEdit(parsed, file);
     addTurn(parsed, "assistant", `[Patch ${file}]`);
   }
 }
@@ -152,7 +152,7 @@ function eventMsg(parsed: Parsed, p: Record<string, unknown>): void {
     }
     if (item.type === "FileChange") {
       for (const file of changedFiles(item.changes)) {
-        addFile(parsed, file);
+        addEdit(parsed, file);
         addTurn(parsed, "assistant", `[Patch ${file}]`);
       }
     }
@@ -162,7 +162,7 @@ function eventMsg(parsed: Parsed, p: Record<string, unknown>): void {
   if (p.type === "exec_command_end") {
     noteCommand(parsed, commandText(p.command), str(p.aggregated_output) ?? str(p.stdout) ?? "", typeof p.exit_code === "number" ? p.exit_code === 0 : undefined);
   }
-  if (p.type === "patch_apply_end" && p.success !== false) for (const file of changedFiles(p.changes)) addFile(parsed, file);
+  if (p.type === "patch_apply_end" && p.success !== false) for (const file of changedFiles(p.changes)) addEdit(parsed, file);
 }
 
 function sessionMeta(parsed: Parsed, p: Record<string, unknown>): void {

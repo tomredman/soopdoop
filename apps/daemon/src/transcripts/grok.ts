@@ -1,7 +1,7 @@
 // ABOUTME: Reads Grok sessions (<GROK_HOME>/sessions/<url-encoded folder>/<id>/chat_history.jsonl, and summary.json beside it): the
 // ABOUTME: hacker's prompts, the agent's replies, its model, the files its tools touched, its PRs and merges, and where it works.
 import { isRecord } from "../state";
-import { addFile, addTurn, emptyParsed, noteCommand, type Parsed } from "./parsed";
+import { addEdit, addFile, addTurn, emptyParsed, noteCommand, type Parsed } from "./parsed";
 
 const READ_TOOLS = new Set(["read_file"]);
 const WRITE_TOOLS = new Set(["search_replace", "write", "edit_file", "write_file", "create_file"]);
@@ -67,7 +67,8 @@ export function parseGrok(text: string, into: Parsed = emptyParsed()): Parsed {
         const input = args(call.arguments);
         const file = typeof input.target_file === "string" ? input.target_file : typeof input.file_path === "string" ? input.file_path : null;
         if (file !== null && (READ_TOOLS.has(call.name) || WRITE_TOOLS.has(call.name))) {
-          addFile(parsed, file);
+          if (WRITE_TOOLS.has(call.name)) addEdit(parsed, file);
+          else addFile(parsed, file);
           addTurn(parsed, "assistant", `[${call.name} ${file}]`);
         }
         if (call.name === "run_terminal_command" && typeof input.command === "string" && typeof call.id === "string") commands.set(call.id, input.command);
@@ -94,4 +95,11 @@ export function grokSummary(raw: unknown): Parsed {
   if (typeof raw.head_branch === "string" && raw.head_branch !== "" && raw.head_branch !== "HEAD") parsed.branch = raw.head_branch;
   if (typeof raw.current_model_id === "string" && raw.current_model_id !== "") parsed.model = raw.current_model_id;
   return parsed;
+}
+
+// The title Grok wrote for the session (summary.json's generated_title), or undefined.
+export function grokTitle(raw: unknown): string | undefined {
+  if (!isRecord(raw) || typeof raw.generated_title !== "string") return undefined;
+  const title = raw.generated_title.replace(/\s+/g, " ").trim();
+  return title === "" ? undefined : title;
 }

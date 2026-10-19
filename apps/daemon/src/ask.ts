@@ -260,7 +260,7 @@ export function grokForkId(stdout: string): string | null {
   return raw !== null && typeof raw.sessionId === "string" && /^[A-Za-z0-9-]+$/.test(raw.sessionId) ? raw.sessionId : null;
 }
 
-async function spawnFork(cmd: string[], opts: { cwd: string; env: Record<string, string>; timeoutMs: number }): Promise<RunResult> {
+export async function spawnFork(cmd: string[], opts: { cwd: string; env: Record<string, string>; timeoutMs: number }): Promise<RunResult> {
   const proc = Bun.spawn(cmd, { cwd: opts.cwd, env: opts.env, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
   let timedOut = false;
   const timer = setTimeout(function () {

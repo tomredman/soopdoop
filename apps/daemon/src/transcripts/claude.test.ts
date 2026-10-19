@@ -45,6 +45,17 @@ describe("Claude Code transcripts", function () {
     expect(merged.merged).toBe(true);
   });
 
+  test("tells the files the agent changed from the ones it only read", function () {
+    const parsed = parseClaude([
+      row("assistant", [{ type: "tool_use", id: "r1", name: "Read", input: { file_path: "/Users/ada/vibes/src/checkout.ts" } }]),
+      row("assistant", [{ type: "tool_use", id: "e1", name: "Edit", input: { file_path: "/Users/ada/vibes/src/coupon.ts" } }]),
+      row("assistant", [{ type: "tool_use", id: "w1", name: "Write", input: { file_path: "/Users/ada/vibes/docs/coupons.md" } }]),
+    ].join("\n"));
+    expect(parsed.files).toEqual(["/Users/ada/vibes/src/checkout.ts", "/Users/ada/vibes/src/coupon.ts", "/Users/ada/vibes/docs/coupons.md"]);
+    expect(parsed.edited).toEqual(["/Users/ada/vibes/src/coupon.ts", "/Users/ada/vibes/docs/coupons.md"]);
+    expect(parseClaude(row("user", "only a question")).edited).toBeUndefined();
+  });
+
   test("a PR link in the agent's own reply counts; one in the hacker's prompt does not", function () {
     const parsed = parseClaude([
       row("user", "review https://github.com/example-org/vibes/pull/7 please"),
