@@ -104,4 +104,18 @@ describe("subset state", function () {
       expect(report).not.toContain(local);
     }
   });
+
+  test("keeps the session's permission mode from the events that name one, and never reports it", function () {
+    expect(parseHookEvent({ hook_event_name: "Stop", session_id: "a", permission_mode: "bypassPermissions" })?.permissionMode).toBe("bypassPermissions");
+    expect(parseHookEvent({ hook_event_name: "Stop", session_id: "a", permissionMode: "acceptEdits" })?.permissionMode).toBe("acceptEdits");
+    const s = new Map();
+    apply(s, { hook_event_name: "SessionStart", session_id: "a" }, 1);
+    apply(s, { hook_event_name: "UserPromptSubmit", session_id: "a", permissionMode: "bypassPermissions" }, 2);
+    // SessionStart names none: the mode known stays.
+    apply(s, { hook_event_name: "SessionStart", session_id: "a" }, 3);
+    expect(s.get("a")?.permissionMode).toBe("bypassPermissions");
+    apply(s, { hook_event_name: "Stop", session_id: "a", permissionMode: "default" }, 4);
+    expect(s.get("a")?.permissionMode).toBe("default");
+    expect(JSON.stringify(toReport(s))).not.toContain("default");
+  });
 });

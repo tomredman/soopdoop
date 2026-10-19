@@ -65,7 +65,8 @@ describe("Grok hooks", function () {
       expect(await proc.exited).toBe(0);
       // Grok ignores what UserPromptSubmit hooks print, so nothing is.
       expect(await new Response(proc.stdout).text()).toBe("");
-      expect(received).toEqual([{ hook_event_name: "UserPromptSubmit", session_id: "g1", cwd: "/r/vibes", harness: "grok", grokSessionId: "g1" }]);
+      // The prompt stays out; the permission mode comes along (hand-offs read it).
+      expect(received).toEqual([{ hook_event_name: "UserPromptSubmit", session_id: "g1", cwd: "/r/vibes", harness: "grok", grokSessionId: "g1", permissionMode: "default" }]);
     } finally {
       server.stop(true);
     }

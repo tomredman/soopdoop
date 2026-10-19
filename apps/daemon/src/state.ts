@@ -30,6 +30,9 @@ export interface AgentRecord {
   inboxSocket?: string;
   inboxToken?: string;
   grokSessionId?: string;
+  // The session's permission mode at its last event that named one ("default", "acceptEdits", "bypassPermissions", …).
+  // Claude Code holds a hand-off posted to the inbox socket of a session that bypasses permissions until its owner approves it.
+  permissionMode?: string;
 }
 
 // The hook payload fields the daemon reads, in Claude Code's and Codex's spelling, plus what the hook adds.
@@ -48,6 +51,8 @@ export interface HookEvent {
   inboxSocket?: string;
   inboxToken?: string;
   grokSessionId?: string;
+  // The payload's permission_mode (SessionStart has none). Kept on this machine.
+  permissionMode?: string;
 }
 
 export type Subset = Map<string, AgentRecord>;
@@ -95,6 +100,8 @@ export function parseHookEvent(raw: unknown): HookEvent | null {
   if (token !== undefined) ev.inboxToken = token;
   const grokSession = text(raw.grokSessionId);
   if (grokSession !== undefined) ev.grokSessionId = grokSession;
+  const mode = text(raw.permissionMode) ?? text(raw.permission_mode);
+  if (mode !== undefined) ev.permissionMode = mode;
   return ev;
 }
 
@@ -112,6 +119,7 @@ function keepLocal(agent: AgentRecord, ev: HookEvent): void {
   if (ev.inboxSocket !== undefined) agent.inboxSocket = ev.inboxSocket;
   if (ev.inboxToken !== undefined) agent.inboxToken = ev.inboxToken;
   if (ev.grokSessionId !== undefined) agent.grokSessionId = ev.grokSessionId;
+  if (ev.permissionMode !== undefined) agent.permissionMode = ev.permissionMode;
 }
 
 // The status an event leaves the agent in, or null for events that change nothing (and "end" for the session's end).
