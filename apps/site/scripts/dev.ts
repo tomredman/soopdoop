@@ -1,8 +1,11 @@
-// ABOUTME: Serves the site at http://127.0.0.1:47320/: the page through Bun's bundler with hot reload and public/ as
+// ABOUTME: Serves the site at http://127.0.0.1:47320/: the pages through Bun's bundler with hot reload and public/ as
 // ABOUTME: plain files, or with --dist exactly what `bun run build` made (what Cloudflare will serve).
 import path from "node:path";
 import index from "../index.html";
 import invite from "../invite.html";
+import privacy from "../privacy.html";
+import teams from "../teams.html";
+import terms from "../terms.html";
 
 const root = path.join(import.meta.dir, "..");
 const fromDist = Bun.argv.includes("--dist");
@@ -13,7 +16,7 @@ const server = Bun.serve({
   hostname: "127.0.0.1",
   port,
   development: fromDist ? false : { hmr: true, console: true },
-  routes: fromDist ? undefined : { "/": index, "/invite": invite },
+  routes: fromDist ? undefined : { "/": index, "/invite": invite, "/teams": teams, "/privacy": privacy, "/terms": terms },
   async fetch(req) {
     const url = new URL(req.url);
     const wanted = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);

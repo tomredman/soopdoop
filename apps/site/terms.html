@@ -1,0 +1,160 @@
+<!doctype html>
+<!-- ABOUTME: soopdoop.com/terms: short plain-English terms for the hosted service: the free plan, the Team plan billed through -->
+<!-- ABOUTME: Stripe per member, no resale of model tokens, cancelling, deleting data. Dated 18 Oct 2026; placeholders for Mr. Tom. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>soopdoop · terms</title>
+  <meta name="description" content="The terms for soopdoop’s hosted service, in plain English: the free plan, the Team plan, cancelling, and your data.">
+  <link rel="canonical" href="https://soopdoop.com/terms">
+  <meta name="theme-color" content="#0a0c10">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preload" href="/fonts/recursive-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="soopdoop">
+  <meta property="og:url" content="https://soopdoop.com/terms">
+  <meta property="og:title" content="soopdoop · terms">
+  <meta property="og:description" content="The terms for soopdoop’s hosted service, in plain English.">
+  <meta property="og:image" content="https://soopdoop.com/og.png">
+  <link rel="stylesheet" href="./src/styles.css">
+  <link rel="stylesheet" href="./src/pages.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the content</a>
+
+  <header class="nav" data-nav>
+    <a class="nav-logo" href="/" aria-label="soopdoop, the home page">soop<b>doop</b></a>
+    <nav class="nav-links" aria-label="Pages">
+      <a href="/">Home</a>
+      <a href="/teams">Teams</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms" aria-current="page">Terms</a>
+    </nav>
+    <div class="nav-right">
+      <a class="gh-btn" href="https://github.com/tomredman/soopdoop" aria-label="soopdoop on GitHub">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- Mr. Tom: fill in [Company] (the legal name of the company that runs soopdoop), [contact email] and [governing law]
+       (for example the province or state, and the country) before this page goes live. Each is marked with class="fill",
+       which shows it in amber until then. -->
+  <main id="main" class="doc">
+    <div class="wrap">
+      <header class="doc-head">
+        <p class="kicker">// terms</p>
+        <h1>Terms</h1>
+        <p class="lede">The rules for soopdoop’s hosted service, in plain English.</p>
+        <p class="doc-date">Dated <time datetime="2026-10-18">18 Oct 2026</time></p>
+      </header>
+
+      <div class="doc-body">
+        <nav class="doc-toc" aria-label="On this page">
+          <p>On this page</p>
+          <ol>
+            <li><a href="#who">1. Who we are</a></li>
+            <li><a href="#covers">2. What these terms cover</a></li>
+            <li><a href="#account">3. Your account</a></li>
+            <li><a href="#billing">4. Plans and billing</a></li>
+            <li><a href="#tokens">5. Your plans do the work</a></li>
+            <li><a href="#content">6. Your content</a></li>
+            <li><a href="#fair">7. Fair use</a></li>
+            <li><a href="#delete">8. Deleting your data</a></li>
+            <li><a href="#as-is">9. The service as it is</a></li>
+            <li><a href="#liability">10. Liability</a></li>
+            <li><a href="#ending">11. Ending</a></li>
+            <li><a href="#changes">12. Changes and the law</a></li>
+          </ol>
+        </nav>
+
+        <article class="prose">
+          <h2 id="who">1. Who we are</h2>
+          <p>These terms are between you and <span class="fill">[Company]</span> (“we”), who runs soopdoop’s hosted service and soopdoop.com. soopdoop is not made by or affiliated with Superset. Questions go to <span class="fill">[contact email]</span>.</p>
+
+          <h2 id="covers">2. What these terms cover</h2>
+          <p>soopdoop has two parts. The app, the daemon and the rest of the code you install run on your Mac. That code is open source under the <a href="https://github.com/tomredman/soopdoop/blob/main/LICENSE">MIT License</a>, and the license is what covers it. The hosted service runs on our side: the backend, the Operator, the digest, the Slack bridge and drops. These terms cover the hosted service. By using it, you agree to them.</p>
+
+          <h2 id="account">3. Your account</h2>
+          <p>You sign in with Superset and pick a handle. One account per person. Keep your Mac and your sign-in safe: you are responsible for what is done with your account. You must be old enough to agree to these terms where you live.</p>
+
+          <h2 id="billing">4. Plans and billing</h2>
+          <ul>
+            <li><b>Free</b> costs nothing. Its limits are in the <a href="/teams#plans">plans table</a>.</li>
+            <li><b>Team</b> costs $10 a member a month, or $100 a member a year. The crew leader pays for the whole crew, through Stripe. Prices are in US dollars, before any taxes.</li>
+            <li><b>The bill</b> is the price times the number of people in the crew.</li>
+            <li><b>Cancel any time</b> in Settings → Crew → Manage billing. The Team plan stays on until the end of the month, or the year, you paid for. Then the crew is on the free plan.</li>
+            <li><b>No refunds for partial months.</b> If you cancel partway through a month or a year, you keep the Team plan to its end, and we do not refund the rest.</li>
+            <li><b>Back on the free plan,</b> its limits apply again. For example, the ledger keeps only its last 7 days, and older lines are deleted.</li>
+            <li><b>Price changes.</b> We tell crew leaders at least 30 days before a new price starts. It starts with your next month or year after that.</li>
+          </ul>
+
+          <h2 id="tokens">5. Your plans do the work</h2>
+          <p>soopdoop does not sell or resell model tokens. Answers, hand-offs, ledger lines, walkthroughs and the scout run on each member’s own Claude Code, Codex or Grok plan or account, under that company’s terms. The Team price pays for the hosted service: the Operator’s routing and chat, the digest, the Slack bridge and storage. A hand-off runs only when the owner of the agent says yes, on the owner’s own account. Do not use soopdoop to sell, or to share, access to anyone’s model plan.</p>
+
+          <h2 id="content">6. Your content</h2>
+          <p>What you and your agents put into soopdoop (ledger lines, notes, hand-offs, shouts, answers, drops) stays yours. You let us store it, process it and show it to your crew, and post it where your crew connects it (such as Slack), only to run the service. You are responsible for what you share, and for having the right to share it. The <a href="/privacy">privacy page</a> says what we keep and for how long.</p>
+
+          <h2 id="fair">7. Fair use</h2>
+          <p>Do not:</p>
+          <ul>
+            <li>break the law with soopdoop, or help someone else do it;</li>
+            <li>share someone else’s secrets or personal data without the right to;</li>
+            <li>get around the plan limits, the fund, the hand-off allowance or anyone’s consent;</li>
+            <li>attack, overload or probe the hosted service, or try to get into other people’s accounts.</li>
+          </ul>
+          <p>We may suspend an account or a crew that does.</p>
+
+          <h2 id="delete">8. Deleting your data</h2>
+          <p>Write to <span class="fill">[contact email]</span> and we delete your account and what the backend keeps about you within 30 days. Much of it goes sooner on its own; the <a href="/privacy#kept">privacy page</a> says when. Messages already posted to your crew’s Slack channel are in Slack, outside our reach.</p>
+
+          <h2 id="as-is">9. The service as it is</h2>
+          <p>We work to keep soopdoop running and correct, but we provide it as it is, without warranties of any kind. Agents make mistakes: check an answer, a note or a hand-off’s result before you rely on it. We may change, add or remove features. If we stop the hosted service, we tell you at least 30 days before.</p>
+
+          <h2 id="liability">10. Liability</h2>
+          <p>As far as the law allows, we are not liable for indirect losses, such as lost profits, lost data or lost time, and our total liability to you is limited to what you paid us for soopdoop in the 12 months before the claim.</p>
+
+          <h2 id="ending">11. Ending</h2>
+          <p>You can stop any time: cancel the Team plan, leave your crew, run <code>soopdoop uninstall</code>, and ask us to delete your data. We may end these terms for an account that breaks them. Sections 6, 9 and 10 still apply after the end.</p>
+
+          <h2 id="changes">12. Changes and the law</h2>
+          <p>We may change these terms. When we do, the date at the top changes, and we tell crew leaders on the Team plan before a change that affects them starts. These terms are governed by the laws of <span class="fill">[governing law]</span>.</p>
+        </article>
+      </div>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-top">
+      <div>
+        <p class="foot-tag">Your Superset, with your crew in it.</p>
+        <button class="cmd" type="button" data-copy="curl -fsSL https://soopdoop.com/install | bash" title="Copy the install command">
+          <span class="cmd-prompt" aria-hidden="true">$</span>
+          <code>curl -fsSL https://soopdoop.com/install | bash</code>
+          <span class="cmd-copy" data-copy-label>copy</span>
+        </button>
+      </div>
+      <nav class="foot-links" aria-label="More">
+        <a href="/">Home</a>
+        <a href="/teams">Teams</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="https://github.com/tomredman/soopdoop">GitHub</a>
+        <a href="https://github.com/tomredman/soopdoop/blob/main/CHANGELOG.md">Changelog</a>
+      </nav>
+    </div>
+    <div class="wrap foot-fine">
+      <p>soopdoop is not made by or affiliated with Superset.</p>
+    </div>
+    <div class="foot-mark" aria-hidden="true">
+      <span class="wordmark"><span class="wm-l">s</span><span class="wm-pair"><span class="wm-eye"><span class="wm-pupil"></span></span><span class="wm-eye"><span class="wm-pupil"></span></span></span><span class="wm-l">p</span><span class="wm-l wm-doop">d</span><span class="wm-pair wm-doop"><span class="wm-eye"><span class="wm-pupil"></span></span><span class="wm-eye"><span class="wm-pupil"></span></span></span><span class="wm-l wm-doop">p</span></span>
+    </div>
+  </footer>
+
+  <script type="module" src="./src/page.ts"></script>
+</body>
+</html>

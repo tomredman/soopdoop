@@ -1,0 +1,244 @@
+<!doctype html>
+<!-- ABOUTME: soopdoop.com/privacy: exactly what leaves a Mac and what does not, what the backend keeps and for how long, -->
+<!-- ABOUTME: what the Operator's Claude calls see, the outside services, and who sees what. Written from the code, 18 Oct 2026. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>soopdoop · privacy: what leaves your Mac</title>
+  <meta name="description" content="Exactly what leaves your Mac when you use soopdoop, who sees it, and how long it is kept. Your conversations never leave your Mac.">
+  <link rel="canonical" href="https://soopdoop.com/privacy">
+  <meta name="theme-color" content="#0a0c10">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preload" href="/fonts/recursive-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="soopdoop">
+  <meta property="og:url" content="https://soopdoop.com/privacy">
+  <meta property="og:title" content="soopdoop · privacy">
+  <meta property="og:description" content="Exactly what leaves your Mac, who sees it, and how long it is kept.">
+  <meta property="og:image" content="https://soopdoop.com/og.png">
+  <link rel="stylesheet" href="./src/styles.css">
+  <link rel="stylesheet" href="./src/pages.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the content</a>
+
+  <header class="nav" data-nav>
+    <a class="nav-logo" href="/" aria-label="soopdoop, the home page">soop<b>doop</b></a>
+    <nav class="nav-links" aria-label="Pages">
+      <a href="/">Home</a>
+      <a href="/teams">Teams</a>
+      <a href="/privacy" aria-current="page">Privacy</a>
+      <a href="/terms">Terms</a>
+    </nav>
+    <div class="nav-right">
+      <a class="gh-btn" href="https://github.com/tomredman/soopdoop" aria-label="soopdoop on GitHub">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- Mr. Tom: fill in [Company] (the legal name of the company that runs soopdoop) and [contact email] before this page
+       goes live. Both are marked with class="fill", which shows them in amber until then. -->
+  <main id="main" class="doc">
+    <div class="wrap">
+      <header class="doc-head">
+        <p class="kicker">// privacy</p>
+        <h1>Privacy</h1>
+        <p class="lede">Exactly what leaves your Mac, who sees it, and how long soopdoop keeps it.</p>
+        <p class="doc-date">Dated <time datetime="2026-10-18">18 Oct 2026</time></p>
+      </header>
+
+      <div class="doc-body">
+        <nav class="doc-toc" aria-label="On this page">
+          <p>On this page</p>
+          <ol>
+            <li><a href="#short">The short version</a></li>
+            <li><a href="#stays">What stays on your Mac</a></li>
+            <li><a href="#leaves">What leaves your Mac</a></li>
+            <li><a href="#kept">How long it is kept</a></li>
+            <li><a href="#operator">The Operator’s Claude calls</a></li>
+            <li><a href="#services">Other services</a></li>
+            <li><a href="#who">Who sees what</a></li>
+            <li><a href="#choices">Your choices</a></li>
+            <li><a href="#changes">Changes</a></li>
+          </ol>
+        </nav>
+
+        <article class="prose">
+          <h2 id="short">The short version</h2>
+          <div class="box">
+            <ul>
+              <li><b>Your conversations with your agents never leave your Mac.</b></li>
+              <li><b>Three short things made from them do:</b> the routing summary (one line per open agent), the ledger line (one line per finished task), and the answer your agent writes to one crewmate’s question. Each is made on your Mac, you see it in the HUD, and it stays inside your crew.</li>
+              <li><b>Your prompts are read on your Mac for heads-ups,</b> and that check sends them nowhere. Only the routing summary and the ledger line can quote part of one.</li>
+              <li><b>Private agents’ work never leaves your Mac:</b> no summary, no ledger line, no heads-up, no hand-off, no answers. Only you see that they exist.</li>
+              <li><b>Keys and tokens are taken out</b> of everything that leaves.</li>
+              <li><b>Above your crew, only work is described:</b> no names, no counts, no ledger lines.</li>
+            </ul>
+          </div>
+          <p>soopdoop has two parts. The app and the daemon run on your Mac, and their code is <a href="https://github.com/tomredman/soopdoop">open source</a>, so you can check this page against it. The backend runs on Convex and connects your crew. “We” means <span class="fill">[Company]</span>, who runs the backend and soopdoop.com.</p>
+
+          <h2 id="stays">What stays on your Mac</h2>
+          <ul>
+            <li><b>Your conversations.</b> The transcripts that Claude Code, Codex and Grok keep on your Mac stay there. soopdoop’s daemon reads them on your Mac to make the three short things below.</li>
+            <li><b>Your prompts.</b> At each prompt, the daemon checks it against what your crewmates’ agents are working on, to make heads-ups. The check runs on your Mac, with no model and no network, and sends the prompt nowhere. Two things that do leave can quote part of a prompt: the routing summary quotes the start of an open agent’s last prompt, and a ledger line made without Haiku can quote a session’s first or last prompt (both below).</li>
+            <li><b>Private agents.</b> Turn a folder private with its switch under This Mac in the HUD, or list it in <code>privateDirs</code> in <code>~/.soopdoop/config.json</code>. A folder covers its whole git repository. Its agents get no routing summary, no ledger line, no heads-up and no hand-off, and the Operator never asks them anything. Your Mac still reports that they exist (their name, folder and whether they are working), so your own HUD can list them under This Mac, marked ◇. Nobody else sees them.</li>
+            <li><b>Your files.</b> soopdoop uploads no files from your projects. An answer from your agent can quote some code, when that is what the question was about.</li>
+            <li><b>Two logs.</b> <code>~/.soopdoop/logs/reads.log</code> lists every question your agents answered: which agent, which question, who asked, how long the answer was, how many tokens it read and what it cost. Never the question or the answer. <code>~/.soopdoop/logs/handoffs.log</code> lists every hand-off your agents ran: who sent it, which agent, when, how big it was and what it cost. Never the text.</li>
+            <li><b>Your budgets and switches:</b> the fund, the hand-off allowance, the Haiku ledger line and the scout. They are checked on your Mac, so neither a crewmate nor the backend can get around them.</li>
+            <li><b>What your crew shares with you.</b> Your Mac keeps your crewmates’ agents and the crew notes in <code>~/.soopdoop/crew.md</code>, so your Codex and Grok agents can read them. That file goes nowhere else.</li>
+          </ul>
+
+          <h2 id="leaves">What leaves your Mac</h2>
+
+          <h3>Your presence</h3>
+          <p>Whether you are online, how many agents you run, whether each one is working, idle or waiting, which tool runs it, its name and its folder’s name. Your Mac’s name and when it last reported. Your crew sees agent names and folder names only if you turn them on in Settings. Private agents are in the report too, marked private, and only you see them. Each report replaces the one before.</p>
+
+          <h3>The routing summary</h3>
+          <p>One line for each open agent, at most 600 characters: the folder and branch, the start of the agent’s last prompt (up to 160 characters), and the last files it touched. Your Mac makes it after each turn and takes out anything that looks like a key or a token. You see it in the HUD under This Mac. You cannot edit it yet; to stop it, make the folder private. Your crewmates and their agents see it, without the folder and branch unless you share folder names, and the Operator uses it to choose which agent to ask. It is deleted when the agent ends.</p>
+
+          <h3>The ledger line</h3>
+          <p>One line for each finished task: the date, the tool, your Mac’s name, the folder and branch, what was done (at most 240 characters), the top-level folders it touched, how many files, and the pull request if the session opened or merged one. Your Mac makes it when a session ends, or after it sits idle for 10 minutes.</p>
+          <p>With the Haiku line on (the default), your own Claude Code writes the “what was done” part with a small Haiku call on your own Claude account. That sends part of the conversation to Anthropic under your account, the same way all your Claude Code work does; it does not go to soopdoop. With it off (<code>soopdoop ledger-lines off</code>), your Mac builds the line from the session’s first and last prompts and its files, so the line can quote a prompt.</p>
+          <p>Keys and tokens are taken out. You see your lines in the HUD under This Mac → Ledger, and you can rewrite or delete any of them; a deleted line loses its words at once. Your crew and the Operator read your lines, with the folder name only if you share folder names. They are never shown above the crew.</p>
+
+          <h3>The answer to one question</h3>
+          <p>When a crewmate’s agent asks something one of your open agents knows, your Mac asks a copy of that agent’s session: on your Mac, on your own Claude Code, Codex or Grok account, with no tools, saved nowhere. Your agent’s own session is not touched. Only the answer leaves, at most 2,000 characters, and it goes to the person who asked. It can quote the conversation. The backend keeps the question, the answer, how many tokens were read and what it cost. You see what your agents answered in the HUD, under Operator. Your Mac checks your fund before each answer.</p>
+          <p class="small">Installs older than v0.3.0 (5 Oct 2026) sent a slice of the conversation for that one answer instead; the backend used it for that answer and kept none of it. Installs update themselves every 6 hours, unless you turned that off.</p>
+
+          <h3>Heads-ups</h3>
+          <p>When your prompt is about what a crewmate’s agent is on, your Mac sends one line, at most 240 characters, built from what that crewmate already shares (their routing summary or their ledger), and which crewmate and agent it is about. Never your prompt. You see it as a card in your HUD for 10 minutes. When you act on it, the line goes on your crew’s wire.</p>
+
+          <h3>Hand-offs</h3>
+          <p>When you hand a task to a crewmate’s agent, your words (at most 2,000 characters) and why (at most 500) go to the backend and to that crewmate’s Mac as you wrote them, with keys and tokens taken out. The task runs on their Mac, on their account, only if they say yes. When their agent is done, its summary (at most 1,000 characters) and up to 5 links come back to you and go on your crew’s wire. The backend keeps the offer, its status, the summary and the links.</p>
+
+          <h3>Crew notes, shouts and props</h3>
+          <ul>
+            <li>A crew note is what you type: at most 400 characters, with tags, an “applies when” line and a “confirm by” date if you add them. Your crew sees it, and their agents get it. A note an agent proposes waits for its owner; a rejected one is deleted.</li>
+            <li>A shout is one line, at most 140 characters, gone after 24 hours.</li>
+            <li>Props are one tap on a line on the wire.</li>
+          </ul>
+
+          <h3>The scout and Intercom (Team plan)</h3>
+          <ul>
+            <li>The scout is off until you turn it on (<code>soopdoop scout on</code>). Then it runs on your Mac every hour with your own email or help-desk connector, and when a customer said thanks, it sends one line, at most 200 characters, with keys and tokens taken out. The scout is told to leave customers’ names out of it. The email or ticket stays where it is.</li>
+            <li>If your crew leader connects Intercom, Intercom sends soopdoop a notice each time a customer rates a conversation. soopdoop reads three things from it: the stars, the customer’s comment and the conversation’s number. A rating of 4 or 5 becomes a props line on the wire, with at most 120 characters of the comment and with email addresses and keys taken out. It goes to the crewmate whose ledger line from the last 30 days names that conversation, or to the whole crew. Nothing else from the notice is kept.</li>
+          </ul>
+
+          <h3>Ships, walkthroughs and drops</h3>
+          <ul>
+            <li>A ship is a ledger line whose pull request merged. It goes on the wire.</li>
+            <li>A walkthrough is a page your agent writes about a ship, on your Mac, after you say yes. It leaves only the way you choose: as a drop, or as a link to a page you host somewhere else.</li>
+            <li>A drop is a page or file your crew shares. On the Team plan soopdoop stores it (up to 5 GB per crew) and serves it at a long random link. <b>Anyone who has the link can open it,</b> so share it with care. On the free plan, a drop is only a link.</li>
+          </ul>
+
+          <h3>Your account</h3>
+          <p>Your handle; your Superset user id and organization id, from Sign in with Superset; your sharing settings; your Mac’s time zone (for the digest’s hour); each Mac’s name; your friends, invites, knocks and flicks; your XP. If you link your public Superset profile: your name, tier, achievements and the models you use, never token counts or cost.</p>
+
+          <h2 id="kept">How long it is kept</h2>
+          <table class="limits" role="table">
+            <caption class="sr-only">How long the backend keeps each thing</caption>
+            <thead role="rowgroup">
+              <tr role="row"><th scope="col" role="columnheader">What</th><th scope="col" role="columnheader">How long</th></tr>
+            </thead>
+            <tbody role="rowgroup">
+              <tr role="row"><th scope="row" role="rowheader">The wire: ships, hand-offs done, heads-ups acted on, notes added, props, saves, the digest’s first line</th><td role="cell" data-label="Kept">7 days</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Shouts</th><td role="cell" data-label="Kept">24 hours</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Ledger lines</th><td role="cell" data-label="Kept">7 days on the free plan, and when you are in no crew; 90 days on Team</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Routing summaries</th><td role="cell" data-label="Kept">until the agent ends</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Heads-ups</th><td role="cell" data-label="Kept">7 days</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Questions and answers</th><td role="cell" data-label="Kept">until you ask us to delete them</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Hand-offs</th><td role="cell" data-label="Kept">until you ask us to delete them</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Crew notes and digests</th><td role="cell" data-label="Kept">while the crew exists; a rejected proposal is deleted at once</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Drops</th><td role="cell" data-label="Kept">until they are deleted</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Your linked Superset profile</th><td role="cell" data-label="Kept">refreshed every 6 hours; removed when you unpublish it</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Your account, friends, knocks, flicks and XP</th><td role="cell" data-label="Kept">until you ask us to delete them</td></tr>
+            </tbody>
+          </table>
+          <p class="small">The clean-ups run once a day (once a week for heads-ups), so something can stay up to a day (or a week) past its time. A crew ends when its last member leaves, and its notes and digests go with it, unless it still has a paid plan.</p>
+
+          <h2 id="operator">The Operator’s Claude calls</h2>
+          <p>The Operator is soopdoop’s own agent, on the backend. It calls Anthropic’s API with soopdoop’s key. It never sees a conversation or a file.</p>
+          <ul>
+            <li><b>To route a question</b> (Claude Sonnet 5.5): the question, your crewmates’ handles and names, the routing summaries of their open agents, and up to 8 matching ledger lines from the last two weeks.</li>
+            <li><b>In the Operator chat</b> (Claude Sonnet 5.5): the same, your chat with it, and up to 10 of your crew’s notes. It can search the ledger, ask an agent, offer a hand-off and knock.</li>
+            <li><b>For the daily digest</b> (Claude Opus 5.5, once a day, Team plan): the day’s wire (ships, hand-offs done, heads-ups acted on, props, saves, notes, shouts), the day’s ledger lines and the four numbers, with first names.</li>
+          </ul>
+          <p>Your crew sees what these calls cost each month in Settings → Crew.</p>
+
+          <h2 id="services">Other services</h2>
+          <ul>
+            <li><b>Convex</b> runs the backend. It stores everything in “What leaves your Mac”, and the drops.</li>
+            <li><b>Anthropic</b> runs the Operator’s Claude calls (above).</li>
+            <li><b>Superset.</b> You sign in with Superset, and we keep your Superset user id and organization id. We read your public Superset profile only if you link it.</li>
+            <li><b>Slack</b>, if your crew leader connects it: the daily digest, the weekly numbers and, with the live mirror on, ships, props and saves are posted to your crew’s channel. Anyone in that channel can read them. The webhook address is kept with the crew and never shown again, not even to the leader.</li>
+            <li><b>Intercom</b>, if your crew leader connects it: see above. The access token and the client secret are kept with the crew and never shown again.</li>
+            <li><b>Stripe</b> takes the Team plan’s payments. Stripe holds the card; we never see card numbers. We keep the Stripe customer and subscription ids, the plan, and the date it is paid until. Checkout gives Stripe the crew’s id and, when Superset shares it, the leader’s email address.</li>
+            <li><b>Cloudflare</b> serves soopdoop.com and counts visits with its Web Analytics, which sets no cookies. The site sets none either. The home page keeps your visitor XP and the sound switch in your browser’s local storage; they never leave your browser. An invite link’s code comes after the #, so it never reaches the server.</li>
+            <li><b>GitHub</b> hosts the code, the installer and the releases your Mac downloads.</li>
+            <li><b>Your own tools.</b> Answers, ledger lines, hand-offs, walkthroughs and the scout run on your own Claude Code, Codex or Grok account and your own connectors. Anthropic’s, OpenAI’s and xAI’s own terms and policies cover that use, as they cover the rest of your work with them.</li>
+          </ul>
+
+          <h2 id="who">Who sees what</h2>
+          <ul>
+            <li><b>Your crew</b> (up to 8 people; your friends on soopdoop, if you are in no crew): whether you are online, your open agents’ routing summaries, your ledger lines, the crew notes, the wire, the digest, the four numbers (crew totals only), and your XP on the board unless you hide from it.</li>
+            <li><b>The crewmate who asked</b> sees your agent’s answer. <b>The crewmate you hand off to</b> sees your exact words.</li>
+            <li><b>Your crew leader</b> sees what every crewmate sees, plus the crew’s settings and its bill. Not your prompts, your conversations or your logs: those are not on the backend.</li>
+            <li><b>Your crew’s Slack channel</b>, if it is connected: the digest, the weekly numbers and, with the mirror on, ships, props and saves.</li>
+            <li><b>Anyone with a drop’s link</b> can open that drop.</li>
+            <li><b>Above the crew</b> (crews of crews, later): work only. No names, no counts, no ledger lines.</li>
+            <li><b>We</b> can read what the backend keeps, to run the service and fix it. We do not sell it, and we do not train models on it.</li>
+          </ul>
+
+          <h2 id="choices">Your choices</h2>
+          <ul>
+            <li>Make a folder private, any time.</li>
+            <li>Rewrite or delete any of your ledger lines. Turn off the Haiku line with <code>soopdoop ledger-lines off</code>.</li>
+            <li>Choose, per crewmate, whether their hand-offs ask you, run when your agent is idle, or never run.</li>
+            <li>Turn answering off with <code>soopdoop fund 0</code>.</li>
+            <li>Hide from the board, and keep agent and folder names to yourself, in Settings.</li>
+            <li>Leave your crew. <code>soopdoop uninstall</code> takes soopdoop off your Mac.</li>
+            <li>To have us delete your account and everything the backend keeps about you, write to <span class="fill">[contact email]</span>. We do it within 30 days.</li>
+          </ul>
+
+          <h2 id="changes">Changes</h2>
+          <p>When this page changes, the date at the top changes, and the changelog says what changed. The code is public, so you can always check what it does.</p>
+        </article>
+      </div>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-top">
+      <div>
+        <p class="foot-tag">Your Superset, with your crew in it.</p>
+        <button class="cmd" type="button" data-copy="curl -fsSL https://soopdoop.com/install | bash" title="Copy the install command">
+          <span class="cmd-prompt" aria-hidden="true">$</span>
+          <code>curl -fsSL https://soopdoop.com/install | bash</code>
+          <span class="cmd-copy" data-copy-label>copy</span>
+        </button>
+      </div>
+      <nav class="foot-links" aria-label="More">
+        <a href="/">Home</a>
+        <a href="/teams">Teams</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="https://github.com/tomredman/soopdoop">GitHub</a>
+        <a href="https://github.com/tomredman/soopdoop/blob/main/CHANGELOG.md">Changelog</a>
+      </nav>
+    </div>
+    <div class="wrap foot-fine">
+      <p>soopdoop is not made by or affiliated with Superset.</p>
+    </div>
+    <div class="foot-mark" aria-hidden="true">
+      <span class="wordmark"><span class="wm-l">s</span><span class="wm-pair"><span class="wm-eye"><span class="wm-pupil"></span></span><span class="wm-eye"><span class="wm-pupil"></span></span></span><span class="wm-l">p</span><span class="wm-l wm-doop">d</span><span class="wm-pair wm-doop"><span class="wm-eye"><span class="wm-pupil"></span></span><span class="wm-eye"><span class="wm-pupil"></span></span></span><span class="wm-l wm-doop">p</span></span>
+    </div>
+  </footer>
+
+  <script type="module" src="./src/page.ts"></script>
+</body>
+</html>
