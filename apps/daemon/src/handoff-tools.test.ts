@@ -109,6 +109,22 @@ describe("the report_back tool", function () {
     expect((await readHandoffLog(d.deps.home)).at(-1)).toEqual({ at: Date.parse("2026-10-19T11:00:00Z"), event: "reported", handoffId: "h1", by: "agent", chars: 23, agentId: "s1", usd: 0.37 });
   });
 
+  test("an agent that did not do the task says done false: the hand-off fails with its words as the note, never done", async function () {
+    const d = await deps();
+    const at = Date.parse("2026-10-19T10:00:00Z");
+    await appendHandoffLog({ at, event: "delivered", handoffId: "h1", fromHandle: "ada", agentId: "s1", harness: "claude-code", channel: "socket", chars: 300 }, d.deps.home);
+    const got = await callHandoffTool("report_back", { handoff_id: "h1", summary: "There is no production database on this Mac.", done: false, links: ["https://github.com/acme/vibes/pull/1"] }, d.deps);
+    expect(d.sent).toEqual([{ url: "https://dev.convex.cloud", fn: "handoffs:failed", args: { token: "dtok", handoffId: "h1", note: "There is no production database on this Mac." } }]);
+    expect(got).toEqual({ text: "Reported back to @ada that it was not done, and why. Tell your user in a sentence." });
+    // Settled on this Mac, with its cost for the allowance, and none of the agent's words.
+    expect((await readHandoffLog(d.deps.home)).at(-1)).toEqual({ at: Date.parse("2026-10-19T11:00:00Z"), event: "failed", handoffId: "h1", by: "agent", chars: 44, agentId: "s1", usd: 0.37 });
+    // Only false says it was not done.
+    const yes = await deps();
+    await callHandoffTool("report_back", { handoff_id: "h2", summary: "Done.", done: true }, yes.deps);
+    expect(yes.sent[0]?.fn).toBe("handoffs:reportBack");
+    expect(REPORT_BACK_TOOL.inputSchema.properties.done.type).toBe("boolean");
+  });
+
   test("a hand-off this Mac has no record of is reported without a cost; errors come back as errors", async function () {
     const d = await deps();
     await callHandoffTool("report_back", { handoff_id: "h2", summary: "Could not find the file." }, d.deps);

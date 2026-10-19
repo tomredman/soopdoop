@@ -6,7 +6,16 @@ import { writeConfig } from "./config";
 
 // Runs the real `soopdoop serve` against a throwaway home and port, the way the background service runs it.
 const CLI = path.join(import.meta.dir, "cli.ts");
-const PORT = 47391;
+
+// A port nothing listens on now, so the test never talks to another program that took a fixed one (a dev server).
+function freePort(): number {
+  const probe = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch() { return new Response(""); } });
+  const port = probe.port;
+  void probe.stop(true);
+  if (port === undefined) throw new Error("no free port");
+  return port;
+}
+const PORT = freePort();
 const dir = await mkdtemp(path.join(tmpdir(), "soopdoop-serve-"));
 const home = path.join(dir, "home");
 const proc = Bun.spawn([process.execPath, CLI, "serve"], {

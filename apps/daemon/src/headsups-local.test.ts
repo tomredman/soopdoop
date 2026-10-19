@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 import {
   headsUpNote, headsUpper, parseCrewLines, parseSummary, readPrompt, score, terms, THRESHOLD, type CrewLine, type HeadsUp,
 } from "./headsups-local";
+import { handoffPrompt } from "./handoffs-local";
 import type { CrewAgent, CrewNow } from "./intro";
 
 const NOW = Date.parse("2026-10-18T15:00:00Z");
@@ -139,6 +140,16 @@ describe("heads-ups for a session", function () {
     await h.refreshLedger();
     const hits = h.check("s1", "the CSV export is dropping rows again");
     expect(hits.map(function (x) { return x.line; })).toEqual(["@jimmy worked on this on 14 Oct (apps/web/export): Fixed the CSV export dropping rows"]);
+  });
+
+  test("a crewmate's hand-off arriving in this session makes no heads-up, though their agent's summary quotes the same task", function () {
+    const task = "why are bounces double counted in the delivery metrics? Fix it in packages/email/src/metrics.ts";
+    const { h } = setup();
+    expect(who(h.check("s1", task))).toEqual(["jimmy:area:live"]);
+    const receiving = setup();
+    expect(receiving.h.check("s1", handoffPrompt("jimmy", task, "jd7abc"))).toEqual([]);
+    // It does not use up the session's heads-up about that agent either.
+    expect(who(receiving.h.check("s1", task))).toEqual(["jimmy:area:live"]);
   });
 
   test("the card's line comes from what the crewmate shares, never from the prompt", function () {

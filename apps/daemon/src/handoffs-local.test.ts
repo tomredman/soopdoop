@@ -10,7 +10,8 @@ import { settingsPath } from "./config";
 import type { DeliverDeps, ExecResult } from "./deliver";
 import { appendHandoffLog, readHandoffLog } from "./handoff-log";
 import {
-  finishedLine, handoffPrompt, handoffSeen, handoffsLocal, mayDeliver, parseFinished, parseToRun, reportPrompt, type Backend, type HandoffsLocal,
+  finishedLine, handoffPrompt, handoffSeen, handoffsLocal, isHandoffPrompt, mayDeliver, parseFinished, parseToRun, reportPrompt, type Backend,
+  type HandoffsLocal,
 } from "./handoffs-local";
 import type { AgentRecord, HookEvent, Subset } from "./state";
 
@@ -394,8 +395,17 @@ describe("helpers", function () {
     expect(handoffPrompt("ada", "Fix VIB-123.", "jd7abc")).toBe(
       "soopdoop hand-off from @ada (they approved this text, you approved running it): Fix VIB-123.\n\n" +
       "When you are done, call the report_back tool with handoff_id jd7abc, a short summary of what you did and any PR link. " +
-      "If you cannot do it, call report_back with what stopped you.",
+      "If you cannot do it, call report_back with done set to false and what stopped you.",
     );
+  });
+
+  test("a hand-off is known by its prompt, also with a harness's words in front or its lines joined; other prompts are not", function () {
+    const prompt = handoffPrompt("ada", "Fix VIB-123 in packages/email.", "jd7abc");
+    expect(isHandoffPrompt(prompt)).toBe(true);
+    expect(isHandoffPrompt(`Another Claude session sent a message:\n${prompt}`)).toBe(true);
+    expect(isHandoffPrompt(prompt.replace(/\s*\n\s*/g, " "))).toBe(true);
+    expect(isHandoffPrompt("Fix VIB-123 in packages/email.")).toBe(false);
+    expect(isHandoffPrompt("what does a soopdoop hand-off from @ada (they approved it) look like?")).toBe(false);
   });
 
   test("whether a transcript shows the hand-off reached the agent and it answered, in Claude Code's and Codex's shapes", function () {

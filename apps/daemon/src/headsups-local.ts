@@ -1,5 +1,6 @@
 // ABOUTME: Heads-ups on this Mac: each prompt is scored here, with no network, against what crewmates' agents are on now (their
 // ABOUTME: routing summaries), what the crew did lately (its ledger) and same-file collisions. Over the line: a HUD card and a note. The prompt is then dropped.
+import { isHandoffPrompt } from "./handoffs-local";
 import { isRecord } from "./state";
 import type { CrewNow } from "./intro";
 
@@ -360,6 +361,9 @@ export function headsUpper(options: HeadsUpOptions): HeadsUps {
 
   return {
     check(sessionId, prompt) {
+      // A crewmate's hand-off arriving in this session is their task in their own words, which their own agent's summary
+      // quotes. Scored, it would tell the agent doing the work to ask or hand it back to the crewmate who sent it.
+      if (isHandoffPrompt(prompt)) return [];
       targets();
       if (live.length === 0 && past.length === 0) return [];
       const q = readPrompt(prompt);
