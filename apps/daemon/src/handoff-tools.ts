@@ -12,6 +12,7 @@ import { findTranscript } from "./transcripts/index";
 
 const offerRef = makeFunctionReference<"mutation">("handoffs:offerFromAgent");
 const reportBackRef = makeFunctionReference<"mutation">("handoffs:reportBack");
+const failedRef = makeFunctionReference<"mutation">("handoffs:failed");
 
 export const HAND_OFF_TOOL = {
   name: "hand_off",
@@ -38,14 +39,15 @@ export const REPORT_BACK_TOOL = {
   description:
     "Report back on a soopdoop hand-off you were given: a task a crewmate offered and your user approved in the soopdoop " +
     "app. It reaches you as a message that starts \"soopdoop hand-off from @…\". Call this once when you finish, with the " +
-    "handoff_id from that message, a short summary of what you did (or what stopped you), and links such as the pull " +
-    "request. The crewmate who offered it reads your summary.",
+    "handoff_id from that message, a short summary of what you did, and links such as the pull request. If you did not " +
+    "do the task, set done to false and say what stopped you. The crewmate who offered it reads your summary.",
   inputSchema: {
     type: "object",
     properties: {
       handoff_id: { type: "string", description: "The handoff_id from the hand-off message." },
       summary: { type: "string", description: "What you did, or what stopped you, in one or two sentences." },
       links: { type: "array", items: { type: "string" }, description: "Links, such as the pull request." },
+      done: { type: "boolean", description: "False when you did not do the task. Leave it out when you did it." },
     },
     required: ["handoff_id", "summary"],
     additionalProperties: false,
@@ -162,6 +164,9 @@ async function reportBack(args: Record<string, unknown>, deps: HandoffToolDeps):
   const handoffId = text(args.handoff_id);
   const summary = text(args.summary);
   const links = Array.isArray(args.links) ? args.links.filter(function (l): l is string { return typeof l === "string" && l.trim() !== ""; }) : [];
+  // An agent that could not do the task says so: the hand-off is then not done (no news on the wire, no assist), and the
+  // crewmate who offered it reads why.
+  const done = args.done !== false;
   if (handoffId === undefined) return { text: "Give the handoff_id from the hand-off message.", isError: true };
   if (summary === undefined) return { text: "Say what you did for the hand-off, or what stopped you.", isError: true };
   const config = await deps.config();
@@ -170,17 +175,28 @@ async function reportBack(args: Record<string, unknown>, deps: HandoffToolDeps):
   const delivered = (await readHandoffLog(deps.home)).find(function (l) { return l.event === "delivered" && l.handoffId === handoffId; });
   const usd = delivered?.agentId === undefined ? undefined : await deps.cost(delivered.harness ?? "claude-code", delivered.agentId, delivered.at).catch(function () { return undefined; });
   try {
-    await deps.mutation(config.convexUrl, reportBackRef, {
-      token: config.token, handoffId, summary, ...(links.length > 0 ? { links } : {}), ...(usd === undefined ? {} : { usd }),
-    });
+    if (done) {
+      await deps.mutation(config.convexUrl, reportBackRef, {
+        token: config.token, handoffId, summary, ...(links.length > 0 ? { links } : {}), ...(usd === undefined ? {} : { usd }),
+      });
+    } else {
+      await deps.mutation(config.convexUrl, failedRef, { token: config.token, handoffId, note: summary });
+    }
   } catch (e) {
     return { text: `Could not report back: ${cleanError(e)}`, isError: true };
   }
   const agentId = delivered?.agentId ?? sessionIdOf(deps.env);
+  // Sizes and cost only: the agent's words are never logged.
   await appendHandoffLog({
-    at: deps.now(), event: "reported", handoffId, by: "agent", chars: summary.length, ...(agentId === undefined ? {} : { agentId }), ...(usd === undefined ? {} : { usd }),
+    at: deps.now(), event: done ? "reported" : "failed", handoffId, by: "agent", chars: summary.length, ...(agentId === undefined ? {} : { agentId }),
+    ...(usd === undefined ? {} : { usd }),
   }, deps.home);
-  return { text: `Reported back${delivered?.fromHandle === undefined ? "" : ` to @${delivered.fromHandle}`}. The hand-off is done; tell your user in a sentence.` };
+  const to = delivered?.fromHandle === undefined ? "" : ` to @${delivered.fromHandle}`;
+  return {
+    text: done
+      ? `Reported back${to}. The hand-off is done; tell your user in a sentence.`
+      : `Reported back${to} that it was not done, and why. Tell your user in a sentence.`,
+  };
 }
 
 // Calls one of the hand-off tools; null when the name is not one of them.

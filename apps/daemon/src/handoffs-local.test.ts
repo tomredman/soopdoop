@@ -395,7 +395,7 @@ describe("helpers", function () {
     expect(handoffPrompt("ada", "Fix VIB-123.", "jd7abc")).toBe(
       "soopdoop hand-off from @ada (they approved this text, you approved running it): Fix VIB-123.\n\n" +
       "When you are done, call the report_back tool with handoff_id jd7abc, a short summary of what you did and any PR link. " +
-      "If you cannot do it, call report_back with what stopped you.",
+      "If you cannot do it, call report_back with done set to false and what stopped you.",
     );
   });
 

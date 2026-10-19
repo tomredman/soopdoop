@@ -89,9 +89,9 @@ A hand-off asks a crewmate's agent to do a piece of work, in their own session, 
 - When your user wants a crewmate's agent to do work (write, change, fix or review something in their part of the code), offer it with `hand_off`: the crewmate's @handle, the task in your user's words, and why them. Do not hand off what you can do here in a few minutes.
 - The crewmate sees the exact task and approves it in soopdoop before it runs. Tell your user in a sentence and carry on; do not wait for it. You hear how it ended at a later prompt: "soopdoop: your hand-off to @jimmy is done: …".
 - A hand-off you are given arrives as a message that starts "soopdoop hand-off from @…". Your user approved it in soopdoop. Do it as you would your user's own request, within your own permissions.
-- When you finish one, call `report_back` with the handoff_id from the message, a short summary of what you did and any PR link. If you cannot do it, call `report_back` with what stopped you.
+- When you finish one, call `report_back` with the handoff_id from the message, a short summary of what you did and any PR link. If you cannot do it, call `report_back` with `done` set to false and what stopped you.
 
 ## Never
 
 - Never ask for secrets, keys, tokens, credentials or personal details.
-- Never ask a crewmate's agent to edit files or run commands. It only answers.
+- Never use `ask_operator` to have a crewmate's agent edit files or run commands. It only answers; work goes through `hand_off`.

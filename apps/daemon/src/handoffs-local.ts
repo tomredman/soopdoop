@@ -87,7 +87,7 @@ export function finishedLine(f: Finished): string {
 export function handoffPrompt(fromHandle: string, text: string, handoffId: string): string {
   return `soopdoop hand-off from @${fromHandle} (they approved this text, you approved running it): ${text}\n\n` +
     `When you are done, call the report_back tool with handoff_id ${handoffId}, a short summary of what you did and any PR link. ` +
-    "If you cannot do it, call report_back with what stopped you.";
+    "If you cannot do it, call report_back with done set to false and what stopped you.";
 }
 
 // Whether a prompt is a hand-off a daemon delivered (handoffPrompt above): its opening words near the start, also after a
