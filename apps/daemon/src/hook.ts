@@ -54,8 +54,8 @@ function printOut(text: string): void {
   process.stdout.write(text);
 }
 
-// Prompts and tool inputs stay out: only the event name, session id, cwd, transcript path, message, harness, permission mode
-// and the local fields above cross the socket. Grok's payload is camelCase (sessionId); Claude Code's and Codex's are snake_case.
+// Prompts and tool inputs stay out: only the event name, session id, cwd, transcript path, message and its type, harness,
+// permission mode and the local fields above cross the socket. Grok's payload is camelCase (sessionId); Claude Code's and Codex's are snake_case.
 export async function forwardHook(
   event: string,
   raw: string,
@@ -74,6 +74,7 @@ export async function forwardHook(
       cwd: fields.cwd,
       transcript_path: fields.transcript_path ?? fields.transcriptPath,
       message: fields.message,
+      notification_type: fields.notification_type ?? fields.notificationType,
       harness,
       permission_mode: fields.permission_mode ?? fields.permissionMode,
       ...localFields(env),

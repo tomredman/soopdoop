@@ -29,6 +29,15 @@ describe("forwardHook", function () {
     expect(received).toEqual([{ hook_event_name: "UserPromptSubmit", session_id: "s1", cwd: "/r/vibes", transcript_path: "/t.jsonl", harness: "claude-code" }]);
   });
 
+  test("passes on a notification's message and type, and the permission mode", async function () {
+    received.length = 0;
+    const payload = { session_id: "s1", message: "Claude is waiting for your input", notification_type: "idle_prompt", permission_mode: "bypassPermissions" };
+    await forwardHook("Notification", JSON.stringify(payload), server.port, none, CLAUDE);
+    expect(received).toEqual([{
+      hook_event_name: "Notification", session_id: "s1", message: "Claude is waiting for your input", notificationType: "idle_prompt", permissionMode: "bypassPermissions", harness: "claude-code",
+    }]);
+  });
+
   test("the event name comes from the command line, not the payload", async function () {
     received.length = 0;
     await forwardHook("Stop", JSON.stringify({ session_id: "s1", hook_event_name: "SessionEnd" }), server.port, none, CLAUDE);

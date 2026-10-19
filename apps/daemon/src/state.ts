@@ -41,8 +41,9 @@ export interface HookEvent {
   session_id: string;
   cwd?: string;
   transcript_path?: string;
-  // Notification hooks carry a message; "waiting" is inferred from it.
+  // Notification hooks carry a message and, in Claude Code, its type: "waiting" is inferred from them.
   message?: string;
+  notificationType?: string;
   // The harness that ran the hook (its command names it). Missing from older hooks, which were all Claude Code's.
   harness?: Harness;
   // From the hook's environment, when there. Kept on this machine (see AgentRecord).
@@ -88,6 +89,8 @@ export function parseHookEvent(raw: unknown): HookEvent | null {
   const transcript = text(raw.transcript_path) ?? text(raw.transcriptPath);
   if (transcript !== undefined) ev.transcript_path = transcript;
   if (typeof raw.message === "string") ev.message = raw.message;
+  const notification = text(raw.notificationType) ?? text(raw.notification_type);
+  if (notification !== undefined) ev.notificationType = notification;
   const harness = toHarness(raw.harness);
   if (harness !== undefined) ev.harness = harness;
   const terminal = text(raw.supersetTerminalId);
@@ -135,7 +138,6 @@ function statusAfter(event: string): AgentStatus | "end" | null {
     case "PreToolUse":
     case "PostToolUse":
       return "working";
-    case "Notification":
     case "PermissionRequest":
       return "waiting";
     case "SessionEnd":
@@ -143,6 +145,19 @@ function statusAfter(event: string): AgentStatus | "end" | null {
     default:
       return null;
   }
+}
+
+// What Claude Code says about a minute after a turn ends, when nothing happened since: the session is idle.
+const IDLE_NOTICE = "Claude is waiting for your input";
+
+// A notification waits on the owner when it is a permission prompt or a question (Grok's hooks take only these two, as
+// Superset's do). Claude Code also sends "idle_prompt" a minute after a turn ends, which leaves the session idle, and
+// others (a sign-in) that change nothing. An older payload without a type is read by its message.
+function notificationStatus(ev: HookEvent): AgentStatus | null {
+  const type = ev.notificationType;
+  if (type === undefined) return ev.message === IDLE_NOTICE ? "idle" : "waiting";
+  if (type === "permission_prompt" || type === "elicitation_dialog") return "waiting";
+  return type === "idle_prompt" ? "idle" : null;
 }
 
 // Applies one hook event. Returns true when the subset changed in a way worth reporting. `repoOf` names the repository a
@@ -174,7 +189,7 @@ export function apply(
   if (ev.cwd !== undefined) base.cwd = ev.cwd;
   keepLocal(base, ev);
 
-  const next = statusAfter(ev.hook_event_name);
+  const next = ev.hook_event_name === "Notification" ? notificationStatus(ev) : statusAfter(ev.hook_event_name);
   if (next === "end") return subset.delete(ev.session_id);
   if (next === null) return harnessChanged;
   // Repeated tool use while working is not a change worth reporting.
