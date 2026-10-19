@@ -42,6 +42,24 @@ const modules = {
   "./intercom.ts": function () {
     return import("./intercom");
   },
+  "./handoffs.ts": function () {
+    return import("./handoffs");
+  },
+  "./headsups.ts": function () {
+    return import("./headsups");
+  },
+  "./ledger.ts": function () {
+    return import("./ledger");
+  },
+  "./lib/ledgerSearch.ts": function () {
+    return import("./lib/ledgerSearch");
+  },
+  "./lib/plan.ts": function () {
+    return import("./lib/plan");
+  },
+  "./lib/prices.ts": function () {
+    return import("./lib/prices");
+  },
   "./lib/auth.ts": function () {
     return import("./lib/auth");
   },
@@ -62,9 +80,6 @@ const modules = {
   },
   "./lib/numbers.ts": function () {
     return import("./lib/numbers");
-  },
-  "./lib/plan.ts": function () {
-    return import("./lib/plan");
   },
   "./lib/summaries.ts": function () {
     return import("./lib/summaries");

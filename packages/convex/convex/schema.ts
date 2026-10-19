@@ -205,6 +205,10 @@ export default defineSchema({
     handoffId: v.optional(v.id("handoffs")),
     // What the Operator's own Claude calls for this relay cost, in US dollars at API prices (the crew's cost line).
     usd: v.optional(v.number()),
+    // Asked by an agent: its machine (and its session, when the tool knows it), so a hand-off the Operator offers for
+    // it can be reported back to that session at its next prompt.
+    askerMachine: v.optional(v.string()),
+    askerAgentId: v.optional(v.string()),
   })
     .index("by_asker", ["askerHackerId"])
     .index("by_target_status", ["targetHackerId", "status"]),
@@ -242,7 +246,9 @@ export default defineSchema({
     at: v.number(),
   })
     .index("by_hacker_at", ["hackerId", "at"])
-    .index("by_at", ["at"]),
+    .index("by_at", ["at"])
+    // Events done to or for a hacker: the props they were given count toward their XP.
+    .index("by_other_at", ["otherHackerId", "at"]),
 
   knocks: defineTable({
     fromHackerId: v.id("hackers"),
@@ -258,6 +264,8 @@ export default defineSchema({
     outcome: v.union(v.literal("open"), v.literal("opened"), v.literal("not-now"), v.literal("expired")),
     createdAt: v.number(),
     decidedAt: v.optional(v.number()),
+    // Sent for the sender, not by them (the knock that goes with a hand-off no agent fits): it earns no XP.
+    automatic: v.optional(v.boolean()),
   })
     .index("by_to_outcome", ["toHackerId", "outcome"])
     .index("by_from_to", ["fromHackerId", "toHackerId"]),
@@ -323,6 +331,8 @@ export default defineSchema({
     walkthroughAsked: v.optional(v.boolean()),
     // The owner rewrote the line in the HUD: the daemon must not replace it again.
     editedByOwner: v.optional(v.boolean()),
+    // The owner deleted the line: its words are gone, and this marker stops the daemon's next send from bringing it back.
+    forgotten: v.optional(v.boolean()),
   })
     .index("by_hacker_at", ["hackerId", "at"])
     .index("by_hacker_session", ["hackerId", "sessionKey"])
@@ -364,6 +374,9 @@ export default defineSchema({
     text: v.string(),
     why: v.optional(v.string()),
     status: handoffStatus,
+    // Accepted by the receiver's "run when my agent is idle" for this sender, not by the receiver at the time: a change
+    // of that setting takes it back.
+    autoAccepted: v.optional(v.boolean()),
     // Where it was offered from.
     via: v.optional(v.union(v.literal("agent"), v.literal("hud"), v.literal("menu"), v.literal("operator"), v.literal("headsup"))),
     // The sender's agent that offered it, so its daemon can tell that session when it is done.
@@ -404,6 +417,8 @@ export default defineSchema({
     agentId: v.optional(v.string()),
     at: v.number(),
     expiresAt: v.number(),
+    // Set by the scheduled function that ends the card, so the HUD's query drops it without a client's help.
+    expiredAt: v.optional(v.number()),
     dismissedAt: v.optional(v.number()),
     actedAt: v.optional(v.number()),
     action: v.optional(v.union(v.literal("ask"), v.literal("handoff"), v.literal("knock"))),

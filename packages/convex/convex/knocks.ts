@@ -5,8 +5,45 @@ import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireHacker } from "./lib/auth";
 import { isCrewmate } from "./lib/crew";
+import type { Doc, Id } from "./_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { markActed } from "./headsups";
 
 const LIFETIMES = new Set([10_000, 30_000, 120_000]);
+// How long a knock lasts when nobody says (hand-offs and the Operator knock for this long too).
+export const KNOCK_MS = 30_000;
+
+// At most one open knock from one sender to one receiver. A receiver has few open knocks: each ends within 2 min.
+export async function hasOpenKnock(ctx: QueryCtx, from: Id<"hackers">, to: Id<"hackers">): Promise<boolean> {
+  const open = await ctx.db
+    .query("knocks")
+    .withIndex("by_to_outcome", function (q) {
+      return q.eq("toHackerId", to).eq("outcome", "open");
+    })
+    .collect();
+  return open.some(function (k) { return k.fromHackerId === from; });
+}
+
+// Opens a knock and schedules its end. The caller has checked that `from` may knock on `to` now. `automatic`: sent for
+// the sender rather than by them, so it earns no XP.
+export async function insertKnock(
+  ctx: MutationCtx,
+  k: { from: Id<"hackers">; to: Id<"hackers">; item: Doc<"knocks">["item"]; note?: string; lifetimeMs: number; now: number; automatic?: boolean },
+): Promise<Id<"knocks">> {
+  const id = await ctx.db.insert("knocks", {
+    fromHackerId: k.from,
+    toHackerId: k.to,
+    item: k.item,
+    note: k.note,
+    lifetimeMs: k.lifetimeMs,
+    expiresAt: k.now + k.lifetimeMs,
+    outcome: "open",
+    createdAt: k.now,
+    automatic: k.automatic,
+  });
+  await ctx.scheduler.runAfter(k.lifetimeMs, internal.knocks.expire, { knockId: id });
+  return id;
+}
 
 export const send = mutation({
   args: {
@@ -33,29 +70,12 @@ export const send = mutation({
     if (!(await isCrewmate(ctx, me._id, to._id))) throw new ConvexError("You can only knock on a friend in your crew.");
     const now = Date.now();
     if (to.focusUntil !== undefined && to.focusUntil > now) throw new ConvexError("They are in focus mode. Try later.");
-    const lifetimeMs = args.lifetimeMs ?? 30_000;
+    const lifetimeMs = args.lifetimeMs ?? KNOCK_MS;
     if (!LIFETIMES.has(lifetimeMs)) throw new ConvexError("A knock lasts 10 s, 30 s, or 2 min.");
-    // At most one open knock from one sender to one receiver. A receiver has few open knocks: each ends within 2 min.
-    const open = await ctx.db
-      .query("knocks")
-      .withIndex("by_to_outcome", function (q) {
-        return q.eq("toHackerId", to._id).eq("outcome", "open");
-      })
-      .collect();
-    if (open.some(function (k) { return k.fromHackerId === me._id; })) {
-      throw new ConvexError("You already have a knock waiting with them.");
-    }
-    const id = await ctx.db.insert("knocks", {
-      fromHackerId: me._id,
-      toHackerId: to._id,
-      item: args.item,
-      note: args.note,
-      lifetimeMs,
-      expiresAt: now + lifetimeMs,
-      outcome: "open",
-      createdAt: now,
-    });
-    await ctx.scheduler.runAfter(lifetimeMs, internal.knocks.expire, { knockId: id });
+    if (await hasOpenKnock(ctx, me._id, to._id)) throw new ConvexError("You already have a knock waiting with them.");
+    const id = await insertKnock(ctx, { from: me._id, to: to._id, item: args.item, note: args.note, lifetimeMs, now });
+    // Knocking on a crewmate right after a heads-up about their agent is acting on it.
+    await markActed(ctx, me._id, to._id, "knock");
     return id;
   },
 });
