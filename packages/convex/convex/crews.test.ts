@@ -67,8 +67,8 @@ describe("joining crews through invites", function () {
     // A member's invite adds to the crew too.
     await invite(ada, grace);
     expect(must(await grace.query(api.crews.mine, {})).members.map(function (m) { return m.handle; })).toEqual(["tom", "adalovelace", "jimmy", "grace"]);
-    // And they are friends with whoever invited them.
-    expect((await grace.query(api.friends.list, {})).map(function (f) { return f.handle; })).toEqual(["adalovelace"]);
+    // The HUD's crew rows (friends.list) are the whole crew now, not only whoever invited them.
+    expect((await grace.query(api.friends.list, {})).map(function (f) { return f.handle; })).toEqual(["adalovelace", "jimmy", "tom"]);
   });
 
   test("an invite made for a Superset handle puts its owner in the crew when they link that profile", async function () {
@@ -175,8 +175,8 @@ describe("crew scope", function () {
     // Sam is in no crew, so he keeps the friends behaviour: Tom is his crew.
     expect((await sam.query(api.play.board, {})).map(function (r) { return r.handle; }).sort()).toEqual(["sam", "tom"]);
     await sam.mutation(api.knocks.send, { toHandle: "tom", item: link });
-    // Friends stay friends.
-    expect((await tom.query(api.friends.list, {})).map(function (f) { return f.handle; })).toEqual(["adalovelace", "sam"]);
+    // Tom's HUD rows are his crew; Sam stays his friend (Sam's knock above went through), just not on Tom's crew list.
+    expect((await tom.query(api.friends.list, {})).map(function (f) { return f.handle; })).toEqual(["adalovelace"]);
   });
 
   test("the friend list shows a crewmate's latest summary and when their Mac last reported, but not in focus", async function () {

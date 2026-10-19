@@ -117,7 +117,7 @@ struct LookSettings: View {
                             .help("Move \(section.label) down")
                     }
                 }
-                Text("Knocks, friend requests and flicks always show at the top.").font(.caption).foregroundStyle(.secondary)
+                Text("Knocks, hand-offs, heads-ups, friend requests and flicks always show at the top.").font(.caption).foregroundStyle(.secondary)
             }
             Picker("Notifications", selection: Binding(get: { style.notify }, set: { style.notify = $0 })) {
                 ForEach(NotifyMode.allCases) { Text($0.label).tag($0) }

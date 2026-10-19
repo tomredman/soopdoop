@@ -119,7 +119,8 @@ export const list = query({
   returns: v.array(presenceView),
   handler: async function (ctx) {
     const me = await requireHacker(ctx);
-    const ids = await acceptedFriendIds(ctx, me._id);
+    // In a crew, the HUD's crew rows are the crew; in no crew, they are my friends, as before crews.
+    const ids = await crewmateIds(ctx, me._id);
     const now = Date.now();
     const out: Infer<typeof presenceView>[] = [];
     for (const id of ids) {
