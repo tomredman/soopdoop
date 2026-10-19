@@ -67,6 +67,9 @@ export const handoffMode = v.union(v.literal("ask"), v.literal("auto"), v.litera
 // A crew note: proposed by an agent and waiting for its owner, live, or retired (replaced or past 45 days unconfirmed).
 export const noteStatus = v.union(v.literal("proposed"), v.literal("live"), v.literal("retired"));
 
+// What a drop is: a walkthrough of a ship, another page, or any other file.
+export const dropKind = v.union(v.literal("walkthrough"), v.literal("page"), v.literal("file"));
+
 // What soopdoop keeps from a hacker's public Superset leaderboard profile (lib/supersetProfile.ts reads it).
 // No token counts, cost or rank: AGENTS.md keeps token counts off personal and crew boards.
 export const supersetProfileFields = {
@@ -447,7 +450,7 @@ export default defineSchema({
     crewId: v.optional(v.id("crews")),
     hackerId: v.id("hackers"),
     title: v.string(),
-    kind: v.union(v.literal("walkthrough"), v.literal("page"), v.literal("file")),
+    kind: dropKind,
     storageId: v.optional(v.id("_storage")),
     // A page hosted elsewhere (a Superset Page, an Artifact): the link only.
     url: v.optional(v.string()),
@@ -459,5 +462,7 @@ export default defineSchema({
   })
     .index("by_token", ["token"])
     .index("by_crew", ["crewId", "createdAt"])
-    .index("by_hacker", ["hackerId", "createdAt"]),
+    .index("by_hacker", ["hackerId", "createdAt"])
+    // One drop per stored file: saving the same upload again finds its drop instead of making a second one.
+    .index("by_storage", ["storageId"]),
 });

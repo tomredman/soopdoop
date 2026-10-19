@@ -36,6 +36,9 @@ const modules = {
   "./digests.ts": function () {
     return import("./digests");
   },
+  "./drops.ts": function () {
+    return import("./drops");
+  },
   "./feed.ts": function () {
     return import("./feed");
   },

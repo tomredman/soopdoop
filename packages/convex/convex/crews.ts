@@ -5,6 +5,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { env, internalMutation, mutation, query } from "./_generated/server";
+import { forgetCrewDrops } from "./drops";
 import { checkHacker, requireDaemon, requireHacker } from "./lib/auth";
 import { addMember, crewmateIds, crewOf, joinOnInvite, MAX_CREW, memberIdsOf, requireLeader, startCrew } from "./lib/crew";
 import { areFriends } from "./lib/friendships";
@@ -294,8 +295,8 @@ export const remove = mutation({
   },
 });
 
-// Leaves the crew. The leader hands the lead on first while others are in it. The last one out ends the crew: its notes
-// and digests go too, unless it still has a paid subscription (billing needs the crew to find it).
+// Leaves the crew. The leader hands the lead on first while others are in it. The last one out ends the crew: its notes,
+// digests and drops (with their stored files) go too, unless it still has a paid subscription (billing needs the crew).
 export const leave = mutation({
   args: {},
   returns: v.null(),
@@ -327,6 +328,7 @@ export const leave = mutation({
       })
       .collect();
     for (const digest of digests) await ctx.db.delete("digests", digest._id);
+    await forgetCrewDrops(ctx, crew._id);
     await ctx.db.delete("crews", crew._id);
     return null;
   },

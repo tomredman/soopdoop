@@ -1,0 +1,11 @@
+{
+  "name": "@soopdoop/drops",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "bunx wrangler@4 dev --local",
+    "deploy": "bunx wrangler@4 deploy",
+    "typecheck": "tsc --noEmit"
+  }
+}

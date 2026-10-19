@@ -11,6 +11,7 @@
 import type * as crews from "../crews.js";
 import type * as crons from "../crons.js";
 import type * as digests from "../digests.js";
+import type * as drops from "../drops.js";
 import type * as feed from "../feed.js";
 import type * as flicks from "../flicks.js";
 import type * as friends from "../friends.js";
@@ -52,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   crews: typeof crews;
   crons: typeof crons;
   digests: typeof digests;
+  drops: typeof drops;
   feed: typeof feed;
   flicks: typeof flicks;
   friends: typeof friends;
