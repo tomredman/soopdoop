@@ -264,6 +264,8 @@ export default defineSchema({
     outcome: v.union(v.literal("open"), v.literal("opened"), v.literal("not-now"), v.literal("expired")),
     createdAt: v.number(),
     decidedAt: v.optional(v.number()),
+    // Sent for the sender, not by them (the knock that goes with a hand-off no agent fits): it earns no XP.
+    automatic: v.optional(v.boolean()),
   })
     .index("by_to_outcome", ["toHackerId", "outcome"])
     .index("by_from_to", ["fromHackerId", "toHackerId"]),
@@ -369,6 +371,9 @@ export default defineSchema({
     text: v.string(),
     why: v.optional(v.string()),
     status: handoffStatus,
+    // Accepted by the receiver's "run when my agent is idle" for this sender, not by the receiver at the time: a change
+    // of that setting takes it back.
+    autoAccepted: v.optional(v.boolean()),
     // Where it was offered from.
     via: v.optional(v.union(v.literal("agent"), v.literal("hud"), v.literal("menu"), v.literal("operator"), v.literal("headsup"))),
     // The sender's agent that offered it, so its daemon can tell that session when it is done.

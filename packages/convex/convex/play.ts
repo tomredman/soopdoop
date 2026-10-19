@@ -91,7 +91,8 @@ async function countsFor(ctx: QueryCtx, id: Id<"hackers">): Promise<Counts> {
     assists: assists.length,
     asks: questions.length,
     flicks: sent.length,
-    knocks: knocks.length,
+    // A knock sent for them with a hand-off is not one they sent.
+    knocks: knocks.filter(function (k) { return k.automatic !== true; }).length,
     flickXp,
     handoffs: handoffs.length,
     props: await propsFor(ctx, id),

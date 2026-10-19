@@ -24,10 +24,11 @@ export async function hasOpenKnock(ctx: QueryCtx, from: Id<"hackers">, to: Id<"h
   return open.some(function (k) { return k.fromHackerId === from; });
 }
 
-// Opens a knock and schedules its end. The caller has checked that `from` may knock on `to` now.
+// Opens a knock and schedules its end. The caller has checked that `from` may knock on `to` now. `automatic`: sent for
+// the sender rather than by them, so it earns no XP.
 export async function insertKnock(
   ctx: MutationCtx,
-  k: { from: Id<"hackers">; to: Id<"hackers">; item: Doc<"knocks">["item"]; note?: string; lifetimeMs: number; now: number },
+  k: { from: Id<"hackers">; to: Id<"hackers">; item: Doc<"knocks">["item"]; note?: string; lifetimeMs: number; now: number; automatic?: boolean },
 ): Promise<Id<"knocks">> {
   const id = await ctx.db.insert("knocks", {
     fromHackerId: k.from,
@@ -38,6 +39,7 @@ export async function insertKnock(
     expiresAt: k.now + k.lifetimeMs,
     outcome: "open",
     createdAt: k.now,
+    automatic: k.automatic,
   });
   await ctx.scheduler.runAfter(k.lifetimeMs, internal.knocks.expire, { knockId: id });
   return id;

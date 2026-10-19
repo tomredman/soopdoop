@@ -57,6 +57,23 @@ function daysWithin(days: number | undefined): number {
   return Number.isFinite(d) ? Math.min(MAX_DAYS, Math.max(1, d)) : DEFAULT_DAYS;
 }
 
+// The sessions a hacker's Macs list as private now. A line's sessionKey is its agent's session id, so a private agent's
+// lines can be told apart: its daemon never sends one, and one sent before it went private is no longer shown to the crew.
+async function privateSessions(ctx: QueryCtx, hackerId: Id<"hackers">, machineName?: string): Promise<Set<string>> {
+  const subsets = await ctx.db
+    .query("subsets")
+    .withIndex("by_hacker_machine", function (q) {
+      return q.eq("hackerId", hackerId);
+    })
+    .collect();
+  const out = new Set<string>();
+  for (const s of subsets) {
+    if (machineName !== undefined && s.machineName !== machineName) continue;
+    for (const a of s.agents) if (!a.open) out.add(a.agentId);
+  }
+  return out;
+}
+
 const lineView = v.object({
   _id: v.id("ledger"),
   at: v.number(),
@@ -117,6 +134,9 @@ export const report = mutation({
     const { hacker, daemon } = await requireDaemon(ctx, args.token);
     const sessionKey = args.sessionKey.trim();
     if (sessionKey === "" || sessionKey.length > MAX_SESSION_KEY) throw new ConvexError("A ledger line needs its session's key.");
+    if ((await privateSessions(ctx, hacker._id, daemon.machineName)).has(sessionKey)) {
+      throw new ConvexError("A private agent's work stays on its Mac, so it has no ledger line.");
+    }
     const did = clean(args.did, MAX_DID);
     if (did === "") throw new ConvexError("A ledger line says what was done.");
     const now = Date.now();
@@ -289,6 +309,7 @@ export const crewRecent = query({
       const owner = await ctx.db.get("hackers", id);
       if (owner === null) continue;
       const name = (await supersetCard(ctx, id))?.name;
+      const hidden = await privateSessions(ctx, id);
       const rows = await ctx.db
         .query("ledger")
         .withIndex("by_hacker_at", function (q) {
@@ -297,7 +318,7 @@ export const crewRecent = query({
         .order("desc")
         .take(CREW_RECENT_MAX);
       for (const l of rows) {
-        if (l.forgotten === true) continue;
+        if (l.forgotten === true || hidden.has(l.sessionKey)) continue;
         out.push({
           handle: owner.handle,
           name,
@@ -355,6 +376,7 @@ export async function searchLedger(
     if (among !== undefined && !among.includes(id)) continue;
     const owner = await ctx.db.get("hackers", id);
     if (owner === null) continue;
+    const hidden = await privateSessions(ctx, id);
     const rows = await ctx.db
       .query("ledger")
       .withIndex("by_hacker_at", function (q) {
@@ -363,7 +385,7 @@ export async function searchLedger(
       .order("desc")
       .take(SEARCHED_PER_CREWMATE);
     for (const row of rows) {
-      if (row.forgotten === true) continue;
+      if (row.forgotten === true || hidden.has(row.sessionKey)) continue;
       const shared = owner.shareWorkspaceNames;
       lines.push({ row, owner, did: row.did, areas: row.areas, at: row.at, workspace: shared ? row.workspace : undefined, branch: shared ? row.branch : undefined });
     }
@@ -411,7 +433,10 @@ export const prune = internalMutation({
         days = limitsFor(await crewOf(ctx, line.hackerId)).ledgerDays;
         keptDays.set(line.hackerId, days);
       }
-      if (line.at < now - days * DAY_MS) await ctx.db.delete("ledger", line._id);
+      // A forgotten line's marker (no words) is kept the longest any plan keeps a line, so a long session sent again
+      // late is not brought back.
+      const keep = line.forgotten === true ? MAX_DAYS : days;
+      if (line.at < now - keep * DAY_MS) await ctx.db.delete("ledger", line._id);
     }
     const last = page[page.length - 1];
     if (page.length === PRUNE_PAGE && last !== undefined) await ctx.scheduler.runAfter(0, internal.ledger.prune, { after: last.at, before });

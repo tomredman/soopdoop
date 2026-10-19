@@ -782,9 +782,10 @@ describe("the Operator chat's tools", function () {
     await tom.mutation(api.operator.chat, { text: "hand this to @jim: fix the market update listings filter" });
     await routeOnce(t);
     const turn = must((await tom.query(api.operator.chatLog, {}))[0]);
-    expect(turn).toMatchObject({ status: "answered", byOperator: true, answer: "Offered it to @jimmy. They approve it in soopdoop." });
+    expect(turn).toMatchObject({ status: "answered", byOperator: true, answer: "Offered it to @jimmy." });
+    // Jimmy reads Tom's message exactly as Tom wrote it.
     expect((await jimmy.query(api.handoffs.mine, {})).incoming).toMatchObject([{
-      _id: must(turn.handoffId), text: "hand this to @jimmy: fix the market update listings filter", via: "operator", targetAgentId: "a1",
+      _id: must(turn.handoffId), text: "hand this to @jim: fix the market update listings filter", via: "operator", targetAgentId: "a1",
     }]);
 
     await jimmy.mutation(api.handoffs.setConsent, { handle: "tom", mode: "never" });
@@ -929,6 +930,21 @@ describe("the Operator's hand-offs and the ledger, after review", function () {
     await sam.mutation(api.operator.askAsHacker, { question: "Anyone?" });
   });
 
+  test("under run when idle, a work order that names the crewmate is handed off at once and the answer says so; one the Operator aimed waits", async function () {
+    const t = harness();
+    const { tom, jimmy } = await crew(t);
+    await jimmy.mutation(api.handoffs.setConsent, { handle: "tom", mode: "auto" });
+    const named = await tom.mutation(api.operator.askAsHacker, { question: "@jimmy fix the market update listings filter" });
+    await routeOnce(t);
+    expect((await logged(tom, named))?.answer).toBe(
+      "Handed off to @jimmy; they let your hand-offs run, so it runs when their agent is idle. You will hear back on the wire.",
+    );
+    const aimed = await tom.mutation(api.operator.askAsHacker, { question: "Fix the market update listings filter again" });
+    await routeOnce(t);
+    expect((await logged(tom, aimed))?.answer).toBe("Offered as a hand-off to @jimmy; they approve it in soopdoop. You will hear back on the wire.");
+    expect((await jimmy.query(api.handoffs.mine, {})).incoming.map(function (h) { return h.status; }).sort()).toEqual(["accepted", "offered"]);
+  });
+
   test("the chat's knock is not sent for a message that ran out of time", async function () {
     const t = harness();
     await crew(t);
@@ -987,13 +1003,15 @@ describe("the Operator's Claude path, against a stand-in for the API", function 
       ], "tool_use"),
       message([{ type: "text", text: "Knocked on Hedy and offered her the rounding fix." }], "end_turn"),
     ];
-    const relayId = await tom.mutation(api.operator.chat, { text: "knock hedy, and hand her this: fix the coupon code rounding" });
+    const said = "knock hedy, and hand her this: fix the coupon code rounding";
+    const relayId = await tom.mutation(api.operator.chat, { text: said });
     await routeOnce(t);
     const turn = must((await tom.query(api.operator.chatLog, {})).find(function (r) { return r._id === relayId; }));
     expect(turn).toMatchObject({ status: "answered", byOperator: true, answer: "Knocked on Hedy and offered her the rounding fix." });
-    expect((await hedy.query(api.handoffs.mine, {})).incoming).toMatchObject([{ _id: must(turn.handoffId), text: "fix the coupon code rounding" }]);
+    expect((await hedy.query(api.handoffs.mine, {})).incoming).toMatchObject([{ _id: must(turn.handoffId), text: said }]);
+    // One knock, with Tom's own words.
     const knocks = await t.run(async function (ctx) { return await ctx.db.query("knocks").collect(); });
-    expect(knocks.map(function (k) { return k.note; })).toEqual(["a hand-off is coming your way"]);
+    expect(knocks.map(function (k) { return k.note; })).toEqual([said]);
     // The relay keeps what the two calls cost: $0.003 each on Sonnet 5.5.
     expect(must(await t.run(async function (ctx) { return await ctx.db.get("relays", relayId); })).usd).toBeCloseTo(0.006, 10);
   });
@@ -1005,12 +1023,13 @@ describe("the Operator's Claude path, against a stand-in for the API", function 
       message([{ type: "tool_use", id: "tu1", name: "offer_handoff", input: { agent: "1", task: "fix the market update listings filter" } }], "tool_use"),
       message([{ type: "tool_use", id: "tu2", name: "ask_agent", input: { agent: 1, question: "Where are expired listings filtered?" } }], "tool_use"),
     ];
-    const relayId = await tom.mutation(api.operator.chat, { text: "hand jimmy this: fix the market update listings filter. Also, where are expired listings filtered?" });
+    const said = "hand jimmy this: fix the market update listings filter. Also, where are expired listings filtered?";
+    const relayId = await tom.mutation(api.operator.chat, { text: said });
     await routeOnce(t);
     expect(await t.query(api.operator.readsFor, { token: jimmyToken })).toEqual([{ relayId, agentId: "a1", question: "Where are expired listings filtered?", asker: "tom" }]);
     const turn = must((await tom.query(api.operator.chatLog, {})).find(function (r) { return r._id === relayId; }));
     expect(turn.handoffId).toBeDefined();
-    expect((await jimmy.query(api.handoffs.mine, {})).incoming).toMatchObject([{ text: "fix the market update listings filter" }]);
+    expect((await jimmy.query(api.handoffs.mine, {})).incoming).toMatchObject([{ text: said }]);
   });
 
   test("a work order is offered in the asker's own words, never in Claude's rewording", async function () {

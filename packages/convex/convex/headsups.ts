@@ -52,6 +52,9 @@ export const record = mutation({
     }
     const line = redactSecrets(args.line.trim()).slice(0, MAX_LINE);
     if (line === "") throw new ConvexError("A heads-up says what the crewmate's agent is on.");
+    // The card keeps the agent's own session id, so it stays one card across a restart, is matched when that agent is
+    // asked, and "Hand off" from it reaches that agent.
+    const otherAgentId = await sessionOf(ctx, other._id, args.otherAgentId);
     const now = Date.now();
     const recent = await ctx.db
       .query("headsups")
@@ -59,7 +62,7 @@ export const record = mutation({
         return q.eq("hackerId", hacker._id).gt("at", now - QUIET_MS - CARD_MS);
       })
       .collect();
-    const samePair = recent.filter(function (h) { return h.otherId === other._id && h.otherAgentId === args.otherAgentId; });
+    const samePair = recent.filter(function (h) { return h.otherId === other._id && h.otherAgentId === otherAgentId; });
     const open = samePair.find(function (h) { return isOpen(h, now); });
     if (open !== undefined) {
       await ctx.db.patch("headsups", open._id, { kind: args.kind, line, agentId: args.agentId ?? open.agentId });
@@ -73,7 +76,7 @@ export const record = mutation({
     const id = await ctx.db.insert("headsups", {
       hackerId: hacker._id,
       otherId: other._id,
-      otherAgentId: args.otherAgentId,
+      otherAgentId,
       kind: args.kind,
       line,
       agentId: args.agentId,
@@ -109,14 +112,18 @@ async function agentsOn(ctx: QueryCtx, hackerId: Id<"hackers">, machineName?: st
   return subsets.flatMap(function (s) { return s.agents; });
 }
 
-// The agent's name, only when its owner shares agent names. The card may name the agent by its session id or by the
-// key its routing summary has (what a daemon is told about crewmates' agents).
-async function agentName(ctx: QueryCtx, owner: Doc<"hackers">, agentId: string): Promise<string | undefined> {
-  if (!owner.shareAgentNames) return undefined;
+// A crewmate's agent as its session id. A daemon knows a crewmate's agent by its routing summary's key (routing.crew),
+// so a key of theirs is turned into the agent it is about; anything else is taken as the session id.
+async function sessionOf(ctx: QueryCtx, ownerId: Id<"hackers">, agentId: string): Promise<string> {
   const summaryId = ctx.db.normalizeId("routingSummaries", agentId);
   const summary = summaryId === null ? null : await ctx.db.get("routingSummaries", summaryId);
-  const id = summary !== null && summary.hackerId === owner._id ? summary.agentId : agentId;
-  return (await agentsOn(ctx, owner._id)).find(function (a) { return a.agentId === id && a.open; })?.name;
+  return summary !== null && summary.hackerId === ownerId ? summary.agentId : agentId;
+}
+
+// The agent's name, only when its owner shares agent names.
+async function agentName(ctx: QueryCtx, owner: Doc<"hackers">, agentId: string): Promise<string | undefined> {
+  if (!owner.shareAgentNames) return undefined;
+  return (await agentsOn(ctx, owner._id)).find(function (a) { return a.agentId === agentId && a.open; })?.name;
 }
 
 // My open cards, newest first: not dismissed, not acted on, not ended.

@@ -87,6 +87,8 @@ describe("hand-offs", function () {
     expect(row.knockId).toBeDefined();
     const knock = (await jimmy.query(api.knocks.incoming, {})).current;
     expect(knock).toMatchObject({ fromHandle: "tom", item: { kind: "session", title: "a hand-off from @tom" }, note: text.trim().slice(0, 120) });
+    // Sent for Tom, not by him: no knock XP.
+    expect((await tom.query(api.play.board, {})).find(function (r) { return r.handle === "tom"; })?.xp).toBe(0);
 
     // Jimmy in focus mode: the offer still waits for him, but nothing knocks.
     const sam = await hackerNamed(t, "sam");
@@ -311,6 +313,70 @@ describe("hand-offs", function () {
     });
     await expect(t.mutation(internal.handoffs.offerInternal, { fromId: tomId, toId: jimmyId, text: TASK, relayId })).rejects.toThrow("ran out of time");
     expect((await tom.query(api.handoffs.mine, {})).outgoing).toEqual([]);
+  });
+
+  test("turning \"run when idle\" off takes back what it accepted and did not start: to ask again, or declined with never", async function () {
+    const t = harness();
+    const { tom, jimmy, jimmyToken } = await crew(t);
+    await jimmy.mutation(api.handoffs.setConsent, { handle: "tom", mode: "auto" });
+    const first = await tom.mutation(api.handoffs.offer, { toHandle: "jimmy", text: `${TASK} 1`, via: "hud" });
+    const started = await tom.mutation(api.handoffs.offer, { toHandle: "jimmy", text: `${TASK} 2`, via: "hud" });
+    await t.mutation(api.handoffs.started, { token: jimmyToken, handoffId: started });
+    await jimmy.mutation(api.handoffs.setConsent, { handle: "tom", mode: "ask" });
+    expect(await handoff(t, first)).toMatchObject({ status: "offered" });
+    expect((await handoff(t, first)).autoAccepted).toBeUndefined();
+    expect((await handoff(t, started)).status).toBe("running");
+    expect(await t.query(api.handoffs.toRun, { token: jimmyToken })).toEqual([]);
+
+    // Accepted by Jimmy himself, it stays when he turns hand-offs from Tom off; one "auto" accepted is declined.
+    await jimmy.mutation(api.handoffs.decide, { handoffId: first, outcome: "accept" });
+    await jimmy.mutation(api.handoffs.setConsent, { handle: "tom", mode: "auto" });
+    const third = await tom.mutation(api.handoffs.offer, { toHandle: "jimmy", text: `${TASK} 3`, via: "hud" });
+    await jimmy.mutation(api.handoffs.setConsent, { handle: "tom", mode: "never" });
+    expect((await handoff(t, first)).status).toBe("accepted");
+    expect(await handoff(t, third)).toMatchObject({ status: "declined", note: "Hand-offs from you are off now." });
+  });
+
+  test("only the Mac a hand-off runs on fails it or reports it back", async function () {
+    const t = harness();
+    const { tom, jimmy, jimmyToken } = await crew(t);
+    const otherMac = await machine(t, jimmy, "jm2", []);
+    const id = await tom.mutation(api.handoffs.offer, { toHandle: "jimmy", text: TASK, via: "hud" });
+    await jimmy.mutation(api.handoffs.decide, { handoffId: id, outcome: "accept" });
+    await t.mutation(api.handoffs.started, { token: jimmyToken, handoffId: id });
+    await expect(t.mutation(api.handoffs.failed, { token: otherMac, handoffId: id, note: "no" })).rejects.toThrow("no such hand-off");
+    await expect(t.mutation(api.handoffs.reportBack, { token: otherMac, handoffId: id, summary: "done" })).rejects.toThrow("no such hand-off");
+    expect((await handoff(t, id)).status).toBe("running");
+  });
+
+  test("the offering Mac also hears when a hand-off was declined or expired; neither goes on the wire", async function () {
+    const t = harness();
+    const { jimmy, tomToken } = await crew(t);
+    const declined = await t.mutation(api.handoffs.offerFromAgent, { token: tomToken, toHandle: "jimmy", text: TASK, agentId: "t1" });
+    await jimmy.mutation(api.handoffs.decide, { handoffId: declined.handoffId, outcome: "decline", note: "busy today" });
+    const expired = await t.mutation(api.handoffs.offerFromAgent, { token: tomToken, toHandle: "jimmy", text: `${TASK} 2`, agentId: "t1" });
+    await t.run(async function (ctx) { await ctx.db.patch("handoffs", expired.handoffId, { expiresAt: Date.now() - 1 }); });
+    await t.mutation(internal.handoffs.expire, { handoffId: expired.handoffId });
+    const heard = await t.query(api.handoffs.finishedForDaemon, { token: tomToken });
+    expect(heard.map(function (h) { return [h.handoffId, h.status, h.note]; }).sort()).toEqual([
+      [declined.handoffId, "declined", "busy today"],
+      [expired.handoffId, "expired", undefined],
+    ].sort());
+    const wire = await t.run(async function (ctx) { return await ctx.db.query("feed").collect(); });
+    expect(wire.filter(function (e) { return e.kind === "handoff"; })).toEqual([]);
+  });
+
+  test("an offer the sender did not aim at the receiver themselves waits for their yes, even under run when idle", async function () {
+    const t = harness();
+    const { jimmy } = await crew(t);
+    await jimmy.mutation(api.handoffs.setConsent, { handle: "tom", mode: "auto" });
+    const tomId = await idOf(t, "tom");
+    const jimmyId = await idOf(t, "jimmy");
+    const picked = await t.mutation(internal.handoffs.offerInternal, { fromId: tomId, toId: jimmyId, text: TASK, autoOk: false });
+    expect(picked.status).toBe("offered");
+    const named = await t.mutation(internal.handoffs.offerInternal, { fromId: tomId, toId: jimmyId, text: `${TASK} again`, autoOk: true });
+    expect(named.status).toBe("accepted");
+    expect((await handoff(t, named.handoffId)).autoAccepted).toBe(true);
   });
 
   test("an offer nobody takes expires after 24 hours through its scheduled function", async function () {

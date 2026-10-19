@@ -164,6 +164,22 @@ describe("heads-ups", function () {
     expect(byId.get(aboutKey)?.action).toBe("ask");
   });
 
+  test("a card made with the routing summary's key (what a daemon knows) keeps the agent's own id, so asking that agent counts and others do not", async function () {
+    const t = harness();
+    const { tom, jimmy, tomToken } = await crew(t);
+    await jimmy.mutation(api.hackers.updateSharing, { shareAgentNames: true, shareWorkspaceNames: false });
+    const key = must((await t.query(api.routing.crew, { token: tomToken })).agents[0]).key;
+    const id = await t.mutation(api.headsups.record, headsUp(tomToken, key));
+    expect(await tom.query(api.headsups.cards, {})).toMatchObject([{ _id: id, otherAgentId: "a1", otherAgentName: "email-metrics" }]);
+    // The same agent by its own id is the same card.
+    expect(await t.mutation(api.headsups.record, headsUp(tomToken, "a1"))).toBe(id);
+    // Asking Jimmy's other agent does not act on it.
+    await t.mutation(api.routing.update, { token: (await machine(t, jimmy, "jm2", [agent("b1", "taxes-two")])), agentId: "b1", summary: "vibes · quarterly taxes" });
+    const relayId = await t.mutation(api.operator.ask, { token: tomToken, question: "Where are the quarterly taxes filed?" });
+    await t.action(internal.operator.route, { relayId });
+    expect(must((await rows(t))[0]).actedAt).toBeUndefined();
+  });
+
   test("a private agent's prompts make no heads-up", async function () {
     const t = harness();
     const { tom } = await crew(t);

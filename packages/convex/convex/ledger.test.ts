@@ -159,6 +159,33 @@ describe("the ledger", function () {
     void tom;
   });
 
+  test("a private agent's session has no ledger line, and a line from before it went private is no longer the crew's to read", async function () {
+    const t = harness();
+    const { jimmy, jimmyToken, tomToken } = await crew(t);
+    const tomId = await idOf(t, "tom");
+    const open = { agentId: "a1", harness: "claude-code", name: "email-metrics", status: "idle" as const, open: true, lastTurnAt: Date.now() };
+    await t.mutation(api.subsets.report, { token: jimmyToken, agents: [open, { ...open, agentId: "a2", name: "taxes", open: false }] });
+    await expect(t.mutation(api.ledger.report, { token: jimmyToken, ...line("a2", "filed the taxes") })).rejects.toThrow("private agent");
+    await t.mutation(api.ledger.report, { token: jimmyToken, ...line("a1", "fixed bounce counts") });
+    expect((await t.query(api.ledger.crewRecent, { token: tomToken })).map(function (l) { return l.did; })).toEqual(["fixed bounce counts"]);
+    // a1 goes private: the crew no longer reads its line; Jimmy still sees his own.
+    await t.mutation(api.subsets.report, { token: jimmyToken, agents: [{ ...open, open: false }] });
+    expect(await t.query(api.ledger.crewRecent, { token: tomToken })).toEqual([]);
+    expect(await t.query(internal.ledger.search, { hackerId: tomId, query: "bounce counts", days: 14 })).toEqual([]);
+    expect((await jimmy.query(api.ledger.mine, {})).map(function (l) { return l.did; })).toEqual(["fixed bounce counts"]);
+  });
+
+  test("a forgotten line's marker outlasts the plan's days, so a late send does not bring the line back", async function () {
+    const t = harness();
+    const { jimmy, jimmyToken } = await crew(t);
+    const id = await t.mutation(api.ledger.report, { token: jimmyToken, ...line("s1", "fixed bounces", { at: Date.now() - 30 * DAY }) });
+    await jimmy.mutation(api.ledger.forget, { ledgerId: id });
+    await t.mutation(internal.ledger.prune, {});
+    await drain(t, "prune");
+    expect(await t.mutation(api.ledger.report, { token: jimmyToken, ...line("s1", "fixed bounces") })).toBe(id);
+    expect(await jimmy.query(api.ledger.mine, {})).toEqual([]);
+  });
+
   test("a walkthrough goes on the line and on the wire once; asking about one is remembered", async function () {
     const t = harness();
     const { tom, jimmy, jimmyToken } = await crew(t);

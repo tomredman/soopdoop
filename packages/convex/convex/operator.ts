@@ -15,7 +15,6 @@ import { requireDaemon, requireHacker } from "./lib/auth";
 import {
   absentNote,
   answerFrom,
-  askersWords,
   chatTurn,
   type ChatTurn,
   describeError,
@@ -23,6 +22,7 @@ import {
   type Meter,
   mentionedHandles,
   mentionNote,
+  namesCrewmate,
   NOT_CONFIGURED,
   operatorMode,
   resolveMentions,
@@ -483,26 +483,29 @@ export const route = internalAction({
       });
       return null;
     }
-    // A work order becomes an offer from the asker to a crewmate (to their agent, when one was picked), in the asker's
-    // own words. The crewmate approves it before anything runs. Returns the hand-off and what to tell the asker, or why
-    // it could not be made.
+    // A work order becomes an offer from the asker to a crewmate (to their agent, when one was picked). Its text is the
+    // asker's message exactly as they wrote it, never the Operator's rewording, and it runs at once under the
+    // crewmate's "run when idle" only when the asker named them: the choice could come from text other crewmates
+    // wrote. Returns the hand-off and what to tell the asker, or why it could not be made.
     async function offer(
       toId: Id<"hackers">,
-      text: string,
       targetAgentId?: string,
     ): Promise<{ handoffId: Id<"handoffs">; toHandle: string; said: string } | { problem: string }> {
+      const receiver = found.crew.find(function (c) { return c.hackerId === toId; });
       try {
         const made = await ctx.runMutation(internal.handoffs.offerInternal, {
           fromId: found.askerId,
           toId,
-          text,
+          text: found.question,
           targetAgentId,
           relayId: args.relayId,
           fromMachine: found.askerMachine,
           fromAgentId: found.askerAgentId,
+          autoOk: receiver !== undefined && namesCrewmate(question, receiver),
         });
         // Only a session the daemon can name hears back at its next prompt.
-        return { handoffId: made.handoffId, toHandle: made.toHandle, said: handoffNote(made.toHandle, made.targetAgentName, found.askerAgentId !== undefined) };
+        const said = handoffNote(made.toHandle, made.targetAgentName, found.askerAgentId !== undefined, made.status === "accepted");
+        return { handoffId: made.handoffId, toHandle: made.toHandle, said };
       } catch (e) {
         return { problem: reasonOf(e) };
       }
@@ -554,7 +557,7 @@ export const route = internalAction({
       if (offered !== undefined) {
         const live = offered.agent === undefined ? undefined : found.candidates[offered.agent];
         const toId = live?.hackerId ?? found.crew.find(function (c) { return c.handle === offered.handle; })?.hackerId;
-        const made = toId === undefined ? { problem: "I couldn't find that crewmate." } : await offer(toId, askersWords(offered.task, question), live?.agentId);
+        const made = toId === undefined ? { problem: "I couldn't find that crewmate." } : await offer(toId, live?.agentId);
         if ("problem" in made) failures.push(made.problem);
         else {
           handoffId = made.handoffId;
@@ -587,7 +590,7 @@ export const route = internalAction({
       const live = found.candidates[routed.handoff];
       const toId = live?.hackerId ?? past[routed.handoff - found.candidates.length]?.hackerId;
       if (toId === undefined) return await end("nobody", "None of your crewmates' agents seems to know about this.");
-      const made = await offer(toId, askersWords(routed.task, question), live?.agentId);
+      const made = await offer(toId, live?.agentId);
       return "problem" in made ? await end("nobody", made.problem) : await reply(made.said, made.handoffId);
     }
     const chosen = routed === null ? undefined : found.candidates[routed.ask];

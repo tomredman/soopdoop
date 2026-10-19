@@ -161,6 +161,9 @@ interface Offer {
   fromMachine?: string;
   fromAgentId?: string;
   relayId?: Id<"relays">;
+  // False when the sender did not pick the receiver themselves (the Operator picked a crewmate the asker did not name):
+  // then it waits for the receiver's yes even when they let this sender's hand-offs run.
+  autoOk?: boolean;
 }
 
 // Every offer, from wherever it came: checks, the agent it goes to, consent, the knock when no agent fits, and the
@@ -185,7 +188,8 @@ async function makeOffer(ctx: MutationCtx, from: Doc<"hackers">, to: Doc<"hacker
   }
   const agent = pickAgent(await openAgents(ctx, to._id, now), text, o.targetAgentId);
   // "Run when my agent is idle" needs an agent to run in; without one, the receiver picks one when they accept.
-  const status = consent === "auto" && agent !== undefined ? "accepted" : "offered";
+  const auto = consent === "auto" && agent !== undefined && o.autoOk !== false;
+  const status = auto ? "accepted" : "offered";
   const id = await ctx.db.insert("handoffs", {
     fromId: from._id,
     toId: to._id,
@@ -196,6 +200,7 @@ async function makeOffer(ctx: MutationCtx, from: Doc<"hackers">, to: Doc<"hacker
     text,
     why: optionalText(o.why, MAX_WHY),
     status,
+    autoAccepted: auto ? true : undefined,
     via: o.via,
     fromMachine: o.fromMachine,
     fromAgentId: o.fromAgentId,
@@ -215,6 +220,7 @@ async function makeOffer(ctx: MutationCtx, from: Doc<"hackers">, to: Doc<"hacker
       note: text.slice(0, KNOCK_NOTE),
       lifetimeMs: KNOCK_MS,
       now,
+      automatic: true,
     });
     await ctx.db.patch("handoffs", id, { knockId });
   }
@@ -277,6 +283,8 @@ export const offerInternal = internalMutation({
     relayId: v.optional(v.id("relays")),
     fromMachine: v.optional(v.string()),
     fromAgentId: v.optional(v.string()),
+    // False when the asker did not name this crewmate: the offer then waits for their yes whatever their setting.
+    autoOk: v.optional(v.boolean()),
   },
   returns: offeredView,
   handler: async function (ctx, args) {
@@ -306,6 +314,7 @@ export const offerInternal = internalMutation({
       relayId: args.relayId,
       fromMachine: args.fromMachine,
       fromAgentId: args.fromAgentId,
+      autoOk: args.autoOk,
     });
   },
 });
@@ -328,7 +337,7 @@ export const decide = mutation({
     const now = Date.now();
     const note = optionalText(args.note, MAX_NOTE);
     if (args.outcome === "decline") {
-      await ctx.db.patch("handoffs", h._id, { status: "declined", decidedAt: now, note });
+      await ctx.db.patch("handoffs", h._id, { status: "declined", autoAccepted: undefined, decidedAt: now, finishedAt: now, note });
       return null;
     }
     const agentId = args.targetAgentId ?? h.targetAgentId;
@@ -341,6 +350,7 @@ export const decide = mutation({
     // Accepted: it has a day from now to run, however late in its offer's day it was accepted.
     await ctx.db.patch("handoffs", h._id, {
       status: "accepted",
+      autoAccepted: undefined,
       decidedAt: now,
       expiresAt: now + OFFER_MS,
       note,
@@ -385,10 +395,10 @@ export const toRun = query({
   },
 });
 
-// A hand-off on this machine, for its receiver's daemon.
-async function receiversHandoff(ctx: QueryCtx, hacker: Doc<"hackers">, id: Id<"handoffs">): Promise<Doc<"handoffs">> {
+// A hand-off for this Mac, for its receiver's daemon: only the Mac it runs on starts it, fails it or reports it back.
+async function receiversHandoff(ctx: QueryCtx, hacker: Doc<"hackers">, id: Id<"handoffs">, machineName: string): Promise<Doc<"handoffs">> {
   const h = await ctx.db.get("handoffs", id);
-  if (h === null || h.toId !== hacker._id) throw new ConvexError("This Mac has no such hand-off.");
+  if (h === null || h.toId !== hacker._id || h.targetMachine !== machineName) throw new ConvexError("This Mac has no such hand-off.");
   return h;
 }
 
@@ -405,8 +415,7 @@ export const started = mutation({
   returns: v.null(),
   handler: async function (ctx, args) {
     const { hacker, daemon } = await requireDaemon(ctx, args.token);
-    const h = await receiversHandoff(ctx, hacker, args.handoffId);
-    if (h.targetMachine !== daemon.machineName) throw new ConvexError("This Mac has no such hand-off.");
+    const h = await receiversHandoff(ctx, hacker, args.handoffId, daemon.machineName);
     if (h.status === "running") return null;
     if (h.status !== "accepted") throw new ConvexError("This hand-off is not waiting to run.");
     await refuseIfPrivate(ctx, h);
@@ -439,8 +448,8 @@ export const reportBack = mutation({
   },
   returns: v.null(),
   handler: async function (ctx, args) {
-    const { hacker } = await requireDaemon(ctx, args.token);
-    const h = await receiversHandoff(ctx, hacker, args.handoffId);
+    const { hacker, daemon } = await requireDaemon(ctx, args.token);
+    const h = await receiversHandoff(ctx, hacker, args.handoffId, daemon.machineName);
     if (h.status === "done") throw new ConvexError("This hand-off was already reported back.");
     if (h.status !== "accepted" && h.status !== "running" && h.status !== "failed") throw new ConvexError("This hand-off is not running.");
     await refuseIfPrivate(ctx, h);
@@ -467,8 +476,8 @@ export const failed = mutation({
   args: { token: v.string(), handoffId: v.id("handoffs"), note: v.string() },
   returns: v.null(),
   handler: async function (ctx, args) {
-    const { hacker } = await requireDaemon(ctx, args.token);
-    const h = await receiversHandoff(ctx, hacker, args.handoffId);
+    const { hacker, daemon } = await requireDaemon(ctx, args.token);
+    const h = await receiversHandoff(ctx, hacker, args.handoffId, daemon.machineName);
     if (h.status !== "accepted" && h.status !== "running") throw new ConvexError("This hand-off is not running.");
     const note = redactSecrets(args.note.trim()).slice(0, MAX_NOTE);
     await ctx.db.patch("handoffs", h._id, { status: "failed", note: note === "" ? "It could not be run." : note, finishedAt: Date.now() });
@@ -571,15 +580,15 @@ export const mine = query({
   },
 });
 
-// Hand-offs this machine's agents offered that finished in the last day, so the daemon can tell the session that
-// offered each one at its next prompt.
+// Hand-offs this machine's agents offered that ended in the last day (done, failed, declined or expired), so the
+// daemon can tell the session that offered each one at its next prompt. Only "done" is news on the wire.
 export const finishedForDaemon = query({
   args: { token: v.string() },
   returns: v.array(v.object({
     handoffId: v.id("handoffs"),
     fromAgentId: v.optional(v.string()),
     toHandle: v.string(),
-    status: v.union(v.literal("done"), v.literal("failed")),
+    status: v.union(v.literal("done"), v.literal("failed"), v.literal("declined"), v.literal("expired")),
     summary: v.optional(v.string()),
     links: v.optional(v.array(v.string())),
     note: v.optional(v.string()),
@@ -598,7 +607,7 @@ export const finishedForDaemon = query({
     const out = [];
     for (const h of rows) {
       if (h.fromMachine !== daemon.machineName || h.finishedAt === undefined || h.finishedAt <= now - DAY_MS) continue;
-      if (h.status !== "done" && h.status !== "failed") continue;
+      if (h.status !== "done" && h.status !== "failed" && h.status !== "declined" && h.status !== "expired") continue;
       const to = await ctx.db.get("hackers", h.toId);
       out.push({
         handoffId: h._id,
@@ -649,12 +658,31 @@ export const setConsent = mutation({
       .unique();
     if (row === null) await ctx.db.insert("handoffConsents", { hackerId: me._id, otherId: other._id, mode: args.mode });
     else await ctx.db.patch("handoffConsents", row._id, { mode: args.mode });
+    // No longer "run when my agent is idle": what that setting accepted from them and did not start yet comes back to
+    // me to approve, or, with "never", is declined.
+    if (args.mode !== "auto") {
+      const now = Date.now();
+      const accepted = await ctx.db
+        .query("handoffs")
+        .withIndex("by_to_status", function (q) {
+          return q.eq("toId", me._id).eq("status", "accepted");
+        })
+        .collect();
+      for (const h of accepted) {
+        if (h.fromId !== other._id || h.autoAccepted !== true) continue;
+        if (args.mode === "never") {
+          await ctx.db.patch("handoffs", h._id, { status: "declined", autoAccepted: undefined, decidedAt: now, finishedAt: now, note: "Hand-offs from you are off now." });
+        } else {
+          await ctx.db.patch("handoffs", h._id, { status: "offered", autoAccepted: undefined, decidedAt: undefined });
+        }
+      }
+    }
     return null;
   },
 });
 
 // The scheduled end: an offer nobody took after 24 hours expires (so does an accepted one that never ran), and one
-// that ran without a report back in 24 hours fails. A hand-off that started later has a later end of its own.
+// that ran without a report back in 24 hours fails. A hand-off accepted or started later has a later end of its own.
 export const expire = internalMutation({
   args: { handoffId: v.id("handoffs") },
   returns: v.null(),
@@ -662,8 +690,8 @@ export const expire = internalMutation({
     const h = await ctx.db.get("handoffs", args.handoffId);
     const now = Date.now();
     if (h === null || h.expiresAt > now) return null;
-    if (h.status === "offered") await ctx.db.patch("handoffs", h._id, { status: "expired" });
-    else if (h.status === "accepted") await ctx.db.patch("handoffs", h._id, { status: "expired", note: "It did not run within 24 hours." });
+    if (h.status === "offered") await ctx.db.patch("handoffs", h._id, { status: "expired", finishedAt: now });
+    else if (h.status === "accepted") await ctx.db.patch("handoffs", h._id, { status: "expired", note: "It did not run within 24 hours.", finishedAt: now });
     else if (h.status === "running") await ctx.db.patch("handoffs", h._id, { status: "failed", note: "No report back in 24 hours.", finishedAt: now });
     return null;
   },
