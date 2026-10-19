@@ -12,6 +12,15 @@ const modules = {
   "./_generated/server.js": function () {
     return import("./_generated/server.js");
   },
+  "./billing.ts": function () {
+    return import("./billing");
+  },
+  "./lib/billing.ts": function () {
+    return import("./lib/billing");
+  },
+  "./lib/stripe.ts": function () {
+    return import("./lib/stripe");
+  },
   "./flicks.ts": function () {
     return import("./flicks");
   },

@@ -293,10 +293,23 @@ export default defineSchema({
     intercomSecret: v.optional(v.string()),
     stripeCustomerId: v.optional(v.string()),
     stripeSubscriptionId: v.optional(v.string()),
-    // The team plan runs until here (Stripe's current period end); unset on the free plan.
+    // The team plan runs until here (Stripe's current period end); unset on the free plan. While a renewal is unpaid
+    // (past_due) it is the end of the last paid period, and a daily cron moves the crew to free 3 days after it.
     planUntil: v.optional(v.number()),
+    // The subscription as soopdoop last read it from Stripe (billing.ts: the webhook, or a seat count change): its status
+    // (active, trialing, past_due, unpaid, incomplete...), how many members it bills, monthly or yearly, when the current
+    // period ends, and whether it renews then (false once the leader cancels it in the billing portal). Unset when it
+    // ended or there never was one.
+    subscriptionStatus: v.optional(v.string()),
+    subscriptionQuantity: v.optional(v.number()),
+    subscriptionYearly: v.optional(v.boolean()),
+    subscriptionUntil: v.optional(v.number()),
+    subscriptionRenews: v.optional(v.boolean()),
     createdAt: v.number(),
-  }).index("by_leader", ["leaderId"]),
+  })
+    .index("by_leader", ["leaderId"])
+    .index("by_stripeSubscriptionId", ["stripeSubscriptionId"])
+    .index("by_planUntil", ["planUntil"]),
 
   crewMembers: defineTable({
     crewId: v.id("crews"),

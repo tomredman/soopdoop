@@ -1,9 +1,10 @@
 // ABOUTME: HTTP routes. POST /operator/answer: the daemon a relay waits on sends its agent's own answer, once (older daemons
-// ABOUTME: send a slice instead, used for one answer call and never stored). POST /intercom/webhook: customers' ratings (intercom.ts).
+// ABOUTME: send a slice instead, never stored). POST /intercom/webhook: customers' ratings (intercom.ts). POST /stripe/webhook: billing.ts.
 import { httpRouter } from "convex/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { httpAction } from "./_generated/server";
+import { webhook as stripeWebhook } from "./billing";
 import { webhook as intercomWebhook } from "./intercom";
 import { agentAnswer, answerFrom, describeError } from "./lib/claude";
 
@@ -97,5 +98,8 @@ http.route({
 
 // Intercom's conversation.rating.added, signed with the crew's client secret: POST /intercom/webhook?crew=<crewId>.
 http.route({ path: "/intercom/webhook", method: "POST", handler: intercomWebhook });
+
+// Stripe's billing events (a checkout finished, a subscription changed or ended), signed with STRIPE_WEBHOOK_SECRET.
+http.route({ path: "/stripe/webhook", method: "POST", handler: stripeWebhook });
 
 export default http;
