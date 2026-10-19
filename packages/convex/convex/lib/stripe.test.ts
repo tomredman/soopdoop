@@ -249,8 +249,15 @@ describe("the real client, against a local server standing in for api.stripe.com
         "subscription_data[metadata][crewId]": "crew_madeup",
         success_url: "https://soopdoop.com/?billing=done",
         cancel_url: "https://soopdoop.com/?billing=cancelled",
-        "automatic_tax[enabled]": "true",
-        billing_address_collection: "required",
+        ui_mode: "hosted_page",
+        origin_context: "web",
+        integration_identifier: "hosted_web_0001",
+        billing_address_collection: "auto",
+        "phone_number_collection[enabled]": "false",
+        "automatic_tax[enabled]": "false",
+        allow_promotion_codes: "false",
+        payment_method_collection: "always",
+        submit_type: "auto",
         "tax_id_collection[enabled]": "true",
       };
       expect(seen.slice(0, 5).map(function (r) { return [r.method, r.path]; })).toEqual([

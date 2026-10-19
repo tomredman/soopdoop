@@ -147,10 +147,20 @@ export function realStripe(secretKey: string, connection?: { host: string; port:
         subscription_data: { metadata: { crewId: request.crewId } },
         success_url: request.successUrl,
         cancel_url: request.cancelUrl,
-        // Stripe Tax (docs/billing.md): tax for the leader's billing address goes on top of the price, in the places where
-        // soopdoop is registered to collect it. A business gives its VAT or GST number here, for a reverse charge.
-        automatic_tax: { enabled: true },
-        billing_address_collection: "required",
+        // The page as Checkout Studio set it on 19 Oct 2026 (STRIPE_INTEGRATION_TODO.md): the hosted page for the web, a
+        // billing address when the payment method needs one, no phone number, no promotion codes, always a card for the
+        // subscription. Automatic tax stays off until the head office address is in Stripe (docs/billing.md, step 6);
+        // then `enabled: true` puts the tax for the leader's address on top of the price wherever soopdoop is registered.
+        ui_mode: "hosted_page",
+        origin_context: "web",
+        integration_identifier: "hosted_web_0001",
+        billing_address_collection: "auto",
+        phone_number_collection: { enabled: false },
+        automatic_tax: { enabled: false },
+        allow_promotion_codes: false,
+        payment_method_collection: "always",
+        submit_type: "auto",
+        // A business gives its VAT or GST number: for its invoices, and for a reverse charge once automatic tax is on.
         tax_id_collection: { enabled: true },
       };
       if (request.customer !== undefined) {
