@@ -714,7 +714,7 @@ describe("the crew in the app's state and actions", function () {
     expect(backend.last()).toEqual({ name: "billing:checkout", args: { yearly: true } });
     expect(opened[opened.length - 1]).toBe("https://checkout.stripe.com/c/pay/cs_test_1");
     backend.answers.set("billing:portal", "https://billing.stripe.com/p/session/1");
-    expect(await agent.act("billingPortal")).toBe("https://billing.stripe.com/p/session/1");
+    expect(await agent.act("billingPortal", {})).toBe("https://billing.stripe.com/p/session/1");
     expect(backend.last()).toEqual({ name: "billing:portal", args: {} });
     expect(opened[opened.length - 1]).toBe("https://billing.stripe.com/p/session/1");
     const sent = backend.calls.length;
@@ -722,7 +722,7 @@ describe("the crew in the app's state and actions", function () {
     expect(backend.calls.length).toBe(sent);
     // The backend's own words (who may, which page) come back as they are.
     backend.answers.set("billing:portal", new Error("Only the crew leader can do that."));
-    await expect(agent.act("billingPortal")).rejects.toThrow("Only the crew leader can do that.");
+    await expect(agent.act("billingPortal", {})).rejects.toThrow("Only the crew leader can do that.");
   });
 
   test("note actions take only notes on screen: live ones, and proposals waiting for me", async function () {
