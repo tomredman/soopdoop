@@ -112,7 +112,14 @@ async function serve(): Promise<void> {
         const client = new ConvexHttpClient(config.convexUrl);
         const intro = introducer(function () { return client.query(crewAgents, { token: config.token }); });
         const handoffs = handoffsLocal({
-          backend: { watch(query, args, onUpdate) { return live.onUpdate(query, args, onUpdate, function (e: Error) { console.error("hand-offs:", e.message); }); }, mutation(fn, args) { return client.mutation(fn, args); } },
+          backend: {
+            watch(query, args, onUpdate) {
+              return live.onUpdate(query, args, onUpdate, function (e: Error) { console.error("hand-offs:", e.message); });
+            },
+            mutation(fn, args) {
+              return client.mutation(fn, args);
+            },
+          },
           token: config.token,
           subset,
         });
