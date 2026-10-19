@@ -42,6 +42,7 @@ describe("the page", function () {
     expect(prompt).toContain("A dark page");
     expect(prompt).toContain("under 60 KB");
     expect(prompt).toContain("Output only the HTML");
+    expect(prompt).toContain("never the full path on this computer");
   });
 
   test("takes only a plain ledger id and session key", function () {

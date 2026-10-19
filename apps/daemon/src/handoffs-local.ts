@@ -289,18 +289,23 @@ export function handoffsLocal(opts: LocalOptions): HandoffsLocal {
     }
     const target = targetFor(item, agent);
     const prompt = handoffPrompt(item.fromHandle, item.text, item.handoffId);
+    // Followed from before it goes: an agent can finish the turn it starts before the channel's command returns (Codex
+    // with an idle session does), and its Stop must find the hand-off.
+    const at = now();
+    const r: Running = { handoffId: item.handoffId, agentId: target.agentId, harness: target.harness, fromHandle: item.fromHandle, deliveredAt: at, held: false, reporting: false };
+    running.set(item.handoffId, r);
     const got: Delivery | { failed: string } = agent === undefined
       ? await deliver(target, prompt, item.fromHandle, deliverDeps(), awayChannelsFor(target.harness))
       : await deliver(target, prompt, item.fromHandle, deliverDeps());
     if ("failed" in got) {
+      running.delete(item.handoffId);
       // An agent not running here may come back (or wake); the backend ends the hand-off after 24 hours.
       if (agent === undefined) return;
       await fail(item.handoffId, item.targetAgentId, `Could not reach that agent on its Mac (${got.failed}).`);
       return;
     }
-    const at = now();
     done.add(item.handoffId);
-    running.set(item.handoffId, { handoffId: item.handoffId, agentId: target.agentId, harness: target.harness, fromHandle: item.fromHandle, deliveredAt: at, held: got.held === true, reporting: false });
+    r.held = got.held === true;
     // Logged before handoffs:started, so a daemon that stops in between never delivers it twice.
     await log({
       at, event: "delivered", handoffId: item.handoffId, fromHandle: item.fromHandle, agentId: target.agentId, harness: target.harness,

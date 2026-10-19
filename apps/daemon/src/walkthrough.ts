@@ -23,7 +23,7 @@ export function walkthroughPrompt(): string {
     "Write a walkthrough of the work you did in this conversation, for a teammate who did not see it, as one self-contained HTML page.",
     "- Say what changed and why, in plain words and short paragraphs.",
     "- Show before and after where this conversation shows them: code, commands or output, in <pre> blocks.",
-    "- List the files that changed, and the pull request link if there is one.",
+    "- List the files that changed, by their path inside the project (never the full path on this computer), and the pull request link if there is one.",
     "- A dark page: dark background, light text, one accent color. All CSS in one <style> element. No scripts, and nothing from the network (no fonts, images, scripts or stylesheets from a URL).",
     "- Keep it under 60 KB.",
     "- Never include secrets, keys, tokens or credentials, even if they appear above.",

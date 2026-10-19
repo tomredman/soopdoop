@@ -274,6 +274,47 @@ describe("reporting back when the agent did not", function () {
     expect(prompts).toHaveLength(1);
   });
 
+  test("finds the hand-off when the agent's turn ends before the channel's command returns (Codex queues and runs at once)", async function () {
+    const home = await tempDir();
+    const file = path.join(home, "rollout-x1.jsonl");
+    const rollout = [
+      JSON.stringify({ timestamp: "2026-10-19T10:00:00.100Z", type: "turn_context", payload: { model: "gpt-6.1-sol" } }),
+      JSON.stringify({ timestamp: "2026-10-19T10:00:00.200Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: handoffPrompt("ada", item.text, "h1") }] } }),
+      JSON.stringify({ timestamp: "2026-10-19T10:00:00.300Z", type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "Done." }] } }),
+    ];
+    await writeFile(file, rollout.join("\n") + "\n");
+    const codexAgent = agent({ agentId: "x1", harness: "codex", transcriptPath: file, inboxSocket: undefined });
+    const backend = fakeBackend();
+    const forked: string[] = [];
+    let local: HandoffsLocal | null = null;
+    const deps: DeliverDeps = {
+      async exec(cmd) {
+        // The session takes the queued message and ends its turn while `codex queue` is still running.
+        if (cmd[1] === "queue") local?.onHook(event("Stop", "x1"), codexAgent);
+        return ok("Queued message m1 for thread x1.");
+      },
+      async post() {},
+      claude: null,
+      codex: "/bin/codex",
+      superset: null,
+      env: {},
+    };
+    local = handoffsLocal({
+      backend: backend.backend, token: "dtok", subset: new Map([["x1", codexAgent]]), home, tickMs: 0, say() {},
+      deliverDeps() { return deps; },
+      async fork(_a, prompt) {
+        forked.push(prompt);
+        return { answer: "I said hello to Ada.", usd: 0.01 };
+      },
+      now() { return Date.parse("2026-10-19T10:00:00Z"); },
+    });
+    running.push(local);
+    backend.push("handoffs:toRun", [{ ...item, targetAgentId: "x1", autoAccepted: false }]);
+    await local.settle();
+    expect(forked).toEqual([reportPrompt("h1")]);
+    expect(backend.calls.map(function (c) { return c.fn; })).toContain("handoffs:reportBack");
+  });
+
   test("asks nothing when the agent reported back itself, or has not read the hand-off yet", async function () {
     const home = await tempDir();
     await appendHandoffLog({ at: Date.parse("2026-10-19T10:00:00Z"), event: "delivered", handoffId: "h1", agentId: "s1", harness: "claude-code", channel: "socket", chars: 300 }, home);
