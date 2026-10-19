@@ -1,5 +1,5 @@
-// ABOUTME: The soopdoop MCP server (stdio) that Claude Code starts: ask_operator asks the crew's Operator and waits for the
-// ABOUTME: answer, crew_status lists the crew's @handles. soopdoop setup registers it with `claude mcp add`. JSON-RPC 2.0, one message per line.
+// ABOUTME: The soopdoop MCP server (stdio) that Claude Code, Codex and Grok start: ask_operator asks the crew's Operator and waits
+// ABOUTME: for the answer, crew_status lists the crew's @handles. soopdoop setup registers it with each one's `mcp add`. JSON-RPC 2.0, one message per line.
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { type Config, readConfig } from "./config";
@@ -150,6 +150,13 @@ export function cleanError(e: unknown): string {
   return /Uncaught (?:Convex)?Error: ([^\n]*?)(?:\s+at\s|\n|$)/.exec(raw)?.[1] ?? raw;
 }
 
+// How long ask_operator waits for the answer. Codex gives an MCP tool 60 seconds (its tool_timeout_sec), so setup registers
+// the server with Codex with SOOPDOOP_ASK_WAIT_MS set below that; Claude Code and Grok wait longer than the usual 75 seconds.
+export function askWaitMs(env: Record<string, string | undefined> = process.env): number {
+  const ms = Number(env.SOOPDOOP_ASK_WAIT_MS);
+  return Number.isFinite(ms) && ms >= 5_000 && ms <= 75_000 ? ms : 75_000;
+}
+
 export async function askOperator(question: string, waitMs: number = 75_000, pollMs: number = 1_500): Promise<string> {
   const config = await paired();
   if (config === null) return "soopdoop is not set up on this machine: open the soopdoop app and sign in. Work it out yourself for now.";
@@ -167,6 +174,10 @@ export async function askOperator(question: string, waitMs: number = 75_000, pol
     if (view !== null && view.status !== "routing" && view.status !== "reading") return formatRelay(view);
   }
   return "The Operator is still working on it; the answer will show in the soopdoop HUD. Carry on without it for now.";
+}
+
+function askWithWait(question: string): Promise<string> {
+  return askOperator(question, askWaitMs());
 }
 
 type Message = Record<string, unknown>;
@@ -242,7 +253,7 @@ async function main(): Promise<void> {
         continue;
       }
       // A question can take a minute; keep reading (pings, cancels) while it runs.
-      void handle(message, { ask: askOperator, crew: crewStatus }, version).then(function (reply) {
+      void handle(message, { ask: askWithWait, crew: crewStatus }, version).then(function (reply) {
         if (reply !== null) process.stdout.write(JSON.stringify(reply) + "\n");
       });
     }

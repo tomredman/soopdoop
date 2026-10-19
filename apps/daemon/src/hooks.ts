@@ -42,10 +42,13 @@ export function shellQuote(s: string): string {
 }
 
 // The default hook: run hook.ts with bun if the file is still there. `|| true` keeps every exit at 0,
-// so a moved or deleted checkout never shows the hacker a hook error.
-export function guardedHook(bunPath: string, hookPath: string): CommandFor {
+// so a moved or deleted checkout never shows the hacker a hook error. Codex's and Grok's hooks name their harness inline
+// (SOOPDOOP_HARNESS=codex), the way Superset's name theirs; Claude Code's never did, and hook.ts takes no name as Claude Code.
+// Codex trusts a hook by a hash of its definition, so this text must not change between releases.
+export function guardedHook(bunPath: string, hookPath: string, harness?: "codex" | "grok"): CommandFor {
+  const named = harness === undefined ? "" : `SOOPDOOP_HARNESS=${harness} `;
   return function (event) {
-    return `[ -f ${shellQuote(hookPath)} ] && ${shellQuote(bunPath)} ${shellQuote(hookPath)} ${event} || true`;
+    return `[ -f ${shellQuote(hookPath)} ] && ${named}${shellQuote(bunPath)} ${shellQuote(hookPath)} ${event} || true`;
   };
 }
 

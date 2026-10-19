@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// ABOUTME: The soopdoop CLI: one-command setup, updates, the background services, hooks, and the daemon itself (`serve`, `hook`).
+// ABOUTME: The soopdoop CLI: one-command setup (hooks and tools for Claude Code, Codex and Grok), updates, the background services, and the daemon itself (`serve`, `hook`).
 // ABOUTME: `serve` listens on localhost for hook posts, keeps the subset, and reports it to Convex once this machine is paired.
 import { lstat, readlink, stat, symlink, unlink as removeFile } from "node:fs/promises";
 import { hostname, homedir } from "node:os";
@@ -12,6 +12,8 @@ import { readFund, readSpends, spentToday, writeFund } from "./fund";
 import { forwardHook } from "./hook";
 import { introducer, type Introducer } from "./intro";
 import { claudeSettingsPath, findClaude, guardedHook, installClaudeHooks, prefixedHook, uninstallClaudeHooks } from "./hooks";
+import { codexHome, codexHooksInstalled, codexHooksPath, findCodex, installCodexHooks, uninstallCodexHooks } from "./hooks-codex";
+import { findGrok, grokHome, grokHooksInstalled, grokHooksPath, installGrokHooks, uninstallGrokHooks } from "./hooks-grok";
 import { answerReads, summaryFor, updateRouting } from "./operator";
 import {
   answers, DAEMON_PORT, isLoaded, load, openInBrowser, plistPath, portOwner, RAIL_URL, restart, serviceSpecs, unload, waitFor, writePlist,
@@ -262,6 +264,40 @@ async function mcpRegistered(): Promise<boolean> {
   }
 }
 
+// Codex gives an MCP tool 60 seconds (tool_timeout_sec), so there the server waits 50 seconds for an answer.
+const CODEX_ASK_WAIT_MS = 50_000;
+
+function spawnFailure(name: string, res: { exitCode: number | null; stderr: Buffer }): string {
+  const why = res.stderr.toString().trim().split("\n")[0] ?? "";
+  return why === "" ? `${name} failed (${String(res.exitCode)})` : why;
+}
+
+// Gives every Codex session the ask_operator tool: `codex mcp add` writes it to Codex's config.toml (adding again replaces it).
+function registerCodexMcp(codex: string): "added" | string {
+  const add = Bun.spawnSync([codex, "mcp", "add", "soopdoop", "--env", `SOOPDOOP_ASK_WAIT_MS=${CODEX_ASK_WAIT_MS}`, "--", process.execPath, MCP_FILE], { stdout: "pipe", stderr: "pipe" });
+  return add.exitCode === 0 ? "added" : spawnFailure("codex mcp add", add);
+}
+
+// Gives every Grok session the ask_operator tool: `grok mcp add` writes it to Grok's config.toml, user scope.
+function registerGrokMcp(grok: string): "added" | string {
+  const add = Bun.spawnSync([grok, "mcp", "add", "soopdoop", "--scope", "user", "--", process.execPath, MCP_FILE], { stdout: "pipe", stderr: "pipe" });
+  return add.exitCode === 0 ? "added" : spawnFailure("grok mcp add", add);
+}
+
+// Whether a harness's config.toml names the soopdoop MCP server ([mcp_servers.soopdoop]), as Codex's and Grok's `mcp add` write it.
+async function tomlHasSoopdoop(file: string): Promise<boolean> {
+  const text = await Bun.file(file).text().catch(function () { return ""; });
+  return /^\[mcp_servers\.(?:soopdoop|"soopdoop")\]/m.test(text);
+}
+
+function codexMcpRegistered(): Promise<boolean> {
+  return tomlHasSoopdoop(path.join(codexHome(), "config.toml"));
+}
+
+function grokMcpRegistered(): Promise<boolean> {
+  return tomlHasSoopdoop(path.join(grokHome(), "config.toml"));
+}
+
 async function isDirectory(p: string): Promise<boolean> {
   try {
     return (await stat(p)).isDirectory();
@@ -310,6 +346,25 @@ async function setup(args: string[]): Promise<void> {
   } else {
     say("· Claude Code not found (no ~/.claude). Your agents will not show until you install it and run setup again.");
   }
+  // Codex and Grok: their hooks go beside Superset's, when they are on this Mac. Each names its harness inline. A hooks file
+  // soopdoop cannot read is left alone and said so; it must not stop the rest of setup (or an update).
+  if (await isDirectory(codexHome())) {
+    try {
+      const backup = await installCodexHooks(guardedHook(process.execPath, HOOK_FILE, "codex"));
+      say(`· Codex hooks added to ${tilde(codexHooksPath())}${backup === null ? "" : ` (your old file: ${tilde(backup)})`}. ` +
+        "Codex runs a new hook once you trust it in its /hooks screen.");
+    } catch (e) {
+      say(`· Codex hooks not added: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  if (await isDirectory(grokHome())) {
+    try {
+      await installGrokHooks(guardedHook(process.execPath, HOOK_FILE, "grok"));
+      say(`· Grok hooks added in ${tilde(grokHooksPath())}.`);
+    } catch (e) {
+      say(`· Grok hooks not added: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   const link = await linkCommand();
   if (link !== null) say(`· \`soopdoop\` command: ${tilde(link)}`);
@@ -321,6 +376,23 @@ async function setup(args: string[]): Promise<void> {
     if (mcp === "added") say("· Claude Code sessions get the ask_operator and crew_status tools (MCP server \"soopdoop\", user scope).");
     else if (mcp === "no-claude") say("· The claude command was not found, so the ask_operator tool was not added. Run setup again from a terminal where `claude` works.");
     else say(`· Could not add the ask_operator tool: ${mcp}`);
+  }
+  // The same tools for Codex and Grok sessions, under the same rule: by hand always, from the updater only when missing.
+  if (await isDirectory(codexHome())) {
+    const codex = findCodex();
+    if (codex === null) say("· The codex command was not found, so Codex sessions do not get the ask_operator tool.");
+    else if (!keepUpdater || !(await codexMcpRegistered())) {
+      const mcp = registerCodexMcp(codex);
+      say(mcp === "added" ? "· Codex sessions get the ask_operator and crew_status tools (MCP server \"soopdoop\")." : `· Could not add the ask_operator tool to Codex: ${mcp}`);
+    }
+  }
+  if (await isDirectory(grokHome())) {
+    const grok = findGrok();
+    if (grok === null) say("· The grok command was not found, so Grok sessions do not get the ask_operator tool.");
+    else if (!keepUpdater || !(await grokMcpRegistered())) {
+      const mcp = registerGrokMcp(grok);
+      say(mcp === "added" ? "· Grok sessions get the ask_operator and crew_status tools (MCP server \"soopdoop\")." : `· Could not add the ask_operator tool to Grok: ${mcp}`);
+    }
   }
 
   if (process.platform !== "darwin") {
@@ -449,8 +521,19 @@ async function status(): Promise<void> {
       : `yes · ${config.convexUrl}`}`);
   const claude = Bun.file(claudeSettingsPath());
   const ours = (await claude.exists()) && (await claude.text()).includes(HOOK_FILE);
-  console.log(`hooks   ${ours ? "installed" : "not installed for this checkout"} · ${tilde(claudeSettingsPath())}`);
-  console.log(`operator ${(await mcpRegistered()) ? "ask_operator tool registered in Claude Code" : "ask_operator tool not registered (run soopdoop setup from a terminal)"}`);
+  console.log(`hooks   Claude Code ${ours ? "installed" : "not installed for this checkout"} · ${tilde(claudeSettingsPath())}`);
+  const codexOn = await isDirectory(codexHome());
+  const grokOn = await isDirectory(grokHome());
+  const codexHooks = codexOn && (await codexHooksInstalled(guardedHook(process.execPath, HOOK_FILE, "codex")));
+  const grokHooks = grokOn && (await grokHooksInstalled(guardedHook(process.execPath, HOOK_FILE, "grok")));
+  console.log(`        Codex ${codexOn ? `${codexHooks ? "installed" : "not installed for this checkout (soopdoop setup)"} · ${tilde(codexHooksPath())}` : "not on this Mac"}`);
+  console.log(`        Grok ${grokOn ? `${grokHooks ? "installed" : "not installed for this checkout (soopdoop setup)"} · ${tilde(grokHooksPath())}` : "not on this Mac"}`);
+  const registered = [
+    ...((await mcpRegistered()) ? ["Claude Code"] : []),
+    ...(codexOn && (await codexMcpRegistered()) ? ["Codex"] : []),
+    ...(grokOn && (await grokMcpRegistered()) ? ["Grok"] : []),
+  ];
+  console.log(`operator ${registered.length > 0 ? `ask_operator tool registered in ${registered.join(", ")}` : "ask_operator tool not registered (run soopdoop setup from a terminal)"}`);
   console.log(`skill   ${(await skillInstalled()) ? "installed" : "not installed (run soopdoop setup)"} · ${tilde(skillDir())}`);
   const fund = await readFund();
   const spent = spentToday(await readSpends(), Date.now()).total;
@@ -522,10 +605,30 @@ async function update(args: string[]): Promise<void> {
 async function uninstall(): Promise<void> {
   await uninstallClaudeHooks();
   console.log(`· Removed the soopdoop hooks from ${tilde(claudeSettingsPath())}. Other hooks are untouched.`);
+  try {
+    if (await uninstallCodexHooks()) console.log(`· Removed the soopdoop hooks from ${tilde(codexHooksPath())}. Other hooks are untouched.`);
+  } catch (e) {
+    console.log(`· Could not remove the Codex hooks: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  try {
+    if (await uninstallGrokHooks()) console.log(`· Removed ${tilde(grokHooksPath())}. Other Grok hooks are untouched.`);
+  } catch (e) {
+    console.log(`· Could not remove the Grok hooks: ${e instanceof Error ? e.message : String(e)}`);
+  }
   const claude = findClaude();
   if (claude !== null) {
     Bun.spawnSync([claude, "mcp", "remove", "--scope", "user", "soopdoop"], { stdout: "pipe", stderr: "pipe" });
     console.log("· Removed the ask_operator tool from Claude Code.");
+  }
+  const codex = findCodex();
+  if (codex !== null && (await codexMcpRegistered())) {
+    Bun.spawnSync([codex, "mcp", "remove", "soopdoop"], { stdout: "pipe", stderr: "pipe" });
+    console.log("· Removed the ask_operator tool from Codex.");
+  }
+  const grok = findGrok();
+  if (grok !== null && (await grokMcpRegistered())) {
+    Bun.spawnSync([grok, "mcp", "remove", "soopdoop", "--scope", "user"], { stdout: "pipe", stderr: "pipe" });
+    console.log("· Removed the ask_operator tool from Grok.");
   }
   if (await removeSkill()) console.log(`· Removed the soopdoop skill from ${tilde(skillDir())}.`);
   if (process.platform === "darwin") {
