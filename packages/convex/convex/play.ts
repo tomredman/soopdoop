@@ -4,8 +4,8 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { query } from "./_generated/server";
-import { acceptedFriendIds } from "./friends";
 import { requireHacker } from "./lib/auth";
+import { crewmateIds } from "./lib/crew";
 
 export const XP = { assist: 10, ask: 1, flick: 1, knock: 2 };
 
@@ -103,14 +103,15 @@ const row = v.object({
   hidden: v.boolean(),
 });
 
-// The viewer and their crew (their friends, for now), most XP first. Someone who hides is left out, except to themselves.
+// The viewer and their crew (their friends when they are in no crew), most XP first. Someone who hides is left out,
+// except to themselves.
 export const board = query({
   args: {},
   returns: v.array(row),
   handler: async function (ctx) {
     const me = await requireHacker(ctx);
     const out = [];
-    for (const id of [me._id, ...(await acceptedFriendIds(ctx, me._id))]) {
+    for (const id of [me._id, ...(await crewmateIds(ctx, me._id))]) {
       const hacker = await ctx.db.get("hackers", id);
       if (hacker === null) continue;
       const hidden = hacker.hideFromBoards === true;

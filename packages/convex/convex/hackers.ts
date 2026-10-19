@@ -1,8 +1,10 @@
-// ABOUTME: Hacker identity: pick a handle, read your own profile, change presence-sharing settings, focus mode.
-// ABOUTME: A hacker row is created on first sign-in when the handle is chosen.
+// ABOUTME: Hacker identity: pick a handle, read your own profile, change presence-sharing settings, focus mode, and the
+// ABOUTME: Mac's time zone. A hacker row is created on first sign-in when the handle is chosen.
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { checkHacker, requireHacker, requireIdentity } from "./lib/auth";
+import { crewOf, DEFAULT_TIMEZONE } from "./lib/crew";
+import { canonicalTimezone } from "./lib/localTime";
 import { supersetCard, supersetCardView } from "./superset";
 
 const HANDLE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -89,6 +91,25 @@ export const setFocus = mutation({
     await ctx.db.patch("hackers", hacker._id, {
       focusUntil: args.minutes === null ? undefined : Date.now() + args.minutes * 60_000,
     });
+    return null;
+  },
+});
+
+// The Mac's time zone (an IANA name), sent by the rail when it starts. A crew's digest follows its leader's clock until
+// the leader picks another time zone for it in Settings → Crew.
+export const setTimezone = mutation({
+  args: { timezone: v.string() },
+  returns: v.null(),
+  handler: async function (ctx, args) {
+    const me = await requireHacker(ctx);
+    const timezone = canonicalTimezone(args.timezone);
+    if (timezone === null) throw new ConvexError("That is not a time zone soopdoop knows. Use a name like America/Toronto.");
+    if (me.timezone === timezone) return null;
+    await ctx.db.patch("hackers", me._id, { timezone });
+    const crew = await crewOf(ctx, me._id);
+    if (crew !== null && crew.leaderId === me._id && crew.timezone === (me.timezone ?? DEFAULT_TIMEZONE)) {
+      await ctx.db.patch("crews", crew._id, { timezone });
+    }
     return null;
   },
 });
