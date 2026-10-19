@@ -1,9 +1,16 @@
 // ABOUTME: The soopdoop MCP server (stdio) that Claude Code, Codex and Grok start: ask_operator asks the crew's Operator and waits
-// ABOUTME: for the answer, crew_status lists the crew's @handles. soopdoop setup registers it with each one's `mcp add`. JSON-RPC 2.0, one message per line.
+// ABOUTME: for the answer, crew_status lists the crew's @handles, and more tools come from their own files. JSON-RPC 2.0, one message per line.
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { type Config, readConfig } from "./config";
+import { crewTools, pairedBackend } from "./crew-tools";
 import { isRecord } from "./state";
+
+// A tool from its own file: what tools/list shows, and what tools/call runs.
+export interface McpTool {
+  definition: { name: string; description: string; inputSchema: Record<string, unknown> };
+  call(args: Record<string, unknown>): Promise<{ text: string; isError?: boolean }>;
+}
 
 const askRef = makeFunctionReference<"mutation">("operator:ask");
 const relayRef = makeFunctionReference<"query">("operator:relay");
@@ -196,8 +203,11 @@ export interface Tools {
   crew: () => Promise<string>;
 }
 
+// The tools from their own files: crew notes and props (crew-tools.ts).
+export const MORE_TOOLS: McpTool[] = crewTools(pairedBackend(), cleanError);
+
 // One JSON-RPC message in, at most one out. Notifications (no id) get no answer.
-export async function handle(raw: unknown, tools: Tools, version: string): Promise<Message | null> {
+export async function handle(raw: unknown, tools: Tools, version: string, more: McpTool[] = MORE_TOOLS): Promise<Message | null> {
   if (!isRecord(raw) || raw.jsonrpc !== "2.0" || typeof raw.method !== "string") return null;
   const id = raw.id;
   if (id === undefined || id === null) return null;
@@ -212,10 +222,15 @@ export async function handle(raw: unknown, tools: Tools, version: string): Promi
     case "ping":
       return result(id, {});
     case "tools/list":
-      return result(id, { tools: [TOOL, CREW_TOOL] });
+      return result(id, { tools: [TOOL, CREW_TOOL, ...more.map(function (t) { return t.definition; })] });
     case "tools/call": {
       const args = isRecord(params.arguments) ? params.arguments : {};
       if (params.name === CREW_TOOL.name) return result(id, { content: [{ type: "text", text: await tools.crew() }] });
+      const other = more.find(function (t) { return t.definition.name === params.name; });
+      if (other !== undefined) {
+        const out = await other.call(args);
+        return result(id, { content: [{ type: "text", text: out.text }], ...(out.isError === true ? { isError: true } : {}) });
+      }
       if (params.name !== TOOL.name) return failure(id, -32602, `Unknown tool ${String(params.name)}`);
       if (typeof args.question !== "string" || args.question.trim() === "") {
         return result(id, { content: [{ type: "text", text: "Give the Operator a question." }], isError: true });
