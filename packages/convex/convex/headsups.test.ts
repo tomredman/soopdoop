@@ -180,6 +180,26 @@ describe("heads-ups", function () {
     expect(must((await rows(t))[0]).actedAt).toBeUndefined();
   });
 
+  test("a summary key from before the crewmate's daemon restarted makes no card, so it never names no agent or skips a dismissal", async function () {
+    const t = harness();
+    const { tom, jimmyToken, tomToken } = await crew(t);
+    const oldKey = must((await t.query(api.routing.crew, { token: tomToken })).agents[0]).key;
+    const id = await t.mutation(api.headsups.record, headsUp(tomToken, oldKey));
+    await tom.mutation(api.headsups.dismiss, { headsupId: id });
+    // Jimmy's daemon restarts: it reports no agents, then the same session again with its summary, under a new key.
+    await t.mutation(api.subsets.report, { token: jimmyToken, agents: [] });
+    await t.mutation(api.subsets.report, { token: jimmyToken, agents: [agent("a1", "email-metrics")] });
+    await t.mutation(api.routing.update, { token: jimmyToken, agentId: "a1", summary: "vibes · \"fix the email metrics bounce counts\" · files: packages/email/send.ts" });
+    const newKey = must((await t.query(api.routing.crew, { token: tomToken })).agents[0]).key;
+    expect(newKey).not.toBe(oldKey);
+    // Tom's Mac still had the old key: no card, rather than a card about an agent called by a dead key.
+    await expect(t.mutation(api.headsups.record, headsUp(tomToken, oldKey))).rejects.toThrow("changed since this Mac last looked");
+    // With the new key it is the same agent, so the dismissed card still keeps it quiet for the hour.
+    expect(await t.mutation(api.headsups.record, headsUp(tomToken, newKey))).toBe(id);
+    expect(await tom.query(api.headsups.cards, {})).toEqual([]);
+    expect(await rows(t)).toHaveLength(1);
+  });
+
   test("a private agent's prompts make no heads-up", async function () {
     const t = harness();
     const { tom } = await crew(t);

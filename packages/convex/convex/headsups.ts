@@ -54,6 +54,7 @@ export const record = mutation({
     // The card keeps the agent's own session id, so it stays one card across a restart, is matched when that agent is
     // asked, and "Hand off" from it reaches that agent.
     const otherAgentId = await sessionOf(ctx, other._id, args.otherAgentId);
+    if (otherAgentId === null) throw new ConvexError("That crewmate's agent changed since this Mac last looked; no card.");
     const now = Date.now();
     const recent = await ctx.db
       .query("headsups")
@@ -112,11 +113,15 @@ async function agentsOn(ctx: QueryCtx, hackerId: Id<"hackers">, machineName?: st
 }
 
 // A crewmate's agent as its session id. A daemon knows a crewmate's agent by its routing summary's key (routing.crew),
-// so a key of theirs is turned into the agent it is about; anything else is taken as the session id.
-async function sessionOf(ctx: QueryCtx, ownerId: Id<"hackers">, agentId: string): Promise<string> {
+// so a key of theirs is turned into the agent it is about; anything else is taken as the session id. Null for the key
+// of a summary that is gone: its agent stopped, or its owner's daemon restarted and sent the summary again under a new
+// key, and the asking daemon's copy of the crew is older than that. Taken as a session id, it would name no agent.
+async function sessionOf(ctx: QueryCtx, ownerId: Id<"hackers">, agentId: string): Promise<string | null> {
   const summaryId = ctx.db.normalizeId("routingSummaries", agentId);
-  const summary = summaryId === null ? null : await ctx.db.get("routingSummaries", summaryId);
-  return summary !== null && summary.hackerId === ownerId ? summary.agentId : agentId;
+  if (summaryId === null) return agentId;
+  const summary = await ctx.db.get("routingSummaries", summaryId);
+  if (summary === null) return null;
+  return summary.hackerId === ownerId ? summary.agentId : agentId;
 }
 
 // The agent's name, only when its owner shares agent names.
