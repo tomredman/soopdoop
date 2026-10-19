@@ -21,6 +21,7 @@ import {
   answers, DAEMON_PORT, isLoaded, load, openInBrowser, plistPath, portOwner, RAIL_URL, restart, serviceSpecs, unload, waitFor, writePlist,
 } from "./service";
 import { installSkill, removeSkill, skillDir, skillInstalled } from "./skill";
+import { makeWalkthrough } from "./walkthrough";
 import { isPrivate, repoRoot, withPrivacy } from "./privacy";
 import { apply, isRecord, parseHookEvent, reapplyPrivacy, sweep, toReport, type Subset } from "./state";
 import {
@@ -161,7 +162,7 @@ async function serve(): Promise<void> {
   Bun.serve({
     port: PORT,
     hostname: "127.0.0.1",
-    async fetch(req) {
+    async fetch(req, server) {
       const url = new URL(req.url);
       if (req.method === "POST" && url.pathname === "/hook") {
         // Hooks come from hook.ts, never from a web page. Browsers always send Origin on a POST, so refusing those
@@ -196,6 +197,14 @@ async function serve(): Promise<void> {
         if (paired !== null) paired.config = { ...paired.config, privateDirs };
         if (reapplyPrivacy(subset, privateDirs)) dirty = true;
         return Response.json({ private: isPrivate(agent.cwd, agent.repo, privateDirs), folder: agent.repo ?? agent.cwd ?? null });
+      }
+      // The HUD's "Make a walkthrough", through the local agent: a copy of the session that did the work writes the page.
+      if (req.method === "POST" && url.pathname === "/walkthrough") {
+        if (req.headers.get("origin") !== null) return new Response("forbidden", { status: 403 });
+        // Writing the page takes minutes; the server's usual idle limit would cut the request.
+        server.timeout(req, 0);
+        const made = await makeWalkthrough(await req.json().catch(function () { return null; }), subset, paired?.config.privateDirs ?? []);
+        return "path" in made ? Response.json({ path: made.path }) : new Response(made.problem, { status: made.status });
       }
       if (url.pathname === "/status") {
         return Response.json({ machine: hostname(), paired: paired !== null, agents: toReport(subset) });
