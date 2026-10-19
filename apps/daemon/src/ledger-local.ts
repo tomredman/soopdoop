@@ -153,10 +153,15 @@ export function haikuArgs(prompt: string): string[] {
   ];
 }
 
-// Haiku's sentence, cleaned: its first line, without list marks, quotes or a refusal. Null when nothing usable came back.
+const QUOTE = /["'`“”‘’]/;
+
+// Haiku's sentence, cleaned: its first line, without a list mark, the quotes around all of it, or a refusal. A quote that
+// only ends a title inside the sentence ("… merged PR #7, "Show yearly prices".") stays. Null when nothing usable came back.
 export function cleanSentence(raw: string): string | null {
   const first = raw.split("\n").map(function (l) { return l.trim(); }).find(function (l) { return l !== ""; }) ?? "";
-  const s = oneLine(first.replace(/^[-*•]\s+/, "").replace(/^["'`“”‘’]+|["'`“”‘’]+$/g, ""));
+  const bare = first.replace(/^[-*•]\s+/, "");
+  const wrapped = bare.length >= 2 && QUOTE.test(bare.charAt(0)) && QUOTE.test(bare.charAt(bare.length - 1));
+  const s = oneLine(wrapped ? bare.slice(1, -1) : bare);
   if (s === "" || /^(?:i can(?:no|')t|i'm sorry|sorry|i am unable|as an ai)\b/i.test(s)) return null;
   return cut(redactSecrets(s), MAX_DID);
 }

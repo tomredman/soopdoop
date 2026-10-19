@@ -100,6 +100,11 @@ describe("the line's words", function () {
   test("Haiku's reply is cleaned to one plain line; a refusal or nothing is no line", function () {
     expect(cleanSentence("\"Fixed bounce double-counting in delivery metrics.\"\n\nExtra")).toBe("Fixed bounce double-counting in delivery metrics.");
     expect(cleanSentence("- Added coupon codes")).toBe("Added coupon codes");
+    // A title quoted at the end keeps its closing quote (seen from Haiku 5.5 on 19 Oct 2026); quotes around it all go.
+    expect(cleanSentence("Added yearlySavingsUsd and squash-merged PR #7, \"Show yearly prices per month.\""))
+      .toBe("Added yearlySavingsUsd and squash-merged PR #7, \"Show yearly prices per month.\"");
+    expect(cleanSentence("\"Merged PR #7, \"Show yearly prices.\"\"")).toBe("Merged PR #7, \"Show yearly prices.\"");
+    expect(cleanSentence("“Fixed the CSV export.”")).toBe("Fixed the CSV export.");
     expect(cleanSentence("I can't help with that.")).toBeNull();
     expect(cleanSentence("   ")).toBeNull();
   });
