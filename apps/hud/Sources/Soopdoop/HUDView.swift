@@ -1,5 +1,5 @@
-// ABOUTME: The HUD's content: sign-in and handle screens, then you (rank, XP, tokens saved), the knock on screen, friend requests,
-// ABOUTME: flicks, the wire, the crew, the Operator (how many answers today), the board, and this Mac. Every action goes through the agent.
+// ABOUTME: The HUD's content: sign-in and handle screens, then you (rank, XP, tokens saved, the crew's four numbers), the one
+// ABOUTME: request on screen, friend requests, flicks, then the sections in the order chosen. Every action goes through the agent.
 import AppKit
 import SwiftUI
 
@@ -191,7 +191,12 @@ struct Main: View {
     var body: some View {
         MeCard(state: state)
         Notices(state: state)
-        if let knock = state.incoming.current { KnockCard(knock: knock, pending: state.incoming.pending) }
+        // One request at a time: a knock, else a hand-off offered to me, else a heads-up. A walkthrough question waits.
+        if RequestCard.showing(state) {
+            RequestCard(state: state)
+        } else if let ship = WalkthroughNotice.pick(state, now: Date().timeIntervalSince1970 * 1000), !ledgerAsks {
+            WalkthroughNotice(line: ship)
+        }
         ForEach(state.requests) { request in
             HStack {
                 Text("@\(request.handle)").font(Theme.mono(11, .semibold)).foregroundStyle(Theme.text)
@@ -210,12 +215,20 @@ struct Main: View {
                 switch section {
                 case .wire: WireSection(state: state)
                 case .crew: CrewSection(state: state)
+                case .yesterday: YesterdaySection(digest: state.digest)
+                case .handoffs: HandoffsSection(state: state)
+                case .notes: NotesSection(state: state)
                 case .operatorLine: OperatorSection(state: state)
                 case .board: BoardSection(state: state)
                 case .machine: MachineSection(state: state)
                 }
             }
         }
+    }
+
+    // The ledger under This Mac is open on screen, and asks about walkthroughs itself.
+    private var ledgerAsks: Bool {
+        style.shows(.machine) && !style.machineFolded && style.ledgerOpen
     }
 }
 
@@ -240,6 +253,7 @@ struct MeCard: View {
                     }
                 }
                 if let saved = state.saved, saved.crew > 0 { SavedLine(saved: saved) }
+                if let numbers = state.numbers { NumbersLine(numbers: numbers) }
             }
         }
     }
@@ -613,7 +627,6 @@ struct FriendRow: View {
                 }
                 .buttonStyle(HUDButtonStyle())
                 .disabled(flicked || friend.inFocus)
-                .opacity(flicked || friend.inFocus ? 0.4 : 1)
                 .help(flicked ? "Flicked. Waiting for @\(friend.handle) to flick back." : "flick: if they catch it in 10 seconds, they take your XP")
                 .accessibilityLabel(flicked ? "flicked" : "flick")
                 if canSuperflick {
@@ -626,7 +639,6 @@ struct FriendRow: View {
                 Button("knock") { composing = composing == friend.handle ? nil : friend.handle }
                     .buttonStyle(HUDButtonStyle())
                     .disabled(!reachable)
-                    .opacity(reachable ? 1 : 0.4)
             }
             .contentShape(Rectangle())
             .onTapGesture { open.toggle() }
@@ -803,27 +815,38 @@ enum OperatorLines {
     }
 }
 
-// The wire: what happened in the crew lately, newest first, a few lines. Quiet: no sound and no counters; a new line slides
-// in and glows for a moment.
+// The wire: what happened in the crew lately, newest first, four lines until "more" opens the day. A one-line shout box on
+// top. Quiet: no sound and no counters; a new line slides in and glows for a moment. Any line that is not mine takes props.
 struct WireSection: View {
     let state: AppState
+    @State private var all: Bool
     static let shown = 4
+
+    init(state: AppState, all: Bool = false) {
+        self.state = state
+        _all = State(initialValue: all)
+    }
 
     var body: some View {
         SectionHeader(title: "Wire")
+        ShoutBox()
         // Ticks for the "2m ago" times; a new event redraws it at once.
         TimelineView(.periodic(from: .now, by: 20)) { context in
             let now = context.date.timeIntervalSince1970 * 1000
-            let events = Array(state.feed.filter { now - $0.at < 24 * 60 * 60 * 1000 }.prefix(Self.shown))
+            let day = state.feed.filter { now - $0.at < 24 * 60 * 60 * 1000 && ($0.expiresAt ?? .infinity) > now }
+            let events = all ? day : Array(day.prefix(Self.shown))
+            // Lines I already gave props for.
+            let given = Set(state.feed.filter { $0.kind == "props" && $0.me && !$0.fromCustomer }.compactMap(\.about))
             VStack(alignment: .leading, spacing: 3) {
-                if events.isEmpty {
-                    Text("Quiet so far. Answers between agents, new agents and flicks in your crew show up here.")
+                if day.isEmpty {
+                    Text("Quiet so far. Ships, hand-offs, shouts and answers between agents in your crew show up here.")
                         .font(Theme.mono(10)).foregroundStyle(Theme.dim).fixedSize(horizontal: false, vertical: true)
                 }
                 ForEach(events) { event in
-                    WireRow(event: event, now: now)
+                    WireRow(event: event, now: now, feed: state.feed, given: given.contains(event.id))
                         .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
                 }
+                MoreToggle(hidden: day.count - events.count, open: $all)
             }
             .animation(.spring(duration: 0.45), value: events.map(\.id))
         }
@@ -831,17 +854,32 @@ struct WireSection: View {
 }
 
 struct WireRow: View {
+    @EnvironmentObject var client: AgentClient
     let event: FeedEvent
     let now: Double
+    // The whole wire, for what a line points at (a ship's walkthrough, the line props were for).
+    var feed: [FeedEvent] = []
+    // I gave props for this line already.
+    var given = false
     @State private var glow = false
+    @State private var sent = false
 
     var body: some View {
-        let line = WireLines.line(event)
+        let line = WireLines.line(event, feed: feed)
+        let props = WireLines.takesProps(event)
         HStack(alignment: .top, spacing: 7) {
             Image(systemName: line.icon).font(.system(size: 9)).foregroundStyle(line.color).frame(width: 12).padding(.top, 2)
             VStack(alignment: .leading, spacing: 1) {
-                Text(line.text).font(Theme.mono(10.5)).foregroundStyle(Theme.text).lineLimit(1)
-                if let detail = line.detail { Text(detail).font(Theme.mono(9.5)).foregroundStyle(Theme.dim).lineLimit(1) }
+                Text(line.text).font(Theme.mono(10.5)).foregroundStyle(Theme.text).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                if line.detail != nil || !line.links.isEmpty || props {
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        if let detail = line.detail {
+                            Text(detail).font(Theme.mono(9.5)).foregroundStyle(Theme.dim).lineLimit(1).layoutPriority(-1)
+                        }
+                        ForEach(line.links, id: \.url) { link in SmallLink(label: link.label, url: link.url) }
+                        if props { propsButton }
+                    }
+                }
             }
             Spacer(minLength: 4)
             Text(WireLines.ago(event.at, now: now)).font(Theme.mono(9.5)).foregroundStyle(Theme.dim).padding(.top, 1)
@@ -857,22 +895,102 @@ struct WireRow: View {
             withAnimation(.easeOut(duration: 2.4)) { glow = false }
         }
     }
+
+    // Props: 5 XP for the line's person, once per line.
+    @ViewBuilder private var propsButton: some View {
+        if given || sent {
+            Text("✓ props").font(Theme.mono(9)).foregroundStyle(Theme.green).fixedSize().help("You gave props for this")
+        } else {
+            Button("+ props") {
+                sent = true
+                Task {
+                    do {
+                        try await client.act("props", ["feedId": event.id])
+                    } catch {
+                        sent = false
+                        client.toast = (error as? AgentError)?.message ?? error.localizedDescription
+                    }
+                }
+            }
+            .buttonStyle(TinyButtonStyle())
+            .help("Give @\(event.handle) props: 5 XP")
+        }
+    }
 }
 
-// One line (and a small one under it) for each kind of event on the wire.
+// One line (and a small one under it, with its links) for each kind of event on the wire. Positive only.
 enum WireLines {
     struct Line {
         let icon: String
         let color: Color
         let text: String
         var detail: String?
+        var links: [WireLink] = []
     }
 
-    static func line(_ e: FeedEvent) -> Line {
+    struct WireLink {
+        let label: String
+        let url: URL
+    }
+
+    // Props go to people: not on my own lines, not on the digest (the Operator's), not on a new agent, and not on props
+    // one crewmate gave another. Props from a customer can take crew props too.
+    static func takesProps(_ e: FeedEvent) -> Bool {
+        guard !e.me, !e.id.isEmpty else { return false }
+        switch e.kind {
+        case "digest", "agent": return false
+        case "props": return e.fromCustomer
+        default: return true
+        }
+    }
+
+    static func line(_ e: FeedEvent, feed: [FeedEvent] = []) -> Line {
         let who = "@\(e.handle)"
         let other = e.otherHandle.map { "@\($0)" }
         let saved = e.tokensSaved.flatMap { $0 > 0 ? "~\(Tokens.short($0)) tokens saved" : nil }
+        let subject = e.me ? "You" : who
+        let what = e.text.flatMap { $0.isEmpty ? nil : $0 }
         switch e.kind {
+        case "ship":
+            var links = [link(e.url, label: e.url.map(PRs.label) ?? "PR")].compactMap { $0 }
+            // The walkthrough written for the same piece of work, when there is one.
+            if let ledgerId = e.ledgerId,
+               let walk = feed.first(where: { $0.kind == "walkthrough" && $0.ledgerId == ledgerId }),
+               let page = link(walk.url, label: "walkthrough") {
+                links.append(page)
+            }
+            return Line(icon: "shippingbox.fill", color: Theme.green, text: "\(subject) shipped \(what ?? "something")", links: links)
+        case "walkthrough":
+            return Line(icon: "doc.richtext.fill", color: Theme.blue, text: "\(subject) wrote a walkthrough for \(what ?? "a ship")",
+                        links: [link(e.url, label: "walkthrough")].compactMap { $0 })
+        case "handoff":
+            let doer = e.me ? "Your agent" : "\(who)'s agent"
+            let asker = e.otherMe ? "your" : other.map { "\($0)'s" } ?? "a crewmate's"
+            let label = e.url.map { PRs.number($0) == nil ? "link" : PRs.label($0) } ?? "link"
+            return Line(icon: "arrowshape.turn.up.right.fill", color: Theme.green,
+                        text: "\(doer) did \(asker) hand-off" + (what.map { ": \($0)" } ?? ""),
+                        links: [link(e.url, label: label)].compactMap { $0 })
+        case "headsup":
+            let target = e.otherMe ? "your agent" : "\(other ?? "a crewmate")'s agent"
+            let topic = what.flatMap(headsupTopic)
+            return Line(icon: "checkmark.bubble.fill", color: Theme.blue,
+                        text: "\(subject) asked \(target) before starting" + (topic.map { " on \($0)" } ?? ""),
+                        detail: topic == nil ? what : nil)
+        case "note":
+            return Line(icon: "note.text", color: Theme.amber, text: "\(subject) added a crew note" + (what.map { ": \($0)" } ?? ""))
+        case "shout":
+            return Line(icon: "megaphone.fill", color: Theme.muted, text: "\(who): \(what ?? "")")
+        case "props" where e.fromCustomer:
+            return Line(icon: "star.fill", color: Theme.amber, text: customerProps(subject: subject, text: what))
+        case "props":
+            let to = e.otherMe ? "you" : other ?? "a crewmate"
+            let about = e.about.flatMap { id in feed.first { $0.id == id } }.map { line($0).text }
+            return Line(icon: "star.fill", color: Theme.amber, text: "\(subject) gave \(to) props",
+                        detail: e.otherMe ? ["+5 XP", about.map { "for “\($0)”" }].compactMap { $0 }.joined(separator: " · ") : about.map { "for “\($0)”" })
+        case "save":
+            return Line(icon: "lifepreserver.fill", color: Theme.green, text: "\(subject) may have just saved an account", detail: what)
+        case "digest":
+            return Line(icon: "newspaper.fill", color: Theme.blue, text: "Yesterday's digest is in", detail: what)
         case "answer":
             if e.me { return Line(icon: "bubble.left.and.bubble.right.fill", color: Theme.green, text: "Your agent helped \(other ?? "a crewmate")", detail: ["+10 XP", saved].compactMap { $0 }.joined(separator: " · ")) }
             if e.otherMe { return Line(icon: "bubble.left.and.bubble.right.fill", color: Theme.green, text: "\(who)'s agent answered yours", detail: saved) }
@@ -896,6 +1014,25 @@ enum WireLines {
         default:
             return Line(icon: "circle.fill", color: Theme.dim, text: "Something happened in your crew")
         }
+    }
+
+    private static func link(_ raw: String?, label: String) -> WireLink? {
+        PRs.url(raw).map { WireLink(label: label, url: $0) }
+    }
+
+    // "email metrics" from the heads-up's line, "Jimmy's agent is on email metrics right now (packages/email)".
+    static func headsupTopic(_ line: String) -> String? {
+        guard let range = line.range(of: #"is on (.+?) right now"#, options: .regularExpression) else { return nil }
+        let topic = line[range].dropFirst("is on ".count).dropLast(" right now".count)
+        return topic.isEmpty ? nil : String(topic)
+    }
+
+    // The scout's line ("thanked us for the CSV export fix"), or Intercom's, which already says "got props from a customer".
+    static func customerProps(subject: String, text: String?) -> String {
+        guard let text else { return "\(subject) got props from a customer" }
+        if text.lowercased().hasPrefix("the crew got props") { return text.prefix(1).uppercased() + text.dropFirst() }
+        if text.lowercased().hasPrefix("got props from a customer") { return "\(subject) \(text)" }
+        return "\(subject) got props from a customer: \(text)"
     }
 
     // "now", "4m", "2h".
@@ -939,6 +1076,7 @@ struct MachineSection: View {
         FoldingHeader(title: "This Mac", detail: detail, open: open)
         if !style.machineFolded {
             MachineAgents(state: state, agents: agents)
+            LedgerSection(lines: state.ledger)
         }
     }
 }
@@ -950,7 +1088,7 @@ struct MachineAgents: View {
 
     var body: some View {
         if agents.isEmpty {
-            Text("∅ no agents running. Claude Code sessions show up on their next prompt.")
+            Text("∅ no agents running. Claude Code, Codex and Grok sessions show up on their next prompt.")
                 .font(Theme.mono(10)).foregroundStyle(Theme.dim).fixedSize(horizontal: false, vertical: true)
         }
         ForEach(agents) { agent in
@@ -961,6 +1099,7 @@ struct MachineAgents: View {
                     } else {
                         Text("◇").font(.system(size: 9)).foregroundStyle(Theme.dim).frame(width: 7)
                     }
+                    HarnessBadge(harness: agent.harness)
                     Text(agent.name).font(Theme.mono(11)).foregroundStyle(Theme.text).lineLimit(1)
                     Spacer()
                     Text(agent.open ? agent.status : "private").font(Theme.mono(10)).foregroundStyle(Theme.dim)
@@ -978,7 +1117,7 @@ struct MachineAgents: View {
                 // What the Operator knows about this agent, so its owner can see what questions get routed by.
                 if agent.open, let line = state.routing.first(where: { $0.agentId == agent.agentId })?.summary {
                     Text("Operator sees: \(line)").font(Theme.mono(9.5)).foregroundStyle(Theme.dim).lineLimit(2)
-                        .padding(.leading, 13)
+                        .padding(.leading, 32)
                 }
             }
         }

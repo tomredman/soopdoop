@@ -64,16 +64,19 @@ enum NotifyMode: String, CaseIterable, Identifiable {
     }
 }
 
-// The HUD's sections under the alerts (knocks, friend requests, flicks), which the hacker can hide and put in order. The
-// order here is the default one.
+// The HUD's sections under the alerts (knocks, hand-offs, heads-ups, friend requests, flicks), which the hacker can hide
+// and put in order. The order here is the default one.
 enum HUDSection: String, CaseIterable, Identifiable {
-    case wire, crew, operatorLine = "operator", board, machine
+    case wire, crew, yesterday, handoffs, notes, operatorLine = "operator", board, machine
 
     var id: String { rawValue }
     var label: String {
         switch self {
         case .wire: return "Wire"
         case .crew: return "Crew"
+        case .yesterday: return "Yesterday"
+        case .handoffs: return "Hand-offs"
+        case .notes: return "Crew notes"
         case .operatorLine: return "Operator"
         case .board: return "Board"
         case .machine: return "This Mac"
@@ -91,15 +94,23 @@ final class HUDStyle: ObservableObject {
     @AppStorage("hud.showCrew") var showCrew = true
     @AppStorage("hud.showOperator") var showOperator = true
     @AppStorage("hud.showBoard") var showBoard = true
+    // The crew's digest, hand-offs and notes.
+    @AppStorage("hud.showYesterday") var showYesterday = true
+    @AppStorage("hud.showHandoffs") var showHandoffs = true
+    @AppStorage("hud.showNotes") var showNotes = true
     // Off until the hacker wants it: it is about this Mac, not the crew.
     @AppStorage("hud.showMachine") var showMachine = false
-    // The section order, "wire,crew,operator,board,machine"; empty until the hacker moves one.
+    // The section order, "wire,crew,yesterday,handoffs,notes,operator,board,machine"; empty until the hacker moves one.
     @AppStorage("hud.order") var orderRaw = ""
     // Real names (from linked Superset profiles) next to handles. Off: just the @handle.
     @AppStorage("hud.showNames") var showNames = false
     // This Mac folded to its header; the Operator opened to its last few lines.
     @AppStorage("hud.machineFolded") var machineFolded = false
     @AppStorage("hud.operatorOpen") var operatorOpen = false
+    // Hand-offs and crew notes open (each shows its first few lines); the ledger under This Mac folded.
+    @AppStorage("hud.handoffsOpen") var handoffsOpen = true
+    @AppStorage("hud.notesOpen") var notesOpen = true
+    @AppStorage("hud.ledgerOpen") var ledgerOpen = false
     @AppStorage("hud.notify") var notifyRaw = NotifyMode.whenHidden.rawValue
 
     var mode: HUDMode {
@@ -136,6 +147,9 @@ final class HUDStyle: ObservableObject {
         switch section {
         case .wire: return showWire
         case .crew: return showCrew
+        case .yesterday: return showYesterday
+        case .handoffs: return showHandoffs
+        case .notes: return showNotes
         case .operatorLine: return showOperator
         case .board: return showBoard
         case .machine: return showMachine
@@ -146,6 +160,9 @@ final class HUDStyle: ObservableObject {
         switch section {
         case .wire: showWire = on
         case .crew: showCrew = on
+        case .yesterday: showYesterday = on
+        case .handoffs: showHandoffs = on
+        case .notes: showNotes = on
         case .operatorLine: showOperator = on
         case .board: showBoard = on
         case .machine: showMachine = on
