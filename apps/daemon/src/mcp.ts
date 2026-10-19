@@ -1,9 +1,10 @@
 // ABOUTME: The soopdoop MCP server (stdio) that Claude Code, Codex and Grok start: ask_operator asks the crew's Operator and waits
-// ABOUTME: for the answer, crew_status lists the crew's @handles, and more tools come from their own files. JSON-RPC 2.0, one message per line.
+// ABOUTME: for the answer, crew_status lists the crew's @handles; crew_note, crew_notes, props, hand_off and report_back come from their own files. JSON-RPC 2.0, one message per line.
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { type Config, readConfig } from "./config";
 import { crewTools, pairedBackend } from "./crew-tools";
+import { callHandoffTool, HANDOFF_TOOLS, sessionIdOf, type ToolResult } from "./handoff-tools";
 import { isRecord } from "./state";
 
 // A tool from its own file: what tools/list shows, and what tools/call runs.
@@ -170,7 +171,8 @@ export async function askOperator(question: string, waitMs: number = 75_000, pol
   const client = new ConvexHttpClient(config.convexUrl);
   let relayId: unknown;
   try {
-    relayId = await client.mutation(askRef, { token: config.token, question });
+    const agentId = sessionIdOf();
+    relayId = await client.mutation(askRef, { token: config.token, question, ...(agentId === undefined ? {} : { agentId }) });
   } catch (e) {
     return `The Operator could not take the question: ${cleanError(e)} Work it out yourself.`;
   }
@@ -197,10 +199,12 @@ function failure(id: unknown, code: number, message: string): Message {
   return { jsonrpc: "2.0", id, error: { code, message } };
 }
 
-// What the two tools do. Tests pass stand-ins.
+// What the tools do. Tests pass stand-ins.
 export interface Tools {
   ask: (question: string) => Promise<string>;
   crew: () => Promise<string>;
+  // The hand-off tools (handoff-tools.ts); null for a name that is not one of them.
+  handoff?: (name: unknown, args: Record<string, unknown>) => Promise<ToolResult | null>;
 }
 
 // The tools from their own files: crew notes and props (crew-tools.ts).
@@ -222,7 +226,7 @@ export async function handle(raw: unknown, tools: Tools, version: string, more: 
     case "ping":
       return result(id, {});
     case "tools/list":
-      return result(id, { tools: [TOOL, CREW_TOOL, ...more.map(function (t) { return t.definition; })] });
+      return result(id, { tools: [TOOL, CREW_TOOL, ...more.map(function (t) { return t.definition; }), ...HANDOFF_TOOLS] });
     case "tools/call": {
       const args = isRecord(params.arguments) ? params.arguments : {};
       if (params.name === CREW_TOOL.name) return result(id, { content: [{ type: "text", text: await tools.crew() }] });
@@ -231,6 +235,8 @@ export async function handle(raw: unknown, tools: Tools, version: string, more: 
         const out = await other.call(args);
         return result(id, { content: [{ type: "text", text: out.text }], ...(out.isError === true ? { isError: true } : {}) });
       }
+      const handoff = await (tools.handoff ?? callHandoffTool)(params.name, args);
+      if (handoff !== null) return result(id, { content: [{ type: "text", text: handoff.text }], ...(handoff.isError === true ? { isError: true } : {}) });
       if (params.name !== TOOL.name) return failure(id, -32602, `Unknown tool ${String(params.name)}`);
       if (typeof args.question !== "string" || args.question.trim() === "") {
         return result(id, { content: [{ type: "text", text: "Give the Operator a question." }], isError: true });

@@ -113,7 +113,7 @@ describe("the MCP server with the crew tools", function () {
     const { backend } = standIn({ "feed:fromScout": "f1" });
     const more = crewTools(backend, explain);
     const list = await handle({ jsonrpc: "2.0", id: 1, method: "tools/list" }, idle, "0", more);
-    expect((list?.result as { tools: { name: string }[] }).tools.map(function (t) { return t.name; })).toEqual(["ask_operator", "crew_status", "crew_note", "crew_notes", "props"]);
+    expect((list?.result as { tools: { name: string }[] }).tools.map(function (t) { return t.name; })).toEqual(["ask_operator", "crew_status", "crew_note", "crew_notes", "props", "hand_off", "report_back"]);
     const call = await handle({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "props", arguments: { kind: "save", line: "Refunded a double charge." } } }, idle, "0", more);
     expect(call).toEqual({ jsonrpc: "2.0", id: 2, result: { content: [{ type: "text", text: "Sent to your crew's wire as a save." }] } });
     const bad = await handle({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "props", arguments: {} } }, idle, "0", more);

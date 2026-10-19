@@ -11,6 +11,8 @@ import { findRealClaude } from "./ask";
 import { configPath, configStamp, invitePath, readConfig, readSettings, soopdoopHome, writeConfig, writeSettings, type Config } from "./config";
 import { readFund, readSpends, spentToday, writeFund } from "./fund";
 import { headsUpNote, headsUpper, type HeadsUp, type HeadsUps } from "./headsups-local";
+import { handoffsCommand, readHandoffLog, spentOnHandoffs } from "./handoff-log";
+import { handoffsLocal, type HandoffsLocal } from "./handoffs-local";
 import { forwardHook } from "./hook";
 import { introducer, type Introducer } from "./intro";
 import { claudeSettingsPath, findClaude, guardedHook, installClaudeHooks, prefixedHook, uninstallClaudeHooks } from "./hooks";
@@ -30,6 +32,7 @@ import { installSkill, removeSkill, skillDir, skillInstalled } from "./skill";
 import { INTERCOM_URL, isPaired, lastRunPath, readIntercomServer, runScout, scoutLogLine } from "./scout";
 import { branchOf, isPrivate, repoRoot, withPrivacy } from "./privacy";
 import { apply, isRecord, parseHookEvent, reapplyPrivacy, sweep, toReport, type AgentRecord, type HookEvent, type Subset } from "./state";
+import { makeWalkthrough } from "./walkthrough";
 import {
   applyUpdate, checkForUpdate, currentVersion, defaultSteps, installDir, isInstall, isNewer, parseVersion, readUpdateState,
   releasePage, tagFor, takeUpdateRequest,
@@ -66,6 +69,7 @@ function composeContext(parts: (string | null | undefined)[]): string | null {
   return kept.length === 0 ? null : kept.join("\n\n");
 }
 
+
 function tilde(p: string): string {
   const home = homedir();
   return p.startsWith(home + "/") ? "~" + p.slice(home.length) : p;
@@ -86,10 +90,12 @@ async function serve(): Promise<void> {
   const subset: Subset = new Map();
   let dirty = true;
   let reporting = false;
-  // http reports presence; live follows the Operator's read requests, the crew's notes and the crew itself over a WebSocket;
-  // intro tells sessions about the crew's agents, notes about its notes, headsups scores prompts against the crew's work.
+  // http reports presence; live follows the Operator's read requests, the crew's notes, the crew itself and the hand-offs for this
+  // Mac over a WebSocket; intro tells sessions about the crew's agents, notes about its notes, headsups scores prompts against
+  // the crew's work, handoffs runs what crewmates handed to this Mac's agents.
   let paired: {
     config: Config; client: ConvexHttpClient; live: ConvexClient; stopReads: () => void; intro: Introducer; notes: NotesKeeper; headsups: HeadsUps;
+    handoffs: HandoffsLocal;
   } | null = null;
   let stamp = -1;
   // Open agents that finished a turn since the last report: their routing summaries go out after it.
@@ -159,17 +165,19 @@ async function serve(): Promise<void> {
       if (event === "SessionStart") void now.intro.refresh(30_000).then(writeCrew);
       return null;
     }
-    const [intro, notes] = await Promise.all([
+    const [intro, notes, handoffs] = await Promise.all([
       now.intro.contextFor(event, ev.session_id),
       now.notes.contextFor(event, ev.session_id, placeOf(agent, event === "SessionStart")),
+      now.handoffs.contextFor(ev),
     ]);
     if (event === "SessionStart") void writeCrew();
-    return composeContext([intro, notes, headsUpNote(hits)]);
+    return composeContext([intro, notes, headsUpNote(hits), handoffs]);
   }
 
   function unpair(): void {
     if (paired === null) return;
     paired.stopReads();
+    paired.handoffs.stop();
     void paired.live.close();
     paired = null;
   }
@@ -195,12 +203,24 @@ async function serve(): Promise<void> {
         const intro = introducer(function () { return client.query(crewAgents, { token }); });
         const notes = notesKeeper({ readNotes() { return client.query(notesForDaemon, { token }); }, changed() { void writeCrew(); } });
         const headsups = headsUpper({ crew() { return intro.crew(); }, readLedger() { return client.query(crewRecent, { token, days: 14 }); } });
+        const handoffs = handoffsLocal({
+          backend: {
+            watch(query, args, onUpdate) {
+              return live.onUpdate(query, args, onUpdate, function (e: Error) { console.error("hand-offs:", e.message); });
+            },
+            mutation(fn, args) {
+              return client.mutation(fn, args);
+            },
+          },
+          token,
+          subset,
+        });
         const stopAnswers = answerReads(live, token, config.convexUrl, subset);
         // Notes and the crew change rarely, so the daemon follows them live instead of asking every minute.
         const stopNotes = live.onUpdate(notesForDaemon, { token }, function (raw: unknown) { notes.set(raw); }, function (e: Error) { console.error("crew notes:", e.message); });
         const stopCrew = live.onUpdate(crewForDaemon, { token }, function (raw: unknown) { notes.setCrew(raw); }, function (e: Error) { console.error("crew:", e.message); });
         paired = {
-          config, client, live, intro, notes, headsups,
+          config, client, live, intro, notes, headsups, handoffs,
           stopReads() { stopAnswers(); stopNotes(); stopCrew(); },
         };
         void headsups.refreshLedger();
@@ -252,7 +272,7 @@ async function serve(): Promise<void> {
   Bun.serve({
     port: PORT,
     hostname: "127.0.0.1",
-    async fetch(req) {
+    async fetch(req, server) {
       const url = new URL(req.url);
       if (req.method === "POST" && url.pathname === "/hook") {
         // Hooks come from hook.ts, never from a web page. Browsers always send Origin on a POST, so refusing those
@@ -264,10 +284,11 @@ async function serve(): Promise<void> {
         const before = subset.get(ev.session_id);
         if (apply(subset, ev, Date.now(), paired?.config.privateDirs ?? [], repoOf)) dirty = true;
         if (ev.hook_event_name === "Stop" && subset.get(ev.session_id)?.open === true) summariesDue.add(ev.session_id);
-        // A session that ended: its ledger line, after the reply.
+        // A session that ended: its ledger line, after the reply. A waiting hand-off may run now, or a running one may have stopped.
         if (ev.hook_event_name === "SessionEnd" && before !== undefined) void ledger.ended(before);
-        // A session that starts hears what the crew's agents work on and the crew's notes; at a prompt, what changed since, and a
-        // heads-up when the prompt is about a crewmate's work.
+        paired?.handoffs.onHook(ev, before);
+        // A session that starts hears what the crew's agents work on and the crew's notes; at a prompt, what changed since, a
+        // heads-up when the prompt is about a crewmate's work, and how the hand-offs it offered ended.
         const agent = subset.get(ev.session_id);
         const context = paired === null || agent === undefined ? null : await hookContext(paired, ev, agent);
         return context === null ? new Response("ok") : Response.json({ context });
@@ -295,6 +316,14 @@ async function serve(): Promise<void> {
         if (paired !== null) paired.config = { ...paired.config, privateDirs };
         if (reapplyPrivacy(subset, privateDirs)) dirty = true;
         return Response.json({ private: isPrivate(agent.cwd, agent.repo, privateDirs), folder: agent.repo ?? agent.cwd ?? null });
+      }
+      // The HUD's "Make a walkthrough", through the local agent: a copy of the session that did the work writes the page.
+      if (req.method === "POST" && url.pathname === "/walkthrough") {
+        if (req.headers.get("origin") !== null) return new Response("forbidden", { status: 403 });
+        // Writing the page takes minutes; the server's usual idle limit would cut the request.
+        server.timeout(req, 0);
+        const made = await makeWalkthrough(await req.json().catch(function () { return null; }), subset, paired?.config.privateDirs ?? []);
+        return "path" in made ? Response.json({ path: made.path }) : new Response(made.problem, { status: made.status });
       }
       if (url.pathname === "/status") {
         return Response.json({ machine: hostname(), paired: paired !== null, agents: toReport(subset) });
@@ -705,6 +734,8 @@ async function status(): Promise<void> {
   console.log(`crew    notes and agents in ${tilde(crewFilePath(home))}` +
     `${codexOn ? ` · Codex ${codexPointer ? "points at it" : "does not point at it (soopdoop setup)"}` : ""}` +
     `${grokOn ? ` · Grok ${grokPointer ? "points at it" : "does not point at it (soopdoop setup)"}` : ""}`);
+  const handoffUsd = spentOnHandoffs(await readHandoffLog(), Date.now());
+  console.log(`handoffs $${handoffUsd.toFixed(2)} of $${settings.handoffDailyUsd.toFixed(2)} spent on crewmates' hand-offs in the last 24 hours · soopdoop handoffs`);
 }
 
 // `soopdoop scout on|off` turns the scout and its hourly job on or off; `run` is what the job runs; nothing shows how it is.
@@ -878,6 +909,7 @@ soopdoop auto-open [on|off]                     whether soopdoop opens when Supe
 soopdoop fund [<dollars> [share]]               what this Mac's agents may spend answering crewmates in 24 hours ($5, half each)
 soopdoop ledger-lines [on|off]                  whether Claude Haiku writes your ledger lines, on your own account (on by default)
 soopdoop scout [on|off]                         props from customers: Haiku reads Intercom every hour (off by default)
+soopdoop handoffs [<dollars>]                   what crewmates' hand-offs may cost this Mac's agents in 24 hours ($10)
 soopdoop start | stop | restart                 the background services
 soopdoop uninstall                              remove the hooks, the background services, the app, the ask_operator tool and the skill
 soopdoop pair <convex-url> <token>              pair by hand (the rail does this for you)
@@ -968,6 +1000,8 @@ try {
     }
     case "scout":
       await scoutCommand(rest);
+    case "handoffs":
+      await handoffsCommand(rest);
       break;
     case "uninstall":
       await uninstall();

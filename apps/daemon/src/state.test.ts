@@ -114,4 +114,39 @@ describe("subset state", function () {
       expect(report).not.toContain(local);
     }
   });
+
+  test("a Claude Code session is idle, not waiting, when its notification only says it waits for the next prompt", function () {
+    const s = new Map();
+    apply(s, { hook_event_name: "Stop", session_id: "a" }, 1);
+    // About a minute after a turn ends.
+    apply(s, { hook_event_name: "Notification", session_id: "a", message: "Claude is waiting for your input", notificationType: "idle_prompt" }, 2);
+    expect(s.get("a")?.status).toBe("idle");
+    apply(s, { hook_event_name: "Notification", session_id: "a", message: "Claude needs your permission to use Bash", notificationType: "permission_prompt" }, 3);
+    expect(s.get("a")?.status).toBe("waiting");
+    apply(s, { hook_event_name: "Notification", session_id: "a", notificationType: "elicitation_dialog" }, 4);
+    expect(s.get("a")?.status).toBe("waiting");
+    // A sign-in notice changes nothing.
+    apply(s, { hook_event_name: "Notification", session_id: "a", notificationType: "auth_success" }, 5);
+    expect(s.get("a")?.status).toBe("waiting");
+    // Without a type (an older hook), the message tells.
+    apply(s, { hook_event_name: "Notification", session_id: "a", message: "Claude is waiting for your input" }, 6);
+    expect(s.get("a")?.status).toBe("idle");
+    apply(s, { hook_event_name: "Notification", session_id: "a", message: "Claude needs your permission to use Edit" }, 7);
+    expect(s.get("a")?.status).toBe("waiting");
+    expect(parseHookEvent({ hook_event_name: "Notification", session_id: "a", notification_type: "idle_prompt" })?.notificationType).toBe("idle_prompt");
+  });
+
+  test("keeps the session's permission mode from the events that name one, and never reports it", function () {
+    expect(parseHookEvent({ hook_event_name: "Stop", session_id: "a", permission_mode: "bypassPermissions" })?.permissionMode).toBe("bypassPermissions");
+    expect(parseHookEvent({ hook_event_name: "Stop", session_id: "a", permissionMode: "acceptEdits" })?.permissionMode).toBe("acceptEdits");
+    const s = new Map();
+    apply(s, { hook_event_name: "SessionStart", session_id: "a" }, 1);
+    apply(s, { hook_event_name: "UserPromptSubmit", session_id: "a", permissionMode: "bypassPermissions" }, 2);
+    // SessionStart names none: the mode known stays.
+    apply(s, { hook_event_name: "SessionStart", session_id: "a" }, 3);
+    expect(s.get("a")?.permissionMode).toBe("bypassPermissions");
+    apply(s, { hook_event_name: "Stop", session_id: "a", permissionMode: "default" }, 4);
+    expect(s.get("a")?.permissionMode).toBe("default");
+    expect(JSON.stringify(toReport(s))).not.toContain("default");
+  });
 });

@@ -56,10 +56,10 @@ function printOut(text: string): void {
   process.stdout.write(text);
 }
 
-// Only the event name, session id, cwd, transcript path, message, harness and the local fields above cross the socket, and,
-// at UserPromptSubmit only, the prompt (its first 8,000 characters). The socket is 127.0.0.1 only. The daemon scores the
-// prompt there for heads-ups and drops it: it is never kept, logged or sent anywhere. Tool inputs never cross. Grok's
-// payload is camelCase (sessionId); Claude Code's and Codex's are snake_case.
+// Only the event name, session id, cwd, transcript path, message and its type, harness, permission mode and the local fields
+// above cross the socket, and, at UserPromptSubmit only, the prompt (its first 8,000 characters). The socket is 127.0.0.1
+// only. The daemon scores the prompt there for heads-ups and drops it: it is never kept, logged or sent anywhere. Tool
+// inputs never cross. Grok's payload is camelCase (sessionId); Claude Code's and Codex's are snake_case.
 export async function forwardHook(
   event: string,
   raw: string,
@@ -79,8 +79,10 @@ export async function forwardHook(
       cwd: fields.cwd,
       transcript_path: fields.transcript_path ?? fields.transcriptPath,
       message: fields.message,
+      notification_type: fields.notification_type ?? fields.notificationType,
       harness,
       ...(prompt === undefined ? {} : { prompt }),
+      permission_mode: fields.permission_mode ?? fields.permissionMode,
       ...localFields(env),
     });
     if (ev === null) return;
