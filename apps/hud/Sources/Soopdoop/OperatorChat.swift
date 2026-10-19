@@ -3,17 +3,29 @@
 import AppKit
 import SwiftUI
 
-// The window, opened from the HUD's Operator line or the menu bar. One for the app's life; closing only hides it.
+// What is typed in the chat's box. The window keeps one, so the HUD can open the chat with "@jimmy: " already typed. Only
+// the main thread touches it (the window and the view).
+final class ChatDraft: ObservableObject {
+    @Published var text = ""
+    // Goes up each time the chat opens with something typed in, so the box takes the cursor.
+    @Published var focus = 0
+}
+
+// The window, opened from the HUD's Operator line, a heads-up's Ask or the menu bar. One for the app's life; closing only
+// hides it.
 @MainActor
 final class ChatWindow {
     static var shared: ChatWindow?
 
     private let window: NSWindow
+    private let draft: ChatDraft
 
     var visible: Bool { window.isVisible }
 
     init(client: AgentClient, style: HUDStyle) {
-        let host = NSHostingView(rootView: OperatorChat().environmentObject(client).environmentObject(style))
+        let draft = ChatDraft()
+        self.draft = draft
+        let host = NSHostingView(rootView: OperatorChat(draft: draft).environmentObject(client).environmentObject(style))
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 380, height: 520),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
@@ -32,12 +44,26 @@ final class ChatWindow {
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }
+
+    // Opens the chat with the start of a message typed in, such as "@jimmy: " to ask Jimmy's agent. A message already
+    // started for the same person is kept.
+    func show(prefill: String) {
+        if !draft.text.hasPrefix(prefill) { draft.text = prefill }
+        draft.focus += 1
+        show()
+    }
 }
 
 struct OperatorChat: View {
     @EnvironmentObject var client: AgentClient
-    @State private var text = ""
+    @ObservedObject var draft: ChatDraft
     @FocusState private var typing: Bool
+
+    init(draft: ChatDraft = ChatDraft()) {
+        self.draft = draft
+    }
+
+    private var text: String { draft.text }
 
     private var turns: [Relay] { client.state?.chat ?? [] }
 
@@ -61,7 +87,7 @@ struct OperatorChat: View {
             }
             Rectangle().fill(Theme.line).frame(height: 1)
             HStack(spacing: 8) {
-                TextField("Ask the Operator…", text: $text)
+                TextField("Ask the Operator…", text: $draft.text)
                     .textFieldStyle(.roundedBorder)
                     .font(Theme.mono(12))
                     .focused($typing)
@@ -76,6 +102,7 @@ struct OperatorChat: View {
         .background(Theme.panel)
         .environment(\.colorScheme, .dark)
         .onAppear { typing = true }
+        .onChange(of: draft.focus) { typing = true }
     }
 
     private func scroll(_ proxy: ScrollViewProxy) {
@@ -86,7 +113,7 @@ struct OperatorChat: View {
     private func send() {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
-        text = ""
+        draft.text = ""
         client.run("chat", ["text": t])
     }
 }

@@ -1,5 +1,5 @@
-// ABOUTME: Small pieces the HUD is built from: status lights (LEDs), the knock countdown ring, the XP bar, avatars, chips
-// ABOUTME: and section headers. They follow the prototype's look.
+// ABOUTME: Small pieces the HUD is built from: status lights (LEDs), the countdown ring, the XP bar, avatars, chips, harness
+// ABOUTME: badges, section headers and "more" toggles, and how ages, days and PR links are written. They follow the prototype's look.
 import SwiftUI
 
 // Green working, blue idle, purple a relay in flight, grey off.
@@ -69,7 +69,7 @@ struct ActivityLight: View {
     }
 }
 
-// The knock's countdown: a ring that empties as the time the server gave runs out.
+// A request's countdown (a knock, a hand-off, a heads-up): a ring that empties as the time the server gave runs out.
 struct CountdownRing: View {
     let expiresAt: Double
     let lifetimeMs: Double
@@ -91,8 +91,11 @@ struct CountdownRing: View {
         }
     }
 
+    // "18", "1:45", "9:59", then "45m" and "23h" for the long ones (a hand-off waits a day), so the label fits the ring.
     static func label(_ ms: Double) -> String {
         let s = Int((ms / 1000).rounded(.up))
+        if s >= 3600 { return "\(s / 3600)h" }
+        if s >= 600 { return "\(s / 60)m" }
         return s >= 60 ? "\(s / 60):\(String(format: "%02d", s % 60))" : "\(s)"
     }
 }
@@ -158,6 +161,128 @@ struct Chip: View {
     }
 }
 
+// Which tool runs an agent, in one letter: C for Claude Code, X for Codex, G for Grok. An agent from a daemon too old to
+// say is a Claude Code one: that was the only kind then.
+struct HarnessBadge: View {
+    let harness: String?
+
+    var body: some View {
+        let (letter, name) = Self.describe(harness)
+        Text(letter)
+            .font(Theme.mono(8.5, .bold))
+            .foregroundStyle(Theme.muted)
+            .frame(width: 13, height: 13)
+            .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.line2, lineWidth: 1))
+            .help("Runs in \(name)")
+            .accessibilityLabel(name)
+    }
+
+    static func describe(_ harness: String?) -> (letter: String, name: String) {
+        switch harness ?? "claude-code" {
+        case "claude-code": return ("C", "Claude Code")
+        case "codex": return ("X", "Codex")
+        case "grok": return ("G", "Grok")
+        case let other: return (other.first.map { String($0).uppercased() } ?? "?", other)
+        }
+    }
+}
+
+// "3 more" under a short list, "less" once it is open.
+struct MoreToggle: View {
+    let hidden: Int
+    @Binding var open: Bool
+
+    var body: some View {
+        if open || hidden > 0 {
+            Button(open ? "less" : "\(hidden) more") { withAnimation(.easeInOut(duration: 0.15)) { open.toggle() } }
+                .buttonStyle(.plain)
+                .font(Theme.mono(9.5))
+                .foregroundStyle(Theme.dim)
+        }
+    }
+}
+
+// A small link in a line of grey detail: a PR, a walkthrough.
+struct SmallLink: View {
+    let label: String
+    let url: URL
+
+    var body: some View {
+        Link(label, destination: url)
+            .font(Theme.mono(9.5))
+            .foregroundStyle(Theme.text)
+            .underline()
+            .lineLimit(1)
+            .fixedSize()
+            .help(url.absoluteString)
+    }
+}
+
+// How old something is, and the day it happened, in the hacker's time zone.
+enum Ago {
+    // "today", "1 day", "3 days", "2 months": a crew note's age.
+    static func age(_ at: Double, now: Double) -> String {
+        let days = Int(max(0, now - at) / 86_400_000)
+        if days == 0 { return "today" }
+        if days < 60 { return days == 1 ? "1 day" : "\(days) days" }
+        return "\(days / 30) months"
+    }
+
+    // "16 Oct": the day a ledger line was written.
+    static func day(_ at: Double) -> String {
+        dayFormat.string(from: Date(timeIntervalSince1970: at / 1000))
+    }
+
+    // "Fri 17 Oct" for a digest's day ("2026-10-17"), which is already the crew's local date.
+    static func digestDay(_ day: String) -> String {
+        guard let date = isoDay.date(from: day) else { return day }
+        return weekdayFormat.string(from: date).replacingOccurrences(of: ",", with: "")
+    }
+
+    private static let dayFormat: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_GB")
+        f.setLocalizedDateFormatFromTemplate("d MMM")
+        return f
+    }()
+
+    private static let isoDay: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    private static let weekdayFormat: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_GB")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.setLocalizedDateFormatFromTemplate("EEE d MMM")
+        return f
+    }()
+}
+
+// Pull request links as people say them: "PR #412".
+enum PRs {
+    // "412" from https://github.com/acme/web/pull/412 (and GitLab's merge_requests); nil when the link has no number.
+    static func number(_ link: String) -> String? {
+        guard let range = link.range(of: #"/(pull|pulls|merge_requests|pr)/(\d+)"#, options: .regularExpression) else { return nil }
+        return link[range].split(separator: "/").last.map(String.init)
+    }
+
+    static func label(_ link: String) -> String {
+        number(link).map { "PR #\($0)" } ?? "PR"
+    }
+
+    // A web link the HUD may open: http or https only.
+    static func url(_ link: String?) -> URL? {
+        guard let link, let url = URL(string: link.trimmingCharacters(in: .whitespaces)),
+              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return nil }
+        return url
+    }
+}
+
 // A section header that folds its section away: click the title. `trailing` goes on the right (a button).
 struct FoldingHeader<Trailing: View>: View {
     let title: String
@@ -207,21 +332,57 @@ struct SectionHeader: View {
     }
 }
 
-// The HUD's buttons: quiet by default, one primary look.
+// The HUD's buttons: quiet by default, one primary look, faded while they cannot be pressed.
 struct HUDButtonStyle: ButtonStyle {
     var primary = false
 
     func makeBody(configuration: Configuration) -> some View {
+        Look(configuration: configuration, primary: primary)
+    }
+
+    private struct Look: View {
+        let configuration: ButtonStyleConfiguration
+        let primary: Bool
+        @Environment(\.isEnabled) private var enabled
+
+        var body: some View {
+            configuration.label
+                .font(Theme.mono(11))
+                // One line at its own width: in a tight row the text beside it gives way, never the button ("Knoc/k").
+                .lineLimit(1)
+                .fixedSize()
+                .foregroundStyle(primary ? Theme.text : Theme.muted)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(RoundedRectangle(cornerRadius: 6).fill(primary ? Theme.line2 : Theme.panel2.opacity(0.6)))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(primary ? Theme.blue.opacity(0.7) : Theme.line2, lineWidth: 1))
+                .opacity(!enabled ? 0.4 : configuration.isPressed ? 0.6 : 1)
+        }
+    }
+}
+
+// Text that keeps a few words together on one line: its spaces, hyphens and slashes never break ("14 hand-offs",
+// "quote-redesign", "soopdoop.com/d/q412").
+enum NoBreak {
+    static func text(_ s: String) -> String {
+        s.replacingOccurrences(of: " ", with: "\u{00A0}")
+            .replacingOccurrences(of: "-", with: "\u{2060}-\u{2060}")
+            .replacingOccurrences(of: "/", with: "\u{2060}/\u{2060}")
+    }
+}
+
+// A small "+ props" style button that sits in a line of grey detail.
+struct TinyButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(Theme.mono(11))
-            // One line at its own width: in a tight row the text beside it gives way, never the button ("Knoc/k").
+            .font(Theme.mono(9))
             .lineLimit(1)
             .fixedSize()
-            .foregroundStyle(primary ? Theme.text : Theme.muted)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(RoundedRectangle(cornerRadius: 6).fill(primary ? Theme.line2 : Theme.panel2.opacity(0.6)))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(primary ? Theme.blue.opacity(0.7) : Theme.line2, lineWidth: 1))
+            .foregroundStyle(Theme.muted)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 0.5)
+            .overlay(Capsule().stroke(Theme.line2, lineWidth: 1))
+            .contentShape(Capsule())
             .opacity(configuration.isPressed ? 0.6 : 1)
     }
 }
