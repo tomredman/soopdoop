@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.14.1 · 2026-10-19
+
+### New
+- a crew can be put on a plan by hand, for a comped crew or for trying the team plan before billing exists (crews)
+- Checkout follows the Checkout Studio page settings, and automatic tax waits for the head office (billing)
+- Checkout collects tax, a billing address and a tax ID through Stripe Tax (billing)
+
+### Docs
+- the seat count followed a member leaving and coming back, against real Stripe (billing)
+- a test Checkout was paid for real, and the webhook, the plan and the portal followed (billing)
+- the head office address comes first, or Stripe refuses every Checkout (billing)
+
 ## v0.14.0 · 2026-10-19
 
 ### New
