@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Asked } from "./ask";
-import { askWaitMs, cleanError, CREW_TOOL, formatCrew, formatRelay, handle, TOOL, type Tools } from "./mcp";
+import { askWaitMs, cleanError, CREW_TOOL, formatCrew, formatRelay, handle, MORE_TOOLS, TOOL, type Tools } from "./mcp";
 import { logRead, parseReads, prepareAnswer, siteUrl, summaryFor } from "./operator";
 import type { AgentRecord, Subset } from "./state";
 
@@ -23,14 +23,17 @@ async function never(): Promise<string> {
 const idle: Tools = { ask: never, crew: never };
 
 describe("the ask_operator MCP server", function () {
-  test("introduces itself, lists its two tools, and answers pings", async function () {
+  test("introduces itself, lists its tools, and answers pings", async function () {
     const init = await handle({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } }, idle, "0.2.0");
     expect(init).toEqual({
       jsonrpc: "2.0",
       id: 1,
       result: { protocolVersion: "2025-06-18", capabilities: { tools: { listChanged: false } }, serverInfo: { name: "soopdoop", version: "0.2.0" } },
     });
-    expect(await handle({ jsonrpc: "2.0", id: 2, method: "tools/list" }, idle, "0")).toEqual({ jsonrpc: "2.0", id: 2, result: { tools: [TOOL, CREW_TOOL] } });
+    expect(await handle({ jsonrpc: "2.0", id: 2, method: "tools/list" }, idle, "0", [])).toEqual({ jsonrpc: "2.0", id: 2, result: { tools: [TOOL, CREW_TOOL] } });
+    expect(await handle({ jsonrpc: "2.0", id: 2, method: "tools/list" }, idle, "0")).toEqual({
+      jsonrpc: "2.0", id: 2, result: { tools: [TOOL, CREW_TOOL, ...MORE_TOOLS.map(function (t) { return t.definition; })] },
+    });
     expect(await handle({ jsonrpc: "2.0", id: 3, method: "ping" }, idle, "0")).toEqual({ jsonrpc: "2.0", id: 3, result: {} });
     // Notifications get no answer.
     expect(await handle({ jsonrpc: "2.0", method: "notifications/initialized" }, idle, "0")).toBeNull();
@@ -114,7 +117,7 @@ describe("the ask_operator MCP server", function () {
     proc.stdin.end();
     const out = (await new Response(proc.stdout).text()).trim().split("\n").map(function (l) { return JSON.parse(l); });
     expect(out.map(function (m) { return m.id; })).toEqual([1, 2]);
-    expect(out[1].result.tools.map(function (t: { name: string }) { return t.name; })).toEqual(["ask_operator", "crew_status"]);
+    expect(out[1].result.tools.map(function (t: { name: string }) { return t.name; })).toEqual(["ask_operator", "crew_status", "crew_note", "crew_notes", "props"]);
     await proc.exited;
   });
 });

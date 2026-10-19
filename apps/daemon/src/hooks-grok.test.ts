@@ -60,12 +60,13 @@ describe("Grok hooks", function () {
       // What Grok sets on every hook process (its hooks guide), and its payload for a prompt.
       const env = { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", SOOPDOOP_PORT: String(server.port), GROK_SESSION_ID: "g1", GROK_HOOK_EVENT: "user_prompt_submit", GROK_WORKSPACE_ROOT: "/r/vibes", CLAUDE_PROJECT_DIR: "/r/vibes" };
       const proc = Bun.spawn(["sh", "-c", real], { stdin: "pipe", stdout: "pipe", stderr: "pipe", env });
-      proc.stdin.write(JSON.stringify({ hookEventName: "user_prompt_submit", hook_event_name: "UserPromptSubmit", sessionId: "g1", cwd: "/r/vibes", workspaceRoot: "/r/vibes", permissionMode: "default", promptId: "p1", prompt: "secret plan" }));
+      proc.stdin.write(JSON.stringify({ hookEventName: "user_prompt_submit", hook_event_name: "UserPromptSubmit", sessionId: "g1", cwd: "/r/vibes", workspaceRoot: "/r/vibes", permissionMode: "default", promptId: "p1", prompt: "fix the bounces" }));
       proc.stdin.end();
       expect(await proc.exited).toBe(0);
       // Grok ignores what UserPromptSubmit hooks print, so nothing is.
       expect(await new Response(proc.stdout).text()).toBe("");
-      expect(received).toEqual([{ hook_event_name: "UserPromptSubmit", session_id: "g1", cwd: "/r/vibes", harness: "grok", grokSessionId: "g1" }]);
+      // The prompt goes to the daemon on 127.0.0.1 for heads-ups (Grok gets the HUD card), and stops there.
+      expect(received).toEqual([{ hook_event_name: "UserPromptSubmit", session_id: "g1", cwd: "/r/vibes", harness: "grok", prompt: "fix the bounces", grokSessionId: "g1" }]);
     } finally {
       server.stop(true);
     }

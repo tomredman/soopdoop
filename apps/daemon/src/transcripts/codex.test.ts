@@ -55,6 +55,8 @@ describe("Codex rollouts", function () {
       files: [`${CWD}/src/checkout.ts`, `${CWD}/src/coupon.ts`],
       prLinks: ["https://github.com/example-org/vibes/pull/412"], merged: false,
     });
+    // Read is not a change; the FileChange is.
+    expect(parsed.edited).toEqual([`${CWD}/src/coupon.ts`]);
     expect(parsed.turns).toEqual([
       { role: "user", text: "add coupon codes to checkout" },
       { role: "assistant", text: "I will look at the checkout first." },
@@ -84,7 +86,7 @@ describe("Codex rollouts", function () {
       JSON.stringify({ type: "message", role: "assistant", content: [{ type: "output_text", text: "Merged." }] }),
     ].join("\n");
     const parsed = parseCodex(old);
-    expect(parsed).toMatchObject({ firstPrompt: "ship the coupon fix", merged: true, files: ["src/coupon.ts"] });
+    expect(parsed).toMatchObject({ firstPrompt: "ship the coupon fix", merged: true, files: ["src/coupon.ts"], edited: ["src/coupon.ts"] });
     expect(parsed.turns.at(-1)).toEqual({ role: "assistant", text: "Merged." });
   });
 

@@ -40,6 +40,9 @@ export interface HookEvent {
   transcript_path?: string;
   // Notification hooks carry a message; "waiting" is inferred from it.
   message?: string;
+  // UserPromptSubmit only: the hacker's prompt (its first 8,000 characters). The daemon scores it on this Mac for heads-ups
+  // and drops it. It is never put on the agent, kept, logged or sent: toReport has no field for it.
+  prompt?: string;
   // The harness that ran the hook (its command names it). Missing from older hooks, which were all Claude Code's.
   harness?: Harness;
   // From the hook's environment, when there. Kept on this machine (see AgentRecord).
@@ -83,6 +86,7 @@ export function parseHookEvent(raw: unknown): HookEvent | null {
   const transcript = text(raw.transcript_path) ?? text(raw.transcriptPath);
   if (transcript !== undefined) ev.transcript_path = transcript;
   if (typeof raw.message === "string") ev.message = raw.message;
+  if (event === "UserPromptSubmit" && typeof raw.prompt === "string" && raw.prompt.trim() !== "") ev.prompt = raw.prompt;
   const harness = toHarness(raw.harness);
   if (harness !== undefined) ev.harness = harness;
   const terminal = text(raw.supersetTerminalId);

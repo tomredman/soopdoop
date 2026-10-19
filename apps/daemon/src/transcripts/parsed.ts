@@ -10,6 +10,8 @@ export interface Parsed {
   turns: Turn[];
   // Files the agent read or changed, oldest first.
   files: string[];
+  // The files it changed (each is in `files` too), oldest first. The ledger's areas come from these. Missing until one is.
+  edited?: string[];
   // The hacker's first and last prompts.
   firstPrompt?: string;
   lastPrompt?: string;
@@ -48,6 +50,14 @@ export function addTurn(parsed: Parsed, role: "user" | "assistant", text: string
 
 export function addFile(parsed: Parsed, file: string): void {
   if (file !== "") parsed.files.push(file);
+}
+
+// A file the agent changed (wrote, edited or patched). It counts as touched too.
+export function addEdit(parsed: Parsed, file: string): void {
+  if (file === "") return;
+  parsed.files.push(file);
+  if (parsed.edited === undefined) parsed.edited = [];
+  parsed.edited.push(file);
 }
 
 const PR_URL = /https?:\/\/[A-Za-z0-9.-]+\/[\w.-]+\/[\w.-]+\/pull\/\d+/g;

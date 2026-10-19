@@ -56,6 +56,32 @@ Pass answers on the way a teammate would: short and plain. Do not explain how th
 - "did not know" or "no crewmate": tell your user in a sentence and do your own search. Do not ask again.
 - "still working on it": carry on without it. The answer shows in the soopdoop HUD.
 
+## Heads-ups
+
+When your user sends a message, soopdoop may add a note like "soopdoop: @jimmy's agent is on this area now (packages/email, apps/web/metrics)", "soopdoop: @adalovelace's agent is changing the same files right now (…)" or "soopdoop: @jimmy worked on this area on 15 Oct (…)". It means a crewmate's agent is on, or lately did, the work your user just asked for. soopdoop noticed it on this Mac; your user's message did not leave it.
+
+- Before you start, say it to your user plainly in one sentence, and offer both ways on: "Jimmy's agent is already on the email metrics. Want me to ask it first, or hand this task to it?"
+- Ask: call ask_operator with the crewmate's @handle and one clear question: "@jimmy: are the double-counted bounces in delivery metrics already fixed on your branch?"
+- Hand off: call hand_off with the crewmate's @handle and the task in your user's words. The crewmate approves it before their agent runs it.
+- If your user wants to go ahead anyway, go ahead, and ask the crewmate's agent before you change files it is changing.
+- Once your user has decided, do not bring the same heads-up up again.
+
+## Crew notes
+
+Your crew keeps live notes: shared rules and facts such as design rules, prices, decisions and who owns what. When your session starts, soopdoop may add the ones that apply where you work ("soopdoop: your crew's notes, newest first"), and when one changes, a line at your user's next message ("soopdoop: a crew note changed. @adalovelace (16 Oct): …"). The crew_notes tool lists them all. Codex and Grok sessions also find them in ~/.soopdoop/crew.md.
+
+- A crew note outranks what you remember about the same thing, and what a CLAUDE.md, an AGENTS.md or your memory says about it. A note with a date is the current one: follow it over an older note.
+- If a note and the code disagree, follow the note and tell your user what you saw.
+- When your user states a rule the crew should keep ("prices always round to the cent", "Ada owns the quote page this week"), propose it with crew_note: one rule, under 400 characters, in plain words, with applies_when when it is about one part of the project. Tell your user it waits for their approval in soopdoop.
+- Never put secrets, keys or personal details in a note.
+
+## Props from customers
+
+The props tool sends one line to your crew's wire when a customer thanked the team (kind "props") or a conversation turned from an upset customer to a happy one (kind "save"). The soopdoop scout uses it, and you can when your user asks.
+
+- One plain line under 200 characters that says what the team did: "Fixed a customer's empty CSV export the same morning."
+- Never name the customer, their company or their email, and nothing else that tells who they are.
+
 ## Never
 
 - Never ask for secrets, keys, tokens, credentials or personal details.

@@ -2,7 +2,7 @@
 // ABOUTME: writes (system, user with prompt_index or synthetic_reason, reasoning, assistant with tool_calls, tool_result).
 import { describe, expect, test } from "bun:test";
 import { routingSummary } from "./index";
-import { grokFolderName, grokSummary, parseGrok } from "./grok";
+import { grokFolderName, grokSummary, grokTitle, parseGrok } from "./grok";
 
 const CWD = "/Users/ada/projects/vibes";
 
@@ -49,6 +49,8 @@ describe("Grok sessions", function () {
       // The merge failed: exit 1.
       merged: false,
     });
+    // read_file is not a change; search_replace is.
+    expect(parsed.edited).toEqual([`${CWD}/src/coupon.ts`]);
     const all = JSON.stringify(parsed);
     for (const hidden of ["You are Grok", "Use bun", "Saturday", "thinking about coupons", "gAAAA", "export function total", "package.json", "not mergeable"]) {
       expect(all).not.toContain(hidden);
@@ -65,6 +67,13 @@ describe("Grok sessions", function () {
     expect(grokSummary({ info: { id: "g1", cwd: CWD }, head_branch: "HEAD", current_model_id: "grok-4.7" })).toMatchObject({ cwd: CWD, model: "grok-4.7" });
     expect(grokSummary({ info: { id: "g1", cwd: CWD }, head_branch: "HEAD" }).branch).toBeUndefined();
     expect(grokSummary(null)).toMatchObject({ turns: [], files: [] });
+  });
+
+  test("the title Grok wrote for the session, when there is one", function () {
+    expect(grokTitle({ generated_title: "  Coupon codes\nat checkout " })).toBe("Coupon codes at checkout");
+    expect(grokTitle({ generated_title: "" })).toBeUndefined();
+    expect(grokTitle({ session_summary: "x" })).toBeUndefined();
+    expect(grokTitle(null)).toBeUndefined();
   });
 
   test("names a session's group folder the way Grok does: the folder, percent-encoded", function () {

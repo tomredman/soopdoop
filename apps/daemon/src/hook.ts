@@ -1,8 +1,10 @@
 // ABOUTME: What each harness hook runs (Claude Code, Codex, Grok): reads the hook payload on stdin and posts the few fields the
-// ABOUTME: daemon uses. It never fails, drops replays by other tools, prints only the crew introduction at starts and prompts, and imports nothing heavy.
+// ABOUTME: daemon uses. It never fails, drops replays by other tools, prints only the daemon's notes for the session at starts and prompts, and imports nothing heavy.
 import { isRecord, parseHookEvent, toHarness, type Harness } from "./state";
 
 const PORT = Number(process.env.SOOPDOOP_PORT ?? "47311");
+// What the daemon scores a prompt on. A prompt longer than this is usually a pasted log; its start says what it is about.
+export const PROMPT_CHARS = 8_000;
 // Events whose hook can add text to the session's context. The daemon may answer these with the crew's agents.
 const SPEAKING = new Set(["SessionStart", "UserPromptSubmit"]);
 // Harnesses that read a hook's additionalContext at those events. Grok ignores what those hooks print (its hooks guide).
@@ -54,8 +56,10 @@ function printOut(text: string): void {
   process.stdout.write(text);
 }
 
-// Prompts and tool inputs stay out: only the event name, session id, cwd, transcript path, message, harness and the local
-// fields above cross the socket. Grok's payload is camelCase (sessionId); Claude Code's and Codex's are snake_case.
+// Only the event name, session id, cwd, transcript path, message, harness and the local fields above cross the socket, and,
+// at UserPromptSubmit only, the prompt (its first 8,000 characters). The socket is 127.0.0.1 only. The daemon scores the
+// prompt there for heads-ups and drops it: it is never kept, logged or sent anywhere. Tool inputs never cross. Grok's
+// payload is camelCase (sessionId); Claude Code's and Codex's are snake_case.
 export async function forwardHook(
   event: string,
   raw: string,
@@ -68,6 +72,7 @@ export async function forwardHook(
     if (droppedBecause(harness, env) !== null) return;
     const payload: unknown = raw.trim() === "" ? {} : JSON.parse(raw);
     const fields = isRecord(payload) ? payload : {};
+    const prompt = event === "UserPromptSubmit" && typeof fields.prompt === "string" ? fields.prompt.slice(0, PROMPT_CHARS) : undefined;
     const ev = parseHookEvent({
       hook_event_name: event,
       session_id: fields.session_id ?? fields.sessionId ?? (harness === "grok" ? value(env, "GROK_SESSION_ID") : undefined),
@@ -75,6 +80,7 @@ export async function forwardHook(
       transcript_path: fields.transcript_path ?? fields.transcriptPath,
       message: fields.message,
       harness,
+      ...(prompt === undefined ? {} : { prompt }),
       ...localFields(env),
     });
     if (ev === null) return;

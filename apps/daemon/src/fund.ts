@@ -63,6 +63,9 @@ const PRICES: [string, Price][] = [
   ["claude-sonnet-5", anthropic(2, 10, 0.2)],
   ["claude-sonnet-4", anthropic(3, 15, 0.3)],
   ["claude-haiku-4-5", anthropic(1, 5, 0.1)],
+  // Prompts over 100,000 tokens cost five times as much on Haiku 5.5. Two runs on 18 Oct 2026 matched Claude Code's own
+  // cost to the cent's millionth at these rates (hour-long cache writes at twice input, cache reads at $0.01).
+  ["claude-haiku-5-5", { ...anthropic(0.1, 0.5, 0.01), long: { input: 0.5, output: 2.5, cacheRead: 0.05, cacheWrite: 0.625, from: 100_001 } }],
 
   ["gpt-6-astra", openai(10, 1, 50, { writes: true, long: [20, 2, 75] })],
   ["gpt-6.1-sol", openai(2, 0.1, 10, { writes: true, long: [4, 0.2, 15] })],

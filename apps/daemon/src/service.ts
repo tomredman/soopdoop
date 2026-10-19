@@ -1,5 +1,6 @@
 // ABOUTME: macOS LaunchAgents: the rail, the daemon and the watcher run always (start at login, restart if they exit), the Mac
-// ABOUTME: app starts at login, the updater runs every 6 hours. Service list and plist text are pure (tested); launchctl and lsof are wrappers.
+// ABOUTME: app starts at login, the updater runs every 6 hours, the scout every hour while it is on. Specs and plist text are pure (tested).
+import { unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { appBinaryPath, watcherBinaryPath } from "./app";
@@ -9,9 +10,11 @@ export const DAEMON_PORT = 47311;
 export const RAIL_URL = `http://127.0.0.1:${RAIL_PORT}/`;
 export const UPDATER_LABEL = "com.soopdoop.updater";
 export const UPDATE_EVERY_SECONDS = 6 * 60 * 60;
+export const SCOUT_LABEL = "com.soopdoop.scout";
+export const SCOUT_EVERY_SECONDS = 60 * 60;
 
 export interface ServiceSpec {
-  name: "rail" | "daemon" | "updater" | "hud" | "watcher";
+  name: "rail" | "daemon" | "updater" | "hud" | "watcher" | "scout";
   label: string;
   program: string[];
   workingDirectory: string;
@@ -26,14 +29,19 @@ export interface ServiceSpec {
   needsApp?: boolean;
 }
 
-// root: the soopdoop checkout. bun: an absolute path, because launchd does not read your shell's PATH.
-export function serviceSpecs(root: string, bun: string, home: string, soopdoopHomeOverride?: string): ServiceSpec[] {
+function serviceEnv(bun: string, soopdoopHomeOverride?: string): Record<string, string> {
   const env: Record<string, string> = {
     PATH: `${path.dirname(bun)}:/usr/bin:/bin:/usr/sbin:/sbin`,
     // The rail serves a built page and keeps browser console lines out of its log.
     SOOPDOOP_SERVICE: "1",
   };
   if (soopdoopHomeOverride !== undefined) env.SOOPDOOP_HOME = soopdoopHomeOverride;
+  return env;
+}
+
+// root: the soopdoop checkout. bun: an absolute path, because launchd does not read your shell's PATH.
+export function serviceSpecs(root: string, bun: string, home: string, soopdoopHomeOverride?: string): ServiceSpec[] {
+  const env = serviceEnv(bun, soopdoopHomeOverride);
   const logs = path.join(home, "logs");
   return [
     {
@@ -85,6 +93,20 @@ export function serviceSpecs(root: string, bun: string, home: string, soopdoopHo
       everySeconds: UPDATE_EVERY_SECONDS,
     },
   ];
+}
+
+// The scout: `soopdoop scout run` at login and every hour. It is not in serviceSpecs: it is set up only while the hacker has it
+// on (the `scout` setting), by `soopdoop scout on`, the app's Settings, and setup and start when it is on.
+export function scoutSpec(root: string, bun: string, home: string, soopdoopHomeOverride?: string): ServiceSpec {
+  return {
+    name: "scout",
+    label: SCOUT_LABEL,
+    program: [bun, path.join(root, "apps", "daemon", "src", "cli.ts"), "scout", "run"],
+    workingDirectory: root,
+    env: serviceEnv(bun, soopdoopHomeOverride),
+    log: path.join(home, "logs", "scout.log"),
+    everySeconds: SCOUT_EVERY_SECONDS,
+  };
 }
 
 function xml(s: string): string {
@@ -159,6 +181,16 @@ export async function load(spec: ServiceSpec): Promise<void> {
   await unload(spec.label);
   const res = await run(["launchctl", "bootstrap", domain(), plistPath(spec.label)]);
   if (res.code !== 0) throw new Error(`launchctl could not start ${spec.label}: ${res.out.trim()}`);
+}
+
+// Sets the scout's LaunchAgent up (on) or takes it away with its plist (off). The CLI and the app's agent both use it.
+export async function setScoutService(on: boolean, spec: ServiceSpec): Promise<void> {
+  if (on) {
+    await load(spec);
+    return;
+  }
+  await unload(spec.label);
+  await unlink(plistPath(spec.label)).catch(function () { /* already gone */ });
 }
 
 // Writes the plist without loading it: used for the updater while it is the one running.

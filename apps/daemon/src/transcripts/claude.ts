@@ -1,9 +1,11 @@
 // ABOUTME: Reads Claude Code transcripts (<config dir>/projects/<folder>/<id>.jsonl): the hacker's prompts, the agent's text, the
 // ABOUTME: files its tools touched, its model, where it works, and the PRs and merges its Bash commands made. Pure parsing.
 import { isRecord } from "../state";
-import { addFile, addTurn, emptyParsed, noteCommand, oneLine, type Parsed } from "./parsed";
+import { addEdit, addFile, addTurn, emptyParsed, noteCommand, oneLine, type Parsed } from "./parsed";
 
 const FILE_TOOLS = new Set(["Edit", "MultiEdit", "Write", "Read", "NotebookEdit"]);
+// The ones that change a file.
+const EDIT_TOOLS = new Set(["Edit", "MultiEdit", "Write", "NotebookEdit"]);
 
 // A tool result's text: a string, or a list of text blocks.
 function resultText(content: unknown): string {
@@ -57,7 +59,8 @@ export function parseClaude(text: string, into: Parsed = emptyParsed()): Parsed 
         if (FILE_TOOLS.has(block.name)) {
           const file = typeof input.file_path === "string" ? input.file_path : typeof input.notebook_path === "string" ? input.notebook_path : null;
           if (file !== null) {
-            addFile(parsed, file);
+            if (EDIT_TOOLS.has(block.name)) addEdit(parsed, file);
+            else addFile(parsed, file);
             addTurn(parsed, "assistant", `[${block.name} ${file}]`);
           }
         }

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { inside, isPrivate, repoRoot, withPrivacy } from "./privacy";
+import { branchOf, inside, isPrivate, repoRoot, withPrivacy } from "./privacy";
 import { apply, reapplyPrivacy, type Subset } from "./state";
 
 const dirs: string[] = [];
@@ -29,6 +29,10 @@ describe("private folders", function () {
     expect(repoRoot(path.join(dir, "worktrees"))).toBeNull();
     // A bare repository has no folder to keep private.
     expect(repoRoot("/x", function () { return "/srv/thing.git"; })).toBeNull();
+    // The branch, for crew notes that apply to one: the worktree's own.
+    expect(branchOf(worktree)).toBe("eel-027ed796");
+    expect(branchOf(path.join(dir, "worktrees"))).toBeNull();
+    expect(branchOf("/x", function () { return "HEAD"; })).toBeNull();
   });
 
   test("an agent is private when its folder or its repository is inside a private folder", function () {

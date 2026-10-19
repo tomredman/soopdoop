@@ -1,26 +1,35 @@
 #!/usr/bin/env bun
 // ABOUTME: The soopdoop CLI: one-command setup (hooks and tools for Claude Code, Codex and Grok), updates, the background services, and the daemon itself (`serve`, `hook`).
-// ABOUTME: `serve` listens on localhost for hook posts, keeps the subset, and reports it to Convex once this machine is paired.
+// ABOUTME: `serve` listens on localhost for hook posts, keeps the subset, reports it to Convex once paired, and tells sessions about their crew.
 import { lstat, readlink, stat, symlink, unlink as removeFile } from "node:fs/promises";
 import { hostname, homedir } from "node:os";
 import path from "node:path";
 import { ConvexClient, ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { appBinaryPath, appBundlePath, buildApp, removeApp, watcherBinaryPath } from "./app";
+import { findRealClaude } from "./ask";
 import { configPath, configStamp, invitePath, readConfig, readSettings, soopdoopHome, writeConfig, writeSettings, type Config } from "./config";
 import { readFund, readSpends, spentToday, writeFund } from "./fund";
+import { headsUpNote, headsUpper, type HeadsUp, type HeadsUps } from "./headsups-local";
 import { forwardHook } from "./hook";
 import { introducer, type Introducer } from "./intro";
 import { claudeSettingsPath, findClaude, guardedHook, installClaudeHooks, prefixedHook, uninstallClaudeHooks } from "./hooks";
 import { codexHome, codexHooksInstalled, codexHooksPath, findCodex, installCodexHooks, uninstallCodexHooks } from "./hooks-codex";
 import { findGrok, grokHome, grokHooksInstalled, grokHooksPath, installGrokHooks, uninstallGrokHooks } from "./hooks-grok";
+import { ledgerKeeper, ledgerPath, readLedgerFile } from "./ledger-local";
+import {
+  BLOCK_START, codexAgentsPath, crewFilePath, crewMarkdown, grokRulePath, installPointer, notesKeeper, uninstallPointer, writeCrewFile, type NotesKeeper,
+  type Place,
+} from "./notes-local";
 import { answerReads, summaryFor, updateRouting } from "./operator";
 import {
-  answers, DAEMON_PORT, isLoaded, load, openInBrowser, plistPath, portOwner, RAIL_URL, restart, serviceSpecs, unload, waitFor, writePlist,
+  answers, DAEMON_PORT, isLoaded, load, openInBrowser, plistPath, portOwner, RAIL_URL, restart, SCOUT_LABEL, scoutSpec, serviceSpecs,
+  setScoutService, unload, waitFor, writePlist,
 } from "./service";
 import { installSkill, removeSkill, skillDir, skillInstalled } from "./skill";
-import { isPrivate, repoRoot, withPrivacy } from "./privacy";
-import { apply, isRecord, parseHookEvent, reapplyPrivacy, sweep, toReport, type Subset } from "./state";
+import { INTERCOM_URL, isPaired, lastRunPath, readIntercomServer, runScout, scoutLogLine } from "./scout";
+import { branchOf, isPrivate, repoRoot, withPrivacy } from "./privacy";
+import { apply, isRecord, parseHookEvent, reapplyPrivacy, sweep, toReport, type AgentRecord, type HookEvent, type Subset } from "./state";
 import {
   applyUpdate, checkForUpdate, currentVersion, defaultSteps, installDir, isInstall, isNewer, parseVersion, readUpdateState,
   releasePage, tagFor, takeUpdateRequest,
@@ -43,6 +52,19 @@ const SKILL_FILE = path.join(ROOT, "packages", "plugin", "skills", "soopdoop", "
 const reportSubset = makeFunctionReference<"mutation">("subsets:report");
 // The crew's running agents, to introduce them to this machine's sessions.
 const crewAgents = makeFunctionReference<"query">("routing:crew");
+// The ledger, heads-ups and crew notes (backend functions taking this machine's token).
+const ledgerReport = makeFunctionReference<"mutation">("ledger:report");
+const crewRecent = makeFunctionReference<"query">("ledger:crewRecent");
+const headsupRecord = makeFunctionReference<"mutation">("headsups:record");
+const notesForDaemon = makeFunctionReference<"query">("notes:forDaemon");
+const crewForDaemon = makeFunctionReference<"query">("crews:forDaemon");
+
+// What the hook adds to a session's context: each piece the daemon has for this event (the crew's agents, its notes, a
+// heads-up), apart by a blank line. Null when there is none.
+function composeContext(parts: (string | null | undefined)[]): string | null {
+  const kept = parts.filter(function (p): p is string { return typeof p === "string" && p.trim() !== ""; });
+  return kept.length === 0 ? null : kept.join("\n\n");
+}
 
 function tilde(p: string): string {
   const home = homedir();
@@ -64,8 +86,11 @@ async function serve(): Promise<void> {
   const subset: Subset = new Map();
   let dirty = true;
   let reporting = false;
-  // http reports presence; live follows the Operator's read requests over a WebSocket; intro tells sessions about the crew.
-  let paired: { config: Config; client: ConvexHttpClient; live: ConvexClient; stopReads: () => void; intro: Introducer } | null = null;
+  // http reports presence; live follows the Operator's read requests, the crew's notes and the crew itself over a WebSocket;
+  // intro tells sessions about the crew's agents, notes about its notes, headsups scores prompts against the crew's work.
+  let paired: {
+    config: Config; client: ConvexHttpClient; live: ConvexClient; stopReads: () => void; intro: Introducer; notes: NotesKeeper; headsups: HeadsUps;
+  } | null = null;
   let stamp = -1;
   // Open agents that finished a turn since the last report: their routing summaries go out after it.
   const summariesDue = new Set<string>();
@@ -74,6 +99,72 @@ async function serve(): Promise<void> {
   function repoOf(cwd: string): string | undefined {
     if (!repos.has(cwd)) repos.set(cwd, repoRoot(cwd));
     return repos.get(cwd) ?? undefined;
+  }
+  // Each session's branch, asked of git when it starts (crew notes can apply to a branch).
+  const branches = new Map<string, string | null>();
+  function placeOf(agent: AgentRecord, starting: boolean): Place {
+    if (starting || !branches.has(agent.agentId)) branches.set(agent.agentId, agent.cwd === undefined ? null : branchOf(agent.cwd));
+    const branch = branches.get(agent.agentId) ?? undefined;
+    return { ...(agent.cwd === undefined ? {} : { cwd: agent.cwd }), ...(agent.repo === undefined ? {} : { repo: agent.repo }), ...(branch === undefined ? {} : { branch }) };
+  }
+
+  // One line per finished piece of work: sent with this machine's token, never for a private agent, in Haiku's words when the
+  // ledgerLines setting allows (read each time).
+  const ledger = ledgerKeeper({
+    async send(line) {
+      const now = paired;
+      if (now === null) throw new Error("not paired");
+      await now.client.mutation(ledgerReport, { token: now.config.token, ...line });
+    },
+    ready() { return paired !== null; },
+    isPrivate(agent) { return isPrivate(agent.cwd, agent.repo, paired?.config.privateDirs ?? []); },
+    async haikuAllowed() { return (await readSettings()).ledgerLines; },
+    claude() { return findRealClaude(); },
+  });
+
+  // crew.md, which Codex and Grok sessions read (their files point at it), when what it says changed. One write at a time,
+  // each with what is known when its turn comes, so a slow write never puts older words over newer ones.
+  let crewWriting: Promise<void> = Promise.resolve();
+  function writeCrew(): Promise<void> {
+    crewWriting = crewWriting.then(async function () {
+      const now = paired;
+      // Not before the notes arrived: an empty list would tell a session there are none.
+      if (now === null || now.notes.notes() === null) return;
+      await writeCrewFile(crewMarkdown(now.notes.crewInfo(), now.intro.crew(), now.notes.notes())).catch(function (e: unknown) {
+        console.error("crew.md:", e instanceof Error ? e.message : e);
+      });
+    });
+    return crewWriting;
+  }
+
+  // Heads-ups go out after the hook's reply, so the prompt never waits on the network. Only the card's line leaves.
+  async function recordHeadsUps(now: NonNullable<typeof paired>, hits: HeadsUp[], agentId: string): Promise<void> {
+    for (const h of hits) {
+      try {
+        await now.client.mutation(headsupRecord, { token: now.config.token, otherHandle: h.otherHandle, otherAgentId: h.otherAgentId, kind: h.kind, line: h.line, agentId });
+      } catch (e) {
+        console.error("heads-up failed:", e instanceof Error ? e.message : e);
+      }
+    }
+  }
+
+  // What the hook adds to the session's context at its start and at each prompt. The prompt is scored for heads-ups here and
+  // dropped. Grok does not read what these hooks print, so Grok sessions get only the HUD card (and crew.md).
+  async function hookContext(now: NonNullable<typeof paired>, ev: HookEvent, agent: AgentRecord): Promise<string | null> {
+    const event = ev.hook_event_name;
+    if (event !== "SessionStart" && event !== "UserPromptSubmit") return null;
+    const hits = event === "UserPromptSubmit" && ev.prompt !== undefined && agent.open ? now.headsups.check(ev.session_id, ev.prompt) : [];
+    if (hits.length > 0) setTimeout(function () { void recordHeadsUps(now, hits, ev.session_id); }, 0);
+    if (agent.harness === "grok") {
+      if (event === "SessionStart") void now.intro.refresh(30_000).then(writeCrew);
+      return null;
+    }
+    const [intro, notes] = await Promise.all([
+      now.intro.contextFor(event, ev.session_id),
+      now.notes.contextFor(event, ev.session_id, placeOf(agent, event === "SessionStart")),
+    ]);
+    if (event === "SessionStart") void writeCrew();
+    return composeContext([intro, notes, headsUpNote(hits)]);
   }
 
   function unpair(): void {
@@ -100,8 +191,20 @@ async function serve(): Promise<void> {
       if (config !== null) {
         const live = new ConvexClient(config.convexUrl);
         const client = new ConvexHttpClient(config.convexUrl);
-        const intro = introducer(function () { return client.query(crewAgents, { token: config.token }); });
-        paired = { config, client, live, stopReads: answerReads(live, config.token, config.convexUrl, subset), intro };
+        const token = config.token;
+        const intro = introducer(function () { return client.query(crewAgents, { token }); });
+        const notes = notesKeeper({ readNotes() { return client.query(notesForDaemon, { token }); }, changed() { void writeCrew(); } });
+        const headsups = headsUpper({ crew() { return intro.crew(); }, readLedger() { return client.query(crewRecent, { token, days: 14 }); } });
+        const stopAnswers = answerReads(live, token, config.convexUrl, subset);
+        // Notes and the crew change rarely, so the daemon follows them live instead of asking every minute.
+        const stopNotes = live.onUpdate(notesForDaemon, { token }, function (raw: unknown) { notes.set(raw); }, function (e: Error) { console.error("crew notes:", e.message); });
+        const stopCrew = live.onUpdate(crewForDaemon, { token }, function (raw: unknown) { notes.setCrew(raw); }, function (e: Error) { console.error("crew:", e.message); });
+        paired = {
+          config, client, live, intro, notes, headsups,
+          stopReads() { stopAnswers(); stopNotes(); stopCrew(); },
+        };
+        void headsups.refreshLedger();
+        void intro.refresh(0).then(writeCrew);
       }
       if (paired === null) console.log(`Not paired yet. Sign in on the rail (${RAIL_URL}) and it pairs this machine.`);
       else {
@@ -121,6 +224,8 @@ async function serve(): Promise<void> {
       summariesDue.delete(agentId);
       const summary = await summaryFor(subset, agentId);
       if (summary === null) continue;
+      // Its own files, for heads-ups about a crewmate's agent changing the same ones.
+      now.headsups.ownSummary(agentId, summary);
       try {
         await now.client.mutation(updateRouting, { token: now.config.token, agentId, summary });
       } catch (e) {
@@ -156,11 +261,22 @@ async function serve(): Promise<void> {
         const raw: unknown = await req.json().catch(function () { return null; });
         const ev = parseHookEvent(raw);
         if (ev === null) return new Response("bad hook payload", { status: 400 });
+        const before = subset.get(ev.session_id);
         if (apply(subset, ev, Date.now(), paired?.config.privateDirs ?? [], repoOf)) dirty = true;
         if (ev.hook_event_name === "Stop" && subset.get(ev.session_id)?.open === true) summariesDue.add(ev.session_id);
-        // A session that starts hears what the crew's agents work on; at a prompt, about agents that started since.
-        const context = paired === null ? null : await paired.intro.contextFor(ev.hook_event_name, ev.session_id);
+        // A session that ended: its ledger line, after the reply.
+        if (ev.hook_event_name === "SessionEnd" && before !== undefined) void ledger.ended(before);
+        // A session that starts hears what the crew's agents work on and the crew's notes; at a prompt, what changed since, and a
+        // heads-up when the prompt is about a crewmate's work.
+        const agent = subset.get(ev.session_id);
+        const context = paired === null || agent === undefined ? null : await hookContext(paired, ev, agent);
         return context === null ? new Response("ok") : Response.json({ context });
+      }
+      // What crew.md holds, for a look by hand.
+      if (req.method === "GET" && url.pathname === "/crew") {
+        if (req.headers.get("origin") !== null) return new Response("forbidden", { status: 403 });
+        const text = paired === null ? "This Mac is not paired yet.\n" : crewMarkdown(paired.notes.crewInfo(), paired.intro.crew(), paired.notes.notes());
+        return new Response(text, { headers: { "content-type": "text/markdown; charset=utf-8" } });
       }
       // The HUD's private switch, through the local agent: keep an agent's repository private, or stop.
       if (req.method === "POST" && url.pathname === "/private") {
@@ -188,11 +304,23 @@ async function serve(): Promise<void> {
   });
 
   setInterval(function () {
-    if (sweep(subset, Date.now(), STALE_MS)) dirty = true;
+    const now = Date.now();
+    // A crashed harness never sends SessionEnd: a session silent this long gets its ledger line before it goes.
+    for (const a of subset.values()) if (now - a.lastTurnAt > STALE_MS) void ledger.ended(a);
+    if (sweep(subset, now, STALE_MS)) dirty = true;
     void report();
-    // Keeps the crew fresh for the next prompt, while there are sessions to tell.
-    paired?.intro.keepOnly(new Set(subset.keys()));
-    if (paired !== null && subset.size > 0) void paired.intro.refresh(HEARTBEAT_MS - 10_000);
+    const ids = new Set(subset.keys());
+    for (const id of [...branches.keys()]) if (!ids.has(id)) branches.delete(id);
+    paired?.intro.keepOnly(ids);
+    paired?.notes.keepOnly(ids);
+    paired?.headsups.keepOnly(ids);
+    // Keeps the crew and its recent work fresh for the next prompt, while there are sessions to tell.
+    if (paired !== null && subset.size > 0) {
+      void paired.intro.refresh(HEARTBEAT_MS - 10_000).then(writeCrew);
+      void paired.headsups.refreshLedger();
+    }
+    // Sessions idle ten minutes since their last turn: their ledger lines.
+    void ledger.tick([...subset.values()]);
   }, HEARTBEAT_MS);
   // Report promptly after a change, coalescing bursts, and notice a new pairing within a second.
   setInterval(function () {
@@ -365,6 +493,24 @@ async function setup(args: string[]): Promise<void> {
       say(`· Grok hooks not added: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+  // Codex and Grok sessions read the crew's notes and agents from crew.md: a pointer to it in Codex's global AGENTS.md and a
+  // rule file of Grok's own. Only the pointer, so it never changes; the rest of AGENTS.md stays as it is.
+  if (await isDirectory(codexHome())) {
+    try {
+      await installPointer(codexAgentsPath(codexHome()));
+      say(`· Codex sessions read your crew's notes and agents in ${tilde(crewFilePath())} (a pointer in ${tilde(codexAgentsPath(codexHome()))}).`);
+    } catch (e) {
+      say(`· Could not point Codex at the crew's notes: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  if (await isDirectory(grokHome())) {
+    try {
+      await installPointer(grokRulePath(grokHome()));
+      say(`· Grok sessions read your crew's notes and agents in ${tilde(crewFilePath())} (${tilde(grokRulePath(grokHome()))}).`);
+    } catch (e) {
+      say(`· Could not point Grok at the crew's notes: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   const link = await linkCommand();
   if (link !== null) say(`· \`soopdoop\` command: ${tilde(link)}`);
@@ -427,6 +573,13 @@ async function setup(args: string[]): Promise<void> {
   for (const spec of specs) await load(spec);
   // The updater is the one running this: write its plist now, it is read on the next load.
   for (const spec of all) if (keepUpdater && spec.name === "updater") await writePlist(spec);
+  // The scout runs only while it is on; an update points it at this version again. It must not stop setup.
+  try {
+    const scoutOn = (await readSettings()).scout;
+    if (scoutOn || (await isLoaded(SCOUT_LABEL))) await setScoutService(scoutOn, scoutSpec(ROOT, process.execPath, home, process.env.SOOPDOOP_HOME));
+  } catch (e) {
+    say(`· The scout's background job: ${e instanceof Error ? e.message : String(e)}`);
+  }
   const railUp = await waitFor(function () { return answers(`${RAIL_URL}config.json`); }, 30_000);
   const daemonUp = await waitFor(function () { return answers(`http://127.0.0.1:${DAEMON_PORT}/status`); }, 10_000);
   if (!railUp || !daemonUp) {
@@ -538,6 +691,61 @@ async function status(): Promise<void> {
   const fund = await readFund();
   const spent = spentToday(await readSpends(), Date.now()).total;
   console.log(`fund    $${spent.toFixed(2)} of $${fund.dailyUsd.toFixed(2)} spent answering crewmates in the last 24 hours · soopdoop fund`);
+  const sent = Object.values((await readLedgerFile(ledgerPath(home))).lines);
+  const lastSent = sent.reduce(function (m, l) { return Math.max(m, l.sentAt); }, 0);
+  console.log(`ledger  ${settings.ledgerLines ? "lines in Claude Haiku's words, on your Claude account (soopdoop ledger-lines off)" : "lines in your own prompts' words, no Haiku (soopdoop ledger-lines on)"}` +
+    ` · ${sent.length} sent from this Mac${lastSent === 0 ? "" : `, the last ${ago(lastSent)}`} · ${tilde(ledgerPath(home))}`);
+  const scoutLoaded = process.platform === "darwin" && (await isLoaded(SCOUT_LABEL));
+  const lastRun = (await Bun.file(lastRunPath(home)).text().catch(function () { return ""; })).trim();
+  console.log(`scout   ${settings.scout
+    ? `on · every hour${scoutLoaded ? "" : " (not scheduled: soopdoop scout on)"} · ${lastRun === "" ? "not run yet" : `last run ${ago(Date.parse(lastRun))}`} · log ${tilde(scoutSpec(ROOT, process.execPath, home).log)}`
+    : "off (soopdoop scout on)"}`);
+  const codexPointer = codexOn && (await Bun.file(codexAgentsPath(codexHome())).text().catch(function () { return ""; })).includes(BLOCK_START);
+  const grokPointer = grokOn && (await Bun.file(grokRulePath(grokHome())).exists());
+  console.log(`crew    notes and agents in ${tilde(crewFilePath(home))}` +
+    `${codexOn ? ` · Codex ${codexPointer ? "points at it" : "does not point at it (soopdoop setup)"}` : ""}` +
+    `${grokOn ? ` · Grok ${grokPointer ? "points at it" : "does not point at it (soopdoop setup)"}` : ""}`);
+}
+
+// `soopdoop scout on|off` turns the scout and its hourly job on or off; `run` is what the job runs; nothing shows how it is.
+async function scoutCommand(args: string[]): Promise<void> {
+  const [what] = args;
+  const home = soopdoopHome();
+  const spec = scoutSpec(ROOT, process.execPath, home, process.env.SOOPDOOP_HOME);
+  if (what === "run") {
+    const result = await runScout({
+      async scoutOn() { return (await readSettings()).scout; },
+      claude() { return findRealClaude(); },
+      paired: isPaired,
+      intercom() { return readIntercomServer(); },
+      bun: process.execPath,
+      mcpFile: MCP_FILE,
+      ...(process.env.SOOPDOOP_HOME === undefined ? {} : { soopdoopHomeOverride: process.env.SOOPDOOP_HOME }),
+    });
+    console.log(scoutLogLine(result, Date.now()));
+    return;
+  }
+  if (what === "on" || what === "off") {
+    await writeSettings({ scout: what === "on" });
+    if (process.platform === "darwin") await setScoutService(what === "on", spec);
+    if (what === "off") {
+      console.log("The scout is off. Nothing reads your help desk.");
+      return;
+    }
+    console.log("The scout is on. Every hour, Claude Haiku on your own Claude plan reads the Intercom conversations closed or rated since " +
+      "its last run, and sends one line to your crew's wire for each thank-you or turnaround. It never names a customer, and nothing " +
+      "else about the conversations leaves this Mac. It costs a few cents a day on your own plan (about $0.003 for a quiet hour).");
+    if ((await readIntercomServer()) === undefined) {
+      console.log(`Sign in to Intercom once: run \`claude mcp add --transport http --scope user intercom ${INTERCOM_URL}\` ` +
+        "(EU workspaces: https://mcp.eu.intercom.com/mcp), then type /mcp in a Claude Code session, pick intercom and sign in.");
+    }
+    console.log(`Its log: ${tilde(spec.log)}. \`soopdoop scout off\` stops it.`);
+    return;
+  }
+  const lastRun = (await Bun.file(lastRunPath(home)).text().catch(function () { return ""; })).trim();
+  console.log((await readSettings()).scout
+    ? `The scout is on: every hour, ${lastRun === "" ? "not run yet" : `last run ${ago(Date.parse(lastRun))}`}. \`soopdoop scout off\` stops it.`
+    : "The scout is off. `soopdoop scout on` turns it on: props from customers, from Intercom, for a few cents a day on your own Claude plan.");
 }
 
 // `soopdoop fund` shows the anti-hijacking fund and what it paid for in the last 24 hours. `soopdoop fund <dollars>
@@ -615,6 +823,13 @@ async function uninstall(): Promise<void> {
   } catch (e) {
     console.log(`· Could not remove the Grok hooks: ${e instanceof Error ? e.message : String(e)}`);
   }
+  // Only the pointer soopdoop added; the rest of Codex's AGENTS.md stays exactly as it was. Grok's rule file is ours alone.
+  try {
+    if (await uninstallPointer(codexAgentsPath(codexHome()))) console.log(`· Removed the crew pointer from ${tilde(codexAgentsPath(codexHome()))}. The rest of the file is untouched.`);
+    if (await uninstallPointer(grokRulePath(grokHome()), true)) console.log(`· Removed the crew pointer ${tilde(grokRulePath(grokHome()))}.`);
+  } catch (e) {
+    console.log(`· Could not remove the crew pointers: ${e instanceof Error ? e.message : String(e)}`);
+  }
   const claude = findClaude();
   if (claude !== null) {
     Bun.spawnSync([claude, "mcp", "remove", "--scope", "user", "soopdoop"], { stdout: "pipe", stderr: "pipe" });
@@ -632,12 +847,12 @@ async function uninstall(): Promise<void> {
   }
   if (await removeSkill()) console.log(`· Removed the soopdoop skill from ${tilde(skillDir())}.`);
   if (process.platform === "darwin") {
-    for (const spec of serviceSpecs(ROOT, process.execPath, soopdoopHome())) {
+    for (const spec of [...serviceSpecs(ROOT, process.execPath, soopdoopHome()), scoutSpec(ROOT, process.execPath, soopdoopHome())]) {
       await unload(spec.label);
       await removeFile(plistPath(spec.label)).catch(function () { /* already gone */ });
     }
     await removeApp();
-    console.log("· Stopped the background rail, daemon, app, watcher and updater, and removed ~/Applications/soopdoop.app.");
+    console.log("· Stopped the background rail, daemon, app, watcher, updater and scout, and removed ~/Applications/soopdoop.app.");
   }
   const link = path.join(path.dirname(process.execPath), "soopdoop");
   try {
@@ -661,6 +876,8 @@ soopdoop update [--to <version>]                install the newest release (or m
 soopdoop auto-update [on|off]                   whether new releases install themselves (on by default)
 soopdoop auto-open [on|off]                     whether soopdoop opens when Superset opens (on by default)
 soopdoop fund [<dollars> [share]]               what this Mac's agents may spend answering crewmates in 24 hours ($5, half each)
+soopdoop ledger-lines [on|off]                  whether Claude Haiku writes your ledger lines, on your own account (on by default)
+soopdoop scout [on|off]                         props from customers: Haiku reads Intercom every hour (off by default)
 soopdoop start | stop | restart                 the background services
 soopdoop uninstall                              remove the hooks, the background services, the app, the ask_operator tool and the skill
 soopdoop pair <convex-url> <token>              pair by hand (the rail does this for you)
@@ -693,10 +910,12 @@ try {
       for (const spec of serviceSpecs(ROOT, process.execPath, soopdoopHome(), process.env.SOOPDOOP_HOME)) {
         if (spec.needsApp !== true || built) await load(spec);
       }
+      // The scout only while it is on.
+      if ((await readSettings()).scout) await load(scoutSpec(ROOT, process.execPath, soopdoopHome(), process.env.SOOPDOOP_HOME));
       break;
     }
     case "stop":
-      for (const spec of serviceSpecs(ROOT, process.execPath, soopdoopHome())) await unload(spec.label);
+      for (const spec of [...serviceSpecs(ROOT, process.execPath, soopdoopHome()), scoutSpec(ROOT, process.execPath, soopdoopHome())]) await unload(spec.label);
       break;
     case "restart":
       for (const spec of serviceSpecs(ROOT, process.execPath, soopdoopHome())) {
@@ -733,6 +952,22 @@ try {
     }
     case "fund":
       await fundCommand(rest);
+      break;
+    case "ledger-lines": {
+      const value = rest[0];
+      if (value !== "on" && value !== "off") {
+        console.log(`Ledger lines in Claude Haiku's words are ${(await readSettings()).ledgerLines ? "on" : "off"}. Change it with: soopdoop ledger-lines on|off`);
+        break;
+      }
+      // The daemon reads the setting each time it writes a line, so it needs no restart.
+      await writeSettings({ ledgerLines: value === "on" });
+      console.log(value === "on"
+        ? "Ledger lines on: when a session finishes a piece of work, Claude Haiku on your own Claude account writes its line (a few hundredths of a cent each). You can see, edit and delete every line in the HUD."
+        : "Ledger lines off: each line is your session's first and last prompts, in your own words. No Haiku call.");
+      break;
+    }
+    case "scout":
+      await scoutCommand(rest);
       break;
     case "uninstall":
       await uninstall();

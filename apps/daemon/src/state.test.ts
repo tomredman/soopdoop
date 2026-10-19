@@ -46,6 +46,16 @@ describe("subset state", function () {
     expect(parseHookEvent(null)).toBeNull();
   });
 
+  test("a prompt is read at UserPromptSubmit only, and never lands on the agent or in the report", function () {
+    const ev = parseHookEvent({ hook_event_name: "UserPromptSubmit", session_id: "s", cwd: "/r/vibes", prompt: "fix the bounces" });
+    expect(ev?.prompt).toBe("fix the bounces");
+    expect(parseHookEvent({ hook_event_name: "Stop", session_id: "s", prompt: "fix the bounces" })?.prompt).toBeUndefined();
+    const s = new Map();
+    if (ev !== null) apply(s, ev, 1);
+    expect(JSON.stringify([...s.values()])).not.toContain("bounces");
+    expect(JSON.stringify(toReport(s))).not.toContain("bounces");
+  });
+
   test("parseHookEvent takes Grok's camelCase payload and the harness and local fields the hook adds", function () {
     // Grok's own event names are snake_case; Claude's PascalCase name rides hook_event_name when Grok sends it.
     expect(parseHookEvent({ hookEventName: "pre_tool_use", sessionId: "g1", cwd: "/r", workspaceRoot: "/r" })).toEqual({

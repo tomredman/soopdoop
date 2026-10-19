@@ -76,6 +76,9 @@ export interface Introducer {
   refresh(maxAgeMs: number): Promise<void>;
   // Forgets sessions that ended.
   keepOnly(sessionIds: Set<string>): void;
+  // The last copy of the crew's running agents, without reading it again (heads-ups score prompts against it). Null before
+  // the first read.
+  crew(): CrewNow | null;
 }
 
 export interface IntroducerOptions {
@@ -146,6 +149,9 @@ export function introducer(readCrew: () => Promise<unknown>, options: Introducer
     },
     keepOnly(sessionIds) {
       for (const id of [...seen.keys()]) if (!sessionIds.has(id)) seen.delete(id);
+    },
+    crew() {
+      return copy?.crew ?? null;
     },
   };
 }
