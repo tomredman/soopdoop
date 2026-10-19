@@ -374,6 +374,8 @@ export const toRun = query({
     fromHandle: v.string(),
     why: v.optional(v.string()),
     targetHarness: v.optional(v.string()),
+    // "Run when my agent is idle" accepted it, not the owner's own click: the daemon waits for the agent to be idle.
+    autoAccepted: v.optional(v.boolean()),
   })),
   handler: async function (ctx, args) {
     const { hacker, daemon } = await requireDaemon(ctx, args.token);
@@ -388,7 +390,15 @@ export const toRun = query({
       if (h.targetMachine !== daemon.machineName || h.targetAgentId === undefined) continue;
       if (await isPrivateOn(ctx, hacker._id, daemon.machineName, h.targetAgentId)) continue;
       const from = await ctx.db.get("hackers", h.fromId);
-      out.push({ handoffId: h._id, targetAgentId: h.targetAgentId, text: h.text, fromHandle: from?.handle ?? "", why: h.why, targetHarness: h.targetHarness });
+      out.push({
+        handoffId: h._id,
+        targetAgentId: h.targetAgentId,
+        text: h.text,
+        fromHandle: from?.handle ?? "",
+        why: h.why,
+        targetHarness: h.targetHarness,
+        autoAccepted: h.autoAccepted === true,
+      });
     }
     return out;
   },
@@ -410,7 +420,8 @@ async function refuseIfPrivate(ctx: QueryCtx, h: Doc<"handoffs">): Promise<void>
 
 // The daemon delivered it to the agent. It has a day from now to report back.
 export const started = mutation({
-  args: { token: v.string(), handoffId: v.id("handoffs") },
+  // `note` says how it was delivered when that matters to the sender ("copied to the clipboard: paste it into the agent").
+  args: { token: v.string(), handoffId: v.id("handoffs"), note: v.optional(v.string()) },
   returns: v.null(),
   handler: async function (ctx, args) {
     const { hacker, daemon } = await requireDaemon(ctx, args.token);
@@ -419,7 +430,8 @@ export const started = mutation({
     if (h.status !== "accepted") throw new ConvexError("This hand-off is not waiting to run.");
     await refuseIfPrivate(ctx, h);
     const now = Date.now();
-    await ctx.db.patch("handoffs", h._id, { status: "running", startedAt: now, expiresAt: now + OFFER_MS });
+    const note = args.note?.trim().slice(0, 200);
+    await ctx.db.patch("handoffs", h._id, { status: "running", startedAt: now, expiresAt: now + OFFER_MS, ...(note === undefined || note === "" ? {} : { note }) });
     await ctx.scheduler.runAfter(OFFER_MS, internal.handoffs.expire, { handoffId: h._id });
     return null;
   },

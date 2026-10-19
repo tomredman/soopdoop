@@ -110,7 +110,7 @@ describe("hand-offs", function () {
     const auto = await tom.mutation(api.handoffs.offer, { toHandle: "jimmy", text: TASK, via: "hud" });
     expect(await handoff(t, auto)).toMatchObject({ status: "accepted", targetAgentId: "a1" });
     expect(await t.query(api.handoffs.toRun, { token: jimmyToken })).toEqual([
-      { handoffId: auto, targetAgentId: "a1", text: TASK, fromHandle: "tom", why: undefined, targetHarness: "claude-code" },
+      { handoffId: auto, targetAgentId: "a1", text: TASK, fromHandle: "tom", why: undefined, targetHarness: "claude-code", autoAccepted: true },
     ]);
     // Without an agent to run in, it waits for Jimmy to pick one.
     const noAgent = await tom.mutation(api.handoffs.offer, { toHandle: "jimmy", text: "Translate the onboarding guide", via: "hud" });
