@@ -1,10 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Asked } from "./ask";
-import { cleanError, CREW_TOOL, formatCrew, formatRelay, handle, TOOL, type Tools } from "./mcp";
-import { logRead, parseReads, prepareAnswer, siteUrl } from "./operator";
+import { askWaitMs, cleanError, CREW_TOOL, formatCrew, formatRelay, handle, TOOL, type Tools } from "./mcp";
+import { logRead, parseReads, prepareAnswer, siteUrl, summaryFor } from "./operator";
 import type { AgentRecord, Subset } from "./state";
 
 const dirs: string[] = [];
@@ -136,12 +136,61 @@ describe("the daemon's side of the Operator", function () {
       ["a3", agentRecord({ agentId: "a3" })],
     ]);
     const question = "Where are expired listings filtered?";
-    expect(await prepareAnswer(subset, { relayId: "r1", agentId: "a1", question }, ask)).toEqual({ answer: "In select.ts.", tokensRead: 1200 });
-    expect(await prepareAnswer(subset, { relayId: "r2", agentId: "a2", question }, ask)).toEqual({ refused: "That agent is private." });
-    expect(await prepareAnswer(subset, { relayId: "r3", agentId: "a3", question }, ask)).toEqual({ refused: "That agent's conversation is not available yet." });
-    expect(await prepareAnswer(subset, { relayId: "r4", agentId: "gone", question }, ask)).toEqual({ refused: "That agent is no longer running." });
-    expect(await prepareAnswer(subset, { relayId: "r5", agentId: "a1" }, ask)).toEqual({ refused: "The Operator did not send the question." });
+    // No transcript anywhere on this machine for a3.
+    async function nowhere(): Promise<string | null> {
+      return null;
+    }
+    expect(await prepareAnswer(subset, { relayId: "r1", agentId: "a1", question }, ask, nowhere)).toEqual({ answer: "In select.ts.", tokensRead: 1200 });
+    expect(await prepareAnswer(subset, { relayId: "r2", agentId: "a2", question }, ask, nowhere)).toEqual({ refused: "That agent is private." });
+    expect(await prepareAnswer(subset, { relayId: "r3", agentId: "a3", question }, ask, nowhere)).toEqual({ refused: "That agent's conversation is not available yet." });
+    expect(await prepareAnswer(subset, { relayId: "r4", agentId: "gone", question }, ask, nowhere)).toEqual({ refused: "That agent is no longer running." });
+    expect(await prepareAnswer(subset, { relayId: "r5", agentId: "a1" }, ask, nowhere)).toEqual({ refused: "The Operator did not send the question." });
     expect(asked).toEqual([["a1", question]]);
+  });
+
+  test("a Grok agent's hook names no transcript: it is found in Grok's folder, kept, and the agent is asked with it", async function () {
+    const seen: (string | undefined)[] = [];
+    async function ask(agent: AgentRecord): Promise<Asked> {
+      seen.push(agent.transcriptPath);
+      return { answer: "In select.ts." };
+    }
+    const looked: [string, string, string | undefined][] = [];
+    async function find(harness: string, sessionId: string, cwd?: string): Promise<string | null> {
+      looked.push([harness, sessionId, cwd]);
+      return "/Users/ada/.grok/sessions/%2Fr%2Fvibes/g1/chat_history.jsonl";
+    }
+    const subset: Subset = new Map([["g1", agentRecord({ agentId: "g1", harness: "grok", cwd: "/r/vibes" })]]);
+    expect(await prepareAnswer(subset, { relayId: "r1", agentId: "g1", question: "where?" }, ask, find)).toEqual({ answer: "In select.ts." });
+    expect(looked).toEqual([["grok", "g1", "/r/vibes"]]);
+    expect(seen).toEqual(["/Users/ada/.grok/sessions/%2Fr%2Fvibes/g1/chat_history.jsonl"]);
+    expect(subset.get("g1")?.transcriptPath).toBe("/Users/ada/.grok/sessions/%2Fr%2Fvibes/g1/chat_history.jsonl");
+  });
+
+  test("routing summaries come from each harness's own transcript", async function () {
+    const dir = await tempDir();
+    const rollout = path.join(dir, "rollout-2026-10-18T09-00-00-c1.jsonl");
+    await writeFile(rollout, [
+      JSON.stringify({ type: "session_meta", payload: { id: "c1", cwd: "/Users/ada/projects/vibes", git: { branch: "feat/coupons" } } }),
+      JSON.stringify({ type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "add coupon codes" }], internal_chat_message_metadata_passthrough: { content_item_kinds: ["user.text"] } } }),
+    ].join("\n") + "\n");
+    const subset: Subset = new Map([
+      ["c1", agentRecord({ agentId: "c1", harness: "codex", transcriptPath: rollout })],
+      ["c2", agentRecord({ agentId: "c2", harness: "codex", open: false, transcriptPath: rollout })],
+    ]);
+    async function nowhere(): Promise<string | null> {
+      return null;
+    }
+    expect(await summaryFor(subset, "c1", nowhere)).toBe('vibes@feat/coupons · "add coupon codes"');
+    expect(await summaryFor(subset, "c2", nowhere)).toBeNull();
+    subset.set("g1", agentRecord({ agentId: "g1", harness: "grok" }));
+    expect(await summaryFor(subset, "g1", nowhere)).toBeNull();
+  });
+
+  test("waits less than Codex's 60-second tool limit when Codex starts the server", function () {
+    expect(askWaitMs({})).toBe(75_000);
+    expect(askWaitMs({ SOOPDOOP_ASK_WAIT_MS: "50000" })).toBe(50_000);
+    expect(askWaitMs({ SOOPDOOP_ASK_WAIT_MS: "nonsense" })).toBe(75_000);
+    expect(askWaitMs({ SOOPDOOP_ASK_WAIT_MS: "999999" })).toBe(75_000);
   });
 
   test("logs every ask on this machine, without the question or the answer", async function () {

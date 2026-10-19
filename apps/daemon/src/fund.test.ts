@@ -13,6 +13,7 @@ import {
   readFund,
   type Spend,
   spentToday,
+  tokensReadOf,
   writeFund,
 } from "./fund";
 
@@ -60,6 +61,51 @@ describe("what one answer costs", function () {
     expect(answerCost({ cache_creation_input_tokens: 1_000 }, "claude-opus-5-5")).toBeCloseTo(0.005, 6);
     expect(answerCost({}, "claude-opus-5-5")).toBe(0);
   });
+
+  test("prices OpenAI's models (Codex) and xAI's (Grok) by the longest prefix that fits", function () {
+    expect(priceFor("gpt-6.1-sol").input).toBe(2);
+    expect(priceFor("gpt-6-sol").cacheRead).toBe(0.2);
+    expect(priceFor("gpt-6-astra").output).toBe(50);
+    expect(priceFor("gpt-5.4-mini-2026-03-01").input).toBe(0.75);
+    expect(priceFor("gpt-5.4").input).toBe(2.5);
+    expect(priceFor("gpt-5.2-codex").input).toBe(1.75);
+    expect(priceFor("gpt-5-mini").input).toBe(0.25);
+    expect(priceFor("gpt-5").input).toBe(1.25);
+    expect(priceFor("o3-mini").input).toBe(1.1);
+    expect(priceFor("o3").input).toBe(2);
+    expect(priceFor("o4-mini").cacheRead).toBe(0.275);
+    // "pro" models list no cached-input price: their cache reads cost plain input.
+    expect(priceFor("gpt-5.5-pro").cacheRead).toBe(30);
+    expect(priceFor("grok-4.7").input).toBe(2);
+    expect(priceFor("grok-4.7-build").input).toBe(0.68);
+    expect(priceFor("grok-4.3").output).toBe(2.5);
+    // A Grok model not listed is priced like the dearest Grok; any other unknown model like the dearest of all.
+    expect(priceFor("grok-code-fast-1").input).toBe(2);
+    expect(priceFor("gpt-9").input).toBe(10);
+  });
+
+  test("Codex's usage counts cached and cache-written tokens inside input_tokens", function () {
+    // A real Codex fork's usage (Codex 0.160.0, gpt-6.1-sol): 66,392 read, 34,048 of them from the cache, 69 written.
+    const fork = { input_tokens: 66_392, cached_input_tokens: 34_048, cache_write_input_tokens: 0, output_tokens: 69, reasoning_output_tokens: 0 };
+    expect(tokensReadOf(fork)).toBe(66_392);
+    expect(answerCost(fork, "gpt-6.1-sol")).toBeCloseTo(((66_392 - 34_048) * 2 + 34_048 * 0.1 + 69 * 10) / 1_000_000, 10);
+    // gpt-6.x charges cache writes at 1.25 times input.
+    expect(answerCost({ input_tokens: 1_000, cached_input_tokens: 0, cache_write_input_tokens: 1_000, output_tokens: 0 }, "gpt-6.1-sol")).toBeCloseTo(0.0025, 10);
+    // Above 272,000 tokens of input the whole request is priced at the long-context rates.
+    expect(answerCost({ input_tokens: 272_000, cached_input_tokens: 0, output_tokens: 0 }, "gpt-6.1-sol")).toBeCloseTo(0.544, 10);
+    expect(answerCost({ input_tokens: 300_000, cached_input_tokens: 0, output_tokens: 1_000 }, "gpt-6.1-sol")).toBeCloseTo(1.2 + 0.015, 10);
+  });
+
+  test("Grok's usage uses Claude's keys, and matches what Grok itself charged", function () {
+    // One real Grok turn on grok-4.7-build: 42,602 tokens in, 1,152 of them cached, 94 out. Grok recorded 285,736,000 ticks
+    // for it (1 dollar is 10^10 ticks).
+    const turn = { input_tokens: 41_450, cache_read_input_tokens: 1_152, cache_creation_input_tokens: 0, output_tokens: 94, reasoning_tokens: 81 };
+    expect(tokensReadOf(turn)).toBe(42_602);
+    expect(answerCost(turn, "grok-4.7-build")).toBeCloseTo(285_736_000 / 1e10, 10);
+    // From 200,000 tokens on, xAI charges twice every rate.
+    expect(answerCost({ input_tokens: 200_000, output_tokens: 0 }, "grok-4.7")).toBeCloseTo(0.8, 10);
+    expect(answerCost({ input_tokens: 199_999, output_tokens: 0 }, "grok-4.7")).toBeCloseTo(0.399998, 10);
+  });
 });
 
 describe("the fund's settings", function () {
@@ -103,6 +149,9 @@ describe("the fund's limits", function () {
     // The latest read of a1: 400,000 tokens at $8 a million to write to the hour-long cache, plus room for the answer.
     expect(estimateCost(spends, "a1")).toBeCloseTo((400_000 * 8 + 2_000 * 20) / 1_000_000, 6);
     expect(estimateCost(spends, "never-read")).toBe(0);
+    // A Codex agent: its conversation at gpt-6.1-sol's cache-write price; a Grok one at plain input.
+    expect(estimateCost([spend({ agentId: "c1", tokensRead: 66_392, model: "gpt-6.1-sol" })], "c1")).toBeCloseTo((66_392 * 2.5 + 2_000 * 10) / 1_000_000, 10);
+    expect(estimateCost([spend({ agentId: "g1", tokensRead: 42_602, model: "grok-4.7-build" })], "g1")).toBeCloseTo((42_602 * 0.68 + 2_000 * 2.04) / 1_000_000, 10);
   });
 
   test("lets answers through while the fund lasts, then stops them; old answers drop out after 24 hours", function () {

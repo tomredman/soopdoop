@@ -1,5 +1,5 @@
 // ABOUTME: The daemon's side of the Operator: a routing summary for each open agent after its turns, and answers to the
-// ABOUTME: questions routed to this machine's agents, asked of the agent itself (ask.ts), once per relay, within the fund. Every ask is logged.
+// ABOUTME: questions routed to this machine's agents (Claude Code, Codex or Grok), asked of the agent itself (ask.ts), once per relay, within the fund.
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { ConvexClient } from "convex/browser";
@@ -8,7 +8,7 @@ import { askAgent, type Asked } from "./ask";
 import { soopdoopHome } from "./config";
 import { estimateCost, fundLimit, readFund, readsLogPath, readSpends } from "./fund";
 import { isRecord, type AgentRecord, type Subset } from "./state";
-import { parseTranscript, readTail, routingSummary } from "./transcript";
+import { findTranscript, readTranscript, routingSummary } from "./transcripts/index";
 
 export const updateRouting = makeFunctionReference<"mutation">("routing:update");
 const readsFor = makeFunctionReference<"query">("operator:readsFor");
@@ -38,25 +38,42 @@ export function parseReads(raw: unknown): ReadRequest[] {
   });
 }
 
+export type Find = typeof findTranscript;
+
+// The agent's transcript: the file its hook named (Claude Code, and Codex mostly), or the one found in its harness's folder
+// (Grok never names one), which is kept on the agent for next time. Null when there is none yet.
+export async function transcriptOf(subset: Subset, agent: AgentRecord, find: Find = findTranscript): Promise<string | null> {
+  if (agent.transcriptPath !== undefined) return agent.transcriptPath;
+  const found = await find(agent.harness, agent.agentId, agent.cwd);
+  const now = subset.get(agent.agentId);
+  if (found !== null && now !== undefined && now.transcriptPath === undefined) subset.set(agent.agentId, { ...now, transcriptPath: found });
+  return found;
+}
+
 // What to send for one question: the agent's own answer, or why there is none. Only open agents are ever asked.
 export async function prepareAnswer(
   subset: Subset,
   read: ReadRequest,
   ask: (agent: AgentRecord, question: string) => Promise<Asked> = askAgent,
+  find: Find = findTranscript,
 ): Promise<Asked> {
   const agent = subset.get(read.agentId);
   if (agent === undefined) return { refused: "That agent is no longer running." };
   if (!agent.open) return { refused: "That agent is private." };
-  if (agent.transcriptPath === undefined) return { refused: "That agent's conversation is not available yet." };
+  const transcriptPath = await transcriptOf(subset, agent, find);
+  if (transcriptPath === null) return { refused: "That agent's conversation is not available yet." };
   if (read.question === undefined) return { refused: "The Operator did not send the question." };
-  return await ask(agent, read.question);
+  return await ask({ ...agent, transcriptPath }, read.question);
 }
 
-// The one-line summary the Operator routes with, for an open agent with a transcript. Null otherwise.
-export async function summaryFor(subset: Subset, agentId: string): Promise<string | null> {
+// The one-line summary the Operator routes with, for an open agent with a transcript, read with its harness's reader.
+// Null otherwise.
+export async function summaryFor(subset: Subset, agentId: string, find: Find = findTranscript): Promise<string | null> {
   const agent = subset.get(agentId);
-  if (agent === undefined || !agent.open || agent.transcriptPath === undefined) return null;
-  const summary = routingSummary(parseTranscript(await readTail(agent.transcriptPath, 512_000)));
+  if (agent === undefined || !agent.open) return null;
+  const file = await transcriptOf(subset, agent, find);
+  if (file === null) return null;
+  const summary = routingSummary(await readTranscript(agent.harness, file));
   return summary === "" ? null : summary;
 }
 
