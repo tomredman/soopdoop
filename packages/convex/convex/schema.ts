@@ -1,5 +1,5 @@
 // ABOUTME: The soopdoop data model: hackers, friendships, invites, subsets (presence), knocks, flicks, supersetProfiles, the
-// ABOUTME: Operator's routingSummaries and relays, and the wire (feed). Later phases add crews, treeNodes, eyes, jackIns and companyTokens.
+// ABOUTME: Operator's routingSummaries and relays, the wire (feed), and for crews: crews, the ledger, notes, hand-offs, heads-ups, digests, drops.
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
@@ -28,6 +28,45 @@ export const relayStatus = v.union(
   v.literal("error"),
 );
 
+// What can be on the wire. The first five are from before crews; the rest come with crews (docs/plan-crews.html §8).
+export const feedKind = v.union(
+  v.literal("answer"),
+  v.literal("agent"),
+  v.literal("catch"),
+  v.literal("superflick"),
+  v.literal("rally"),
+  v.literal("ship"),
+  v.literal("walkthrough"),
+  v.literal("handoff"),
+  v.literal("headsup"),
+  v.literal("note"),
+  v.literal("shout"),
+  v.literal("props"),
+  v.literal("save"),
+  v.literal("digest"),
+);
+
+// A crew's plan: free for friends, team at $10 a member a month (docs/plan-crews.html §12).
+export const crewPlan = v.union(v.literal("free"), v.literal("team"));
+
+// Where a hand-off stands: offered to its receiver; accepted or declined by them (or expired, 24 hours); running in
+// their agent; done (report_back) or failed.
+export const handoffStatus = v.union(
+  v.literal("offered"),
+  v.literal("accepted"),
+  v.literal("declined"),
+  v.literal("expired"),
+  v.literal("running"),
+  v.literal("done"),
+  v.literal("failed"),
+);
+
+// What a hacker lets one crewmate do with hand-offs: ask me each time (the default), run when my agent is idle, never.
+export const handoffMode = v.union(v.literal("ask"), v.literal("auto"), v.literal("never"));
+
+// A crew note: proposed by an agent and waiting for its owner, live, or retired (replaced or past 45 days unconfirmed).
+export const noteStatus = v.union(v.literal("proposed"), v.literal("live"), v.literal("retired"));
+
 // What soopdoop keeps from a hacker's public Superset leaderboard profile (lib/supersetProfile.ts reads it).
 // No token counts, cost or rank: AGENTS.md keeps token counts off personal and crew boards.
 export const supersetProfileFields = {
@@ -49,6 +88,8 @@ export default defineSchema({
     focusUntil: v.optional(v.number()),
     // Off the crew board for everyone but themselves.
     hideFromBoards: v.optional(v.boolean()),
+    // The app sends the Mac's time zone (IANA name), so a crew's digest hour can follow its leader.
+    timezone: v.optional(v.string()),
     // A per-sender knock limit is Phase 1.5; quiet hours Phase 3.
     createdAt: v.number(),
   })
@@ -160,6 +201,10 @@ export default defineSchema({
     byOperator: v.optional(v.boolean()),
     // The question named someone the Operator could not place in the crew: the asker can fix the @handle and ask again.
     askAgain: v.optional(v.boolean()),
+    // A work order the Operator turned into a hand-off offer instead of refusing it.
+    handoffId: v.optional(v.id("handoffs")),
+    // What the Operator's own Claude calls for this relay cost, in US dollars at API prices (the crew's cost line).
+    usd: v.optional(v.number()),
   })
     .index("by_asker", ["askerHackerId"])
     .index("by_target_status", ["targetHackerId", "status"]),
@@ -167,7 +212,7 @@ export default defineSchema({
   // The wire: what happened in a crew lately, for the HUD's feed. An agent answered a crewmate, a crewmate started an
   // agent, a flick was caught, a superflick landed, a rally grew. Written when it happens (feed.ts); kept 7 days.
   feed: defineTable({
-    kind: v.union(v.literal("answer"), v.literal("agent"), v.literal("catch"), v.literal("superflick"), v.literal("rally")),
+    kind: feedKind,
     // Who did it: whose agent answered, who started an agent, who caught the flick, who superflicked, who flicked back.
     hackerId: v.id("hackers"),
     // The other person: who was helped, whose flick was caught, who was superflicked, the rally partner.
@@ -179,6 +224,21 @@ export default defineSchema({
     rally: v.optional(v.number()),
     // agent: which session it is, so an agent whose summary comes back (its owner's daemon restarted) is not news again.
     agentId: v.optional(v.string()),
+    // ship, walkthrough, handoff, headsup, note, shout, props, save, digest: one line of text for the wire (a shout,
+    // what shipped, the props line), and a link when there is one (the PR, the walkthrough).
+    text: v.optional(v.string()),
+    url: v.optional(v.string()),
+    // What the event is about, so the HUD can open it and so one thing is never news twice.
+    handoffId: v.optional(v.id("handoffs")),
+    ledgerId: v.optional(v.id("ledger")),
+    noteId: v.optional(v.id("notes")),
+    dropId: v.optional(v.id("drops")),
+    digestId: v.optional(v.id("digests")),
+    // props: the wire line it was given on; fromCustomer when the scout or a help-desk webhook brought it.
+    about: v.optional(v.id("feed")),
+    fromCustomer: v.optional(v.boolean()),
+    // shout: gone from the wire after 24 hours (a scheduled function removes it).
+    expiresAt: v.optional(v.number()),
     at: v.number(),
   })
     .index("by_hacker_at", ["hackerId", "at"])
@@ -201,4 +261,185 @@ export default defineSchema({
   })
     .index("by_to_outcome", ["toHackerId", "outcome"])
     .index("by_from_to", ["fromHackerId", "toHackerId"]),
+
+  // A crew: a name, a leader, up to 8 members (crewMembers), settings and a plan. The scope for the ledger, notes,
+  // hand-offs, heads-ups, the digest and billing. Friends stay the social graph; a hacker in no crew keeps the friends
+  // behaviour. One crew per hacker. Secrets here (the Slack webhook, Intercom's token and secret) are never returned by
+  // a query: queries say only whether one is set.
+  crews: defineTable({
+    name: v.string(),
+    leaderId: v.id("hackers"),
+    plan: crewPlan,
+    // The digest's hour (0 to 23) in the crew's time zone (an IANA name).
+    digestHour: v.number(),
+    timezone: v.string(),
+    slackWebhook: v.optional(v.string()),
+    // Ships, props and saves go to Slack as they happen. Off by default.
+    slackMirror: v.optional(v.boolean()),
+    // Crewmates whose agents may post crew notes without their owner's approval (the leader's choice).
+    trustedNotePosters: v.optional(v.array(v.id("hackers"))),
+    intercomToken: v.optional(v.string()),
+    intercomSecret: v.optional(v.string()),
+    stripeCustomerId: v.optional(v.string()),
+    stripeSubscriptionId: v.optional(v.string()),
+    // The team plan runs until here (Stripe's current period end); unset on the free plan.
+    planUntil: v.optional(v.number()),
+    createdAt: v.number(),
+  }).index("by_leader", ["leaderId"]),
+
+  crewMembers: defineTable({
+    crewId: v.id("crews"),
+    hackerId: v.id("hackers"),
+    role: v.union(v.literal("leader"), v.literal("member")),
+    joinedAt: v.number(),
+  })
+    .index("by_crew", ["crewId"])
+    .index("by_hacker", ["hackerId"]),
+
+  // The ledger: one line per finished piece of work, per person, built on the owner's Mac (docs/plan-crews.html §4).
+  // At most 240 characters of "did". Kept 7 days on the free plan, 90 on team (a daily cron drops the rest). The owner
+  // sees, edits and deletes their own lines; crewmates' agents search them through the Operator.
+  ledger: defineTable({
+    hackerId: v.id("hackers"),
+    at: v.number(),
+    harness: v.string(),
+    machineName: v.string(),
+    // One line per session: the daemon sends the line again as the session goes on, and it replaces the old one.
+    sessionKey: v.string(),
+    workspace: v.optional(v.string()),
+    branch: v.optional(v.string()),
+    did: v.string(),
+    // Top-level folders of the files touched.
+    areas: v.array(v.string()),
+    files: v.number(),
+    // A pull request the transcript showed being opened or merged, and whether it merged (a ship on the wire).
+    pr: v.optional(v.string()),
+    shipped: v.optional(v.boolean()),
+    // A walkthrough page for the ship, once the owner had their agent write one; asked tracks the one-time prompt.
+    walkthrough: v.optional(v.string()),
+    walkthroughAsked: v.optional(v.boolean()),
+    // The owner rewrote the line in the HUD: the daemon must not replace it again.
+    editedByOwner: v.optional(v.boolean()),
+  })
+    .index("by_hacker_at", ["hackerId", "at"])
+    .index("by_hacker_session", ["hackerId", "sessionKey"])
+    .index("by_at", ["at"]),
+
+  // Crew notes: live shared instructions, up to 400 characters each, delivered to every running agent (§7). At most 60
+  // live per crew on the team plan, 10 on free. An agent's proposal waits for its owner unless the leader trusts them.
+  notes: defineTable({
+    crewId: v.id("crews"),
+    authorId: v.id("hackers"),
+    text: v.string(),
+    tags: v.array(v.string()),
+    // "Still true by" date; after it, the author is nudged. Unconfirmed notes stop being delivered 45 days after
+    // their last confirmation and stay in the history.
+    confirmBy: v.optional(v.number()),
+    // A folder, repository or word: the note is delivered only to sessions in that area.
+    appliesWhen: v.optional(v.string()),
+    replaces: v.optional(v.id("notes")),
+    status: noteStatus,
+    proposedByAgent: v.optional(v.boolean()),
+    confirmedAt: v.optional(v.number()),
+    retiredAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_crew_status", ["crewId", "status"])
+    .index("by_author", ["authorId"]),
+
+  // Hand-offs: a task offered to a crewmate's agent; the crewmate approves it and it runs on their account (§6). The
+  // backend keeps the offer text, the status and the summary, nothing else; the receiver's Mac logs the rest.
+  handoffs: defineTable({
+    fromId: v.id("hackers"),
+    toId: v.id("hackers"),
+    // The receiver's agent it goes to, when one fits; without one it becomes a knock with the text attached.
+    targetMachine: v.optional(v.string()),
+    targetAgentId: v.optional(v.string()),
+    targetAgentName: v.optional(v.string()),
+    targetHarness: v.optional(v.string()),
+    text: v.string(),
+    why: v.optional(v.string()),
+    status: handoffStatus,
+    // Where it was offered from.
+    via: v.optional(v.union(v.literal("agent"), v.literal("hud"), v.literal("menu"), v.literal("operator"), v.literal("headsup"))),
+    // The sender's agent that offered it, so its daemon can tell that session when it is done.
+    fromMachine: v.optional(v.string()),
+    fromAgentId: v.optional(v.string()),
+    relayId: v.optional(v.id("relays")),
+    knockId: v.optional(v.id("knocks")),
+    summary: v.optional(v.string()),
+    links: v.optional(v.array(v.string())),
+    usd: v.optional(v.number()),
+    note: v.optional(v.string()),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    decidedAt: v.optional(v.number()),
+    startedAt: v.optional(v.number()),
+    finishedAt: v.optional(v.number()),
+  })
+    .index("by_to_status", ["toId", "status"])
+    .index("by_from", ["fromId", "createdAt"]),
+
+  // What a hacker lets each crewmate do with hand-offs. No row means "ask me each time".
+  handoffConsents: defineTable({
+    hackerId: v.id("hackers"),
+    otherId: v.id("hackers"),
+    mode: handoffMode,
+  }).index("by_hacker_other", ["hackerId", "otherId"]),
+
+  // Heads-ups: the owner's Mac saw a prompt about an area a crewmate's agent is on, or files it is changing (§5). Kept
+  // a week for the "acted on" count; the card itself lasts 10 minutes (a scheduled function ends it).
+  headsups: defineTable({
+    hackerId: v.id("hackers"),
+    otherId: v.id("hackers"),
+    otherAgentId: v.string(),
+    kind: v.union(v.literal("area"), v.literal("files")),
+    // What the card says, built on the owner's Mac from what the crewmate shares.
+    line: v.string(),
+    // The session of the owner's that prompted it, so the acted-on check can match it.
+    agentId: v.optional(v.string()),
+    at: v.number(),
+    expiresAt: v.number(),
+    dismissedAt: v.optional(v.number()),
+    actedAt: v.optional(v.number()),
+    action: v.optional(v.union(v.literal("ask"), v.literal("handoff"), v.literal("knock"))),
+  })
+    .index("by_hacker_at", ["hackerId", "at"])
+    .index("by_at", ["at"]),
+
+  // The digest the Operator writes for a crew: "Yesterday in <crew>" once a day, the four numbers once a week (§8).
+  digests: defineTable({
+    crewId: v.id("crews"),
+    // The day it covers, YYYY-MM-DD in the crew's time zone.
+    day: v.string(),
+    kind: v.union(v.literal("daily"), v.literal("weekly")),
+    text: v.string(),
+    writtenAt: v.number(),
+    postedAt: v.optional(v.number()),
+    postError: v.optional(v.string()),
+    usd: v.optional(v.number()),
+  })
+    .index("by_crew_day", ["crewId", "day"])
+    .index("by_crew", ["crewId", "writtenAt"]),
+
+  // Drops: pages a crew shares (walkthroughs first), stored in Convex file storage and served at an unguessable link
+  // (§12, R9). 5 GB per crew on the team plan; links only on free.
+  drops: defineTable({
+    crewId: v.optional(v.id("crews")),
+    hackerId: v.id("hackers"),
+    title: v.string(),
+    kind: v.union(v.literal("walkthrough"), v.literal("page"), v.literal("file")),
+    storageId: v.optional(v.id("_storage")),
+    // A page hosted elsewhere (a Superset Page, an Artifact): the link only.
+    url: v.optional(v.string()),
+    token: v.string(),
+    size: v.number(),
+    contentType: v.string(),
+    ledgerId: v.optional(v.id("ledger")),
+    createdAt: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_crew", ["crewId", "createdAt"])
+    .index("by_hacker", ["hackerId", "createdAt"]),
 });

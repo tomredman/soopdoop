@@ -7,6 +7,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, query } from "./_generated/server";
 import { acceptedFriendIds } from "./friends";
 import { requireHacker } from "./lib/auth";
+import { feedKind } from "./schema";
 
 // The HUD shows a day of the wire; the table keeps a week.
 const SHOWN_MS = 24 * 60 * 60 * 1000;
@@ -45,7 +46,7 @@ export function tokensSaved(r: { tokensRead?: number; tokensSent?: number }): nu
 
 const eventView = v.object({
   _id: v.id("feed"),
-  kind: v.union(v.literal("answer"), v.literal("agent"), v.literal("catch"), v.literal("superflick"), v.literal("rally")),
+  kind: feedKind,
   handle: v.string(),
   // Left out when it is someone the viewer should not see named: who asked a question between two other people.
   otherHandle: v.optional(v.string()),
