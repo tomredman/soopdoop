@@ -107,6 +107,14 @@ describe("the introducer", function () {
     expect(await intro.contextFor("UserPromptSubmit", "s4")).toContain("@tom");
   });
 
+  test("shares its last copy of the crew without reading it again", async function () {
+    const { intro, reads } = setup([{ now: 100, agents: [agent("a", "tom", 50)] }]);
+    expect(intro.crew()).toBeNull();
+    await intro.contextFor("SessionStart", "s6");
+    expect(intro.crew()?.agents.map(function (a) { return a.handle; })).toEqual(["tom"]);
+    expect(reads()).toBe(1);
+  });
+
   test("forgets sessions that ended", async function () {
     const { intro } = setup([{ now: 100, agents: [agent("a", "tom", 50)] }]);
     expect(await intro.contextFor("SessionStart", "s5")).toContain("@tom");
