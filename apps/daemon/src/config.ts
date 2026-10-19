@@ -63,7 +63,15 @@ export interface Settings {
   // On unless turned off: the watcher (apps/hud/Sources/SoopdoopWatcher) opens the app when Superset opens. It reads
   // this file itself, so the key keeps its name.
   autoOpen: boolean;
+  // On unless turned off: a Haiku call on this hacker's own Claude account writes the ledger line's "what was done".
+  ledgerLines: boolean;
+  // Off until turned on: the scout reads this hacker's own help-desk connector every hour for props and saves.
+  scout: boolean;
+  // What hand-offs may cost this Mac's agents in any 24 hours, in US dollars at API prices.
+  handoffDailyUsd: number;
 }
+
+export const DEFAULT_HANDOFF_DAILY_USD = 10;
 
 export function settingsPath(home: string = soopdoopHome()): string {
   return path.join(home, "settings.json");
@@ -80,7 +88,14 @@ async function readSettingsFile(file: string): Promise<Record<string, unknown>> 
 
 export async function readSettings(file: string = settingsPath()): Promise<Settings> {
   const raw = await readSettingsFile(file);
-  return { autoUpdate: raw.autoUpdate !== false, autoOpen: raw.autoOpen !== false };
+  const allowance = raw.handoffDailyUsd;
+  return {
+    autoUpdate: raw.autoUpdate !== false,
+    autoOpen: raw.autoOpen !== false,
+    ledgerLines: raw.ledgerLines !== false,
+    scout: raw.scout === true,
+    handoffDailyUsd: typeof allowance === "number" && Number.isFinite(allowance) && allowance >= 0 ? allowance : DEFAULT_HANDOFF_DAILY_USD,
+  };
 }
 
 // Changes the settings given and keeps the rest, also any that a newer version wrote.

@@ -53,18 +53,20 @@ describe("the pairing file", function () {
 describe("the settings file", function () {
   test("everything is on until it is turned off", async function () {
     const file = path.join(await tempHome(), "settings.json");
-    expect(await readSettings(file)).toEqual({ autoUpdate: true, autoOpen: true });
+    expect(await readSettings(file)).toEqual({ autoUpdate: true, autoOpen: true, ledgerLines: true, scout: false, handoffDailyUsd: 10 });
     await Bun.write(file, "not json");
-    expect(await readSettings(file)).toEqual({ autoUpdate: true, autoOpen: true });
-    await Bun.write(file, JSON.stringify({ autoOpen: "no" }));
-    expect(await readSettings(file)).toEqual({ autoUpdate: true, autoOpen: true });
+    expect(await readSettings(file)).toEqual({ autoUpdate: true, autoOpen: true, ledgerLines: true, scout: false, handoffDailyUsd: 10 });
+    await Bun.write(file, JSON.stringify({ autoOpen: "no", scout: "yes", handoffDailyUsd: -3 }));
+    expect(await readSettings(file)).toEqual({ autoUpdate: true, autoOpen: true, ledgerLines: true, scout: false, handoffDailyUsd: 10 });
+    await Bun.write(file, JSON.stringify({ ledgerLines: false, scout: true, handoffDailyUsd: 2.5 }));
+    expect(await readSettings(file)).toEqual({ autoUpdate: true, autoOpen: true, ledgerLines: false, scout: true, handoffDailyUsd: 2.5 });
   });
 
   test("changing one setting keeps the others, also ones a newer version wrote", async function () {
     const file = path.join(await tempHome(), "settings.json");
     await Bun.write(file, JSON.stringify({ autoUpdate: false, later: 1 }));
     await writeSettings({ autoOpen: false }, file);
-    expect(await readSettings(file)).toEqual({ autoUpdate: false, autoOpen: false });
+    expect(await readSettings(file)).toEqual({ autoUpdate: false, autoOpen: false, ledgerLines: true, scout: false, handoffDailyUsd: 10 });
     await writeSettings({ autoUpdate: true }, file);
     // The watcher (Swift) reads this file itself, by these key names.
     expect(await Bun.file(file).json()).toEqual({ autoUpdate: true, later: 1, autoOpen: false });
