@@ -1,10 +1,11 @@
 // ABOUTME: HTTP routes. POST /operator/answer: the daemon a relay waits on sends its agent's own answer, once (older daemons
-// ABOUTME: send a slice, used for one answer call and never stored). POST /intercom/webhook: ratings. GET /d/<token>: drops.
+// ABOUTME: send a slice, used for one answer and never stored). POST /intercom/webhook: ratings. GET /d/<token>: drops. POST /stripe/webhook: billing.
 import { httpRouter } from "convex/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { httpAction } from "./_generated/server";
 import { serve as serveDrop } from "./drops";
+import { webhook as stripeWebhook } from "./billing";
 import { webhook as intercomWebhook } from "./intercom";
 import { agentAnswer, answerFrom, describeError } from "./lib/claude";
 
@@ -101,5 +102,7 @@ http.route({ path: "/intercom/webhook", method: "POST", handler: intercomWebhook
 
 // A drop: GET /d/<token> serves the page or file, or sends a link on. Convex answers HEAD by running GET without the body.
 http.route({ pathPrefix: "/d/", method: "GET", handler: serveDrop });
+// Stripe's billing events (a checkout finished, a subscription changed or ended), signed with STRIPE_WEBHOOK_SECRET.
+http.route({ path: "/stripe/webhook", method: "POST", handler: stripeWebhook });
 
 export default http;

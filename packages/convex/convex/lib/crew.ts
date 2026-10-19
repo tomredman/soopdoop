@@ -1,6 +1,7 @@
 // ABOUTME: Crew scope for the whole backend: a hacker's crew, their crewmates (crew members, or friends when in no crew),
 // ABOUTME: the leader check, and joining a crew through an invite. One crew per hacker, at most 8 people (docs/plan-crews.html §11).
 import { ConvexError } from "convex/values";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { acceptedFriendIds, areFriends } from "./friendships";
@@ -61,9 +62,17 @@ export async function requireLeader(ctx: QueryCtx, hacker: Doc<"hackers">): Prom
   return crew;
 }
 
+// The crew's member count changed. When it pays for the team plan, the subscription's quantity follows (billing.ts).
+export async function seatsChanged(ctx: MutationCtx, crewId: Id<"crews">): Promise<void> {
+  const crew = await ctx.db.get("crews", crewId);
+  if (crew === null || crew.stripeSubscriptionId === undefined) return;
+  await ctx.scheduler.runAfter(0, internal.billing.syncQuantity, { crewId });
+}
+
 // Puts a hacker in a crew. The caller has checked that they are in no crew and that the crew has room.
 export async function addMember(ctx: MutationCtx, crewId: Id<"crews">, hackerId: Id<"hackers">, role: "leader" | "member"): Promise<void> {
   await ctx.db.insert("crewMembers", { crewId, hackerId, role, joinedAt: Date.now() });
+  await seatsChanged(ctx, crewId);
 }
 
 // A new crew on the free plan, led by `leader`, who is its first member. The digest's time zone starts as the leader's.

@@ -32,6 +32,12 @@ type Env = {
   readonly CONVEX_SITE_URL: string;
   readonly ANTHROPIC_API_KEY: string | undefined;
   readonly OPERATOR_FAKE: string | undefined;
+  readonly SITE_URL: string | undefined;
+  readonly STRIPE_FAKE: string | undefined;
+  readonly STRIPE_PRICE_MONTHLY: string | undefined;
+  readonly STRIPE_PRICE_YEARLY: string | undefined;
+  readonly STRIPE_SECRET_KEY: string | undefined;
+  readonly STRIPE_WEBHOOK_SECRET: string | undefined;
 };
 
 /**

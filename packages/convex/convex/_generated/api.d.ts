@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as billing from "../billing.js";
 import type * as crews from "../crews.js";
 import type * as crons from "../crons.js";
 import type * as digests from "../digests.js";
@@ -24,6 +25,7 @@ import type * as knocks from "../knocks.js";
 import type * as ledger from "../ledger.js";
 import type * as lib_allowance from "../lib/allowance.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_billing from "../lib/billing.js";
 import type * as lib_claude from "../lib/claude.js";
 import type * as lib_crew from "../lib/crew.js";
 import type * as lib_digest from "../lib/digest.js";
@@ -33,6 +35,7 @@ import type * as lib_localTime from "../lib/localTime.js";
 import type * as lib_numbers from "../lib/numbers.js";
 import type * as lib_plan from "../lib/plan.js";
 import type * as lib_prices from "../lib/prices.js";
+import type * as lib_stripe from "../lib/stripe.js";
 import type * as lib_summaries from "../lib/summaries.js";
 import type * as lib_supersetProfile from "../lib/supersetProfile.js";
 import type * as notes from "../notes.js";
@@ -50,6 +53,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  billing: typeof billing;
   crews: typeof crews;
   crons: typeof crons;
   digests: typeof digests;
@@ -66,6 +70,7 @@ declare const fullApi: ApiFromModules<{
   ledger: typeof ledger;
   "lib/allowance": typeof lib_allowance;
   "lib/auth": typeof lib_auth;
+  "lib/billing": typeof lib_billing;
   "lib/claude": typeof lib_claude;
   "lib/crew": typeof lib_crew;
   "lib/digest": typeof lib_digest;
@@ -75,6 +80,7 @@ declare const fullApi: ApiFromModules<{
   "lib/numbers": typeof lib_numbers;
   "lib/plan": typeof lib_plan;
   "lib/prices": typeof lib_prices;
+  "lib/stripe": typeof lib_stripe;
   "lib/summaries": typeof lib_summaries;
   "lib/supersetProfile": typeof lib_supersetProfile;
   notes: typeof notes;

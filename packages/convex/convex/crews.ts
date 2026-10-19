@@ -7,7 +7,8 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { env, internalMutation, mutation, query } from "./_generated/server";
 import { forgetCrewDrops } from "./drops";
 import { checkHacker, requireDaemon, requireHacker } from "./lib/auth";
-import { addMember, crewmateIds, crewOf, joinOnInvite, MAX_CREW, memberIdsOf, requireLeader, startCrew } from "./lib/crew";
+import { subscriptionOf, subscriptionView } from "./lib/billing";
+import { addMember, crewmateIds, crewOf, joinOnInvite, MAX_CREW, memberIdsOf, requireLeader, seatsChanged, startCrew } from "./lib/crew";
 import { areFriends } from "./lib/friendships";
 import { canonicalTimezone, DAY_MS, localMonth } from "./lib/localTime";
 import { crewNumbers } from "./lib/numbers";
@@ -40,6 +41,8 @@ const crewView = v.object({
   intercomWebhookUrl: v.optional(v.string()),
   trustedNotePosters: v.array(v.string()),
   members: v.array(v.object({ handle: v.string(), name: v.optional(v.string()), role, joinedAt: v.number() })),
+  // The team plan's subscription (billing.status has the same), for "Team plan, 4 members, renews 12 Nov". None on free.
+  subscription: v.optional(subscriptionView),
 });
 
 function crewName(raw: string): string {
@@ -69,13 +72,15 @@ async function membershipOf(ctx: QueryCtx, crewId: Id<"crews">, hackerId: Id<"ha
   return row !== null && row.crewId === crewId ? row : null;
 }
 
-// Takes someone out of a crew: their membership, and the leader's trust in their agents' notes.
+// Takes someone out of a crew: their membership, and the leader's trust in their agents' notes. A paying crew's seat
+// count follows.
 async function dropMember(ctx: MutationCtx, crew: Doc<"crews">, row: Doc<"crewMembers">): Promise<void> {
   await ctx.db.delete("crewMembers", row._id);
   const trusted = crew.trustedNotePosters ?? [];
   if (trusted.includes(row.hackerId)) {
     await ctx.db.patch("crews", crew._id, { trustedNotePosters: trusted.filter(function (id) { return id !== row.hackerId; }) });
   }
+  await seatsChanged(ctx, crew._id);
 }
 
 // The caller's crew with its settings and members. Null when they are signed out or in no crew. Never the Slack webhook
@@ -129,6 +134,7 @@ export const mine = query({
         .filter(function (m) { return (crew.trustedNotePosters ?? []).includes(m.id); })
         .map(function (m) { return m.handle; }),
       members: members.map(function (m) { return { handle: m.handle, name: m.name, role: m.role, joinedAt: m.joinedAt }; }),
+      subscription: subscriptionOf(crew) ?? undefined,
     };
   },
 });
