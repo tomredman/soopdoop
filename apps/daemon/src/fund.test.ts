@@ -62,6 +62,16 @@ describe("what one answer costs", function () {
     expect(answerCost({}, "claude-opus-5-5")).toBe(0);
   });
 
+  test("prices Haiku 5.5 as Claude Code did for a real call on 18 Oct 2026, not like the dearest model", function () {
+    const usage = { input_tokens: 2, cache_creation_input_tokens: 2_282, cache_read_input_tokens: 649, output_tokens: 4,
+      cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 2_282 } };
+    // Claude Code's own costUSD for that call.
+    expect(answerCost(usage, "claude-haiku-5-5")).toBeCloseTo(0.00046509, 8);
+    expect(priceFor("claude-haiku-5-5").input).toBe(0.1);
+    // Over 100,000 tokens of prompt, five times as much.
+    expect(answerCost({ input_tokens: 200_000 }, "claude-haiku-5-5")).toBeCloseTo(0.1, 6);
+  });
+
   test("prices OpenAI's models (Codex) and xAI's (Grok) by the longest prefix that fits", function () {
     expect(priceFor("gpt-6.1-sol").input).toBe(2);
     expect(priceFor("gpt-6-sol").cacheRead).toBe(0.2);
