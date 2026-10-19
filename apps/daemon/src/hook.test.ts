@@ -22,11 +22,24 @@ const CLAUDE = { CLAUDECODE: "1" };
 function none(): void {}
 
 describe("forwardHook", function () {
-  test("sends only the fields the daemon reads, never the prompt or tool input", async function () {
+  test("sends only the fields the daemon reads: the prompt at UserPromptSubmit only, never tool input", async function () {
     received.length = 0;
-    const payload = { session_id: "s1", cwd: "/r/vibes", transcript_path: "/t.jsonl", prompt: "my secret plan", tool_input: { command: "rm -rf /" } };
+    const payload = { session_id: "s1", cwd: "/r/vibes", transcript_path: "/t.jsonl", prompt: "fix the bounces", tool_input: { command: "rm -rf /" } };
     await forwardHook("UserPromptSubmit", JSON.stringify(payload), server.port, none, CLAUDE);
-    expect(received).toEqual([{ hook_event_name: "UserPromptSubmit", session_id: "s1", cwd: "/r/vibes", transcript_path: "/t.jsonl", harness: "claude-code" }]);
+    // Another event's payload never brings a prompt along.
+    await forwardHook("Stop", JSON.stringify(payload), server.port, none, CLAUDE);
+    expect(received).toEqual([
+      { hook_event_name: "UserPromptSubmit", session_id: "s1", cwd: "/r/vibes", transcript_path: "/t.jsonl", harness: "claude-code", prompt: "fix the bounces" },
+      { hook_event_name: "Stop", session_id: "s1", cwd: "/r/vibes", transcript_path: "/t.jsonl", harness: "claude-code" },
+    ]);
+  });
+
+  test("a long prompt is cut to its first 8,000 characters; Codex's prompt comes the same way", async function () {
+    received.length = 0;
+    await forwardHook("UserPromptSubmit", JSON.stringify({ session_id: "s1", prompt: "x".repeat(20_000) }), server.port, none, CLAUDE);
+    await forwardHook("UserPromptSubmit", JSON.stringify({ session_id: "c1", turn_id: "t1", prompt: "add coupon codes" }), server.port, none, { SOOPDOOP_HARNESS: "codex" });
+    expect((received[0] as { prompt: string }).prompt).toHaveLength(8_000);
+    expect(received[1]).toEqual({ hook_event_name: "UserPromptSubmit", session_id: "c1", harness: "codex", prompt: "add coupon codes" });
   });
 
   test("the event name comes from the command line, not the payload", async function () {
