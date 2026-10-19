@@ -10,7 +10,7 @@ A drop is a page a crew shares (walkthroughs first), stored in Convex file stora
 - Only the method and the path go on. The visitor's query string, cookies and other headers stay behind.
 - The deployment's status, headers and body come back unchanged: the content type, `Cache-Control: private, max-age=300`, `X-Content-Type-Options: nosniff`, and for pages the policy that allows inline styles and scripts but nothing on the network.
 - Redirects come back to the browser, never followed here: a link-only drop sends the browser to its page, and a file bigger than 20 MB goes to its Convex storage URL.
-- Nothing is cached at Cloudflare's edge (the deployment says `private`), so a forgotten drop stops working at once.
+- Nothing is cached at Cloudflare's edge (the deployment says `private`). A forgotten drop stops working at once, except in a browser that loaded it in the last five minutes.
 
 `DROPS_ORIGIN` in `wrangler.jsonc` is the production deployment's site, `https://fleet-skunk-723.convex.site`.
 
