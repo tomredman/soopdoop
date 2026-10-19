@@ -217,6 +217,7 @@ struct Main: View {
                 case .crew: CrewSection(state: state)
                 case .yesterday: YesterdaySection(digest: state.digest)
                 case .handoffs: HandoffsSection(state: state)
+                case .drops: DropsSection(state: state)
                 case .notes: NotesSection(state: state)
                 case .operatorLine: OperatorSection(state: state)
                 case .board: BoardSection(state: state)

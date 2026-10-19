@@ -104,6 +104,35 @@ enum Snapshot {
         }
         HUDWork.shared.writing = []
         style.ledgerOpen = false
+        // Drops at the HUD's default and narrowest widths: the whole shelf opened, my own link waiting for its forget to be
+        // confirmed; the link box filled in, and after Enter with a link that is not https; the leader forgetting a
+        // crewmate's stored page; then an empty shelf on the free plan. (hud-ready-full shows it folded to four.)
+        var free = ready
+        free.drops = []
+        free.crewInfo?.plan = "free"
+        var stored = ready.drops.first { $0.id == "dr4" } ?? Drop()
+        stored.canForget = true
+        for width in [300.0, 260.0] {
+            let drops = VStack(alignment: .leading, spacing: style.pad) {
+                DropsSection(state: ready, all: true, forgetting: "dr2")
+                Rectangle().fill(Theme.line).frame(height: 1)
+                DropLinkBox(link: "https://superset.sh/pages/menu-redesign", title: "the menu page walkthrough")
+                DropLinkBox(link: "http://example.com/notes", title: "old notes", tried: true)
+                Rectangle().fill(Theme.line).frame(height: 1)
+                DropRow(drop: stored, mine: false, now: Date().timeIntervalSince1970 * 1000, forgetting: .constant(stored.id))
+                Rectangle().fill(Theme.line).frame(height: 1)
+                DropsSection(state: free)
+            }
+            for (suffix, backdrop) in backdrops {
+                let page = ZStack(alignment: .top) {
+                    backdrop
+                    Background()
+                    drops.padding(11)
+                }
+                render(page.environmentObject(client).environmentObject(style), size: NSSize(width: width, height: 1000),
+                       to: file("hud-drops-\(Int(width))\(suffix).png"))
+            }
+        }
         // The Operator chat, with a reply of its own, an answer from a crewmate's agent, and a question on its way.
         var chatting = AppState()
         chatting.phase = "ready"
@@ -125,7 +154,7 @@ enum Snapshot {
         render(asking, size: NSSize(width: 380, height: 520), to: file("chat-ask.png"))
         // Settings → HUD: opening with Superset, and the sections, which can be hidden and put in order.
         let look = LookSettings().environmentObject(AgentClient(preview: ready)).environmentObject(style)
-        render(look, size: NSSize(width: 460, height: 640), to: file("settings-hud.png"))
+        render(look, size: NSSize(width: 460, height: 700), to: file("settings-hud.png"))
         // Settings → Account before a Superset profile is linked: the box to type the handle in has to show.
         var signedIn = AppState()
         signedIn.phase = "ready"
@@ -350,6 +379,22 @@ enum Snapshot {
                        pr: "https://github.com/acme/soopdoop/pull/88", shipped: true, walkthrough: "https://soopdoop.com/d/s88", walkthroughAsked: true),
             LedgerLine(id: "l3", at: now - 2 * day, harness: "grok", machineName: "mbp16", sessionKey: "s3", workspace: "vibes", branch: "release-notes",
                        did: "drafted the October release notes", areas: ["docs"], files: 1, editedByOwner: true),
+        ]
+        // The crew's shelf, newest first: walkthroughs and pages soopdoop keeps on Team, and links to pages elsewhere (size
+        // 0). The leader is Ada, so only my own drops can be forgotten here.
+        ready.drops = [
+            Drop(id: "dr1", title: "the quote page redesign", kind: "walkthrough", url: "https://soopdoop.com/d/q412",
+                 byHandle: "adalovelace", byName: "Ada Lovelace", createdAt: now - 2 * minute, size: 184_000, ledgerId: "x412"),
+            Drop(id: "dr2", title: "Pricing page draft", kind: "page", url: "https://soopdoop.com/d/p207", byHandle: "tom",
+                 createdAt: now - 2 * hour, canForget: true),
+            Drop(id: "dr3", title: "VIB-123: bounces are counted once now", kind: "walkthrough", url: "https://soopdoop.com/d/v123",
+                 byHandle: "jimmy", createdAt: now - 5 * hour, size: 96_000),
+            Drop(id: "dr4", title: "Onboarding checklist for a new crewmate, with the steps for Codex and Grok", kind: "page",
+                 url: "https://soopdoop.com/d/o118", byHandle: "grace", byName: "Grace Hopper", createdAt: now - day - 3 * hour, size: 41_000),
+            Drop(id: "dr5", title: "Design review notes", kind: "page", url: "https://soopdoop.com/d/r31", byHandle: "sam",
+                 createdAt: now - 3 * day),
+            Drop(id: "dr6", title: "export-sample.csv", kind: "file", url: "https://soopdoop.com/d/e9", byHandle: "tom",
+                 createdAt: now - 9 * day, size: 1_200_000, canForget: true),
         ]
         let yesterday = DateFormatter()
         yesterday.locale = Locale(identifier: "en_US_POSIX")
