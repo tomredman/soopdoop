@@ -46,7 +46,7 @@ describe("what a subscription does to a crew", function () {
       ["canceled", "free", null, null],
       ["incomplete_expired", "free", null, null],
     ]);
-    // An ended subscription leaves only the customer, for the next checkout.
+    // An ended subscription leaves the customer, for the next checkout, and its id among the ended ones.
     expect(billingAfter(TEAM, "canceled")).toEqual({
       plan: "free",
       planUntil: undefined,
@@ -57,7 +57,35 @@ describe("what a subscription does to a crew", function () {
       subscriptionYearly: undefined,
       subscriptionUntil: undefined,
       subscriptionRenews: undefined,
+      endedSubscriptions: ["sub_1"],
+      spareSubscriptionId: undefined,
     });
+  });
+
+  test("once a subscription ended, older news about it changes nothing", function () {
+    const ended = billingAfter(TEAM, "canceled");
+    expect(afterSubscription(ended, SUB, true)).toEqual({ kind: "ignore", why: "it ended already; this is older news" });
+    expect(afterSubscription(ended, { ...SUB, status: "past_due" }, false)).toMatchObject({ kind: "ignore" });
+    // A new subscription is still welcome, and the crew keeps remembering the old one.
+    expect(billingAfter(ended, "active", true, "sub_2")).toMatchObject({ plan: "team", stripeSubscriptionId: "sub_2", endedSubscriptions: ["sub_1"] });
+    // The list keeps the last 20.
+    let many = TEAM;
+    for (let i = 0; i < 25; i++) many = billingAfter(billingAfter(many, "active", true, `sub_${i}`), "canceled", false, `sub_${i}`);
+    expect(many.endedSubscriptions).toHaveLength(20);
+    expect(many.endedSubscriptions?.[19]).toBe("sub_24");
+  });
+
+  test("paid twice: the one taken over becomes the spare, and the crew falls back to it when the other ends", function () {
+    const both = afterSubscription(TEAM, { ...SUB, id: "sub_2" }, true);
+    expect(both).toMatchObject({ kind: "set", replaces: "sub_1", billing: { stripeSubscriptionId: "sub_2", spareSubscriptionId: "sub_1" } });
+    if (both.kind !== "set") throw new Error("expected a change");
+    // Updates to the followed one keep the spare.
+    expect(billingAfter(both.billing, "active", false, "sub_2").spareSubscriptionId).toBe("sub_1");
+    const ends = afterSubscription(both.billing, { ...SUB, id: "sub_2", status: "canceled" }, false);
+    expect(ends).toMatchObject({ kind: "set", fallback: "sub_1", billing: { plan: "free", spareSubscriptionId: undefined } });
+    if (ends.kind !== "set") throw new Error("expected a change");
+    // Read again, the spare is paid: the crew follows it, with no spare left.
+    expect(billingAfter(ends.billing, "active", false, "sub_1")).toMatchObject({ plan: "team", stripeSubscriptionId: "sub_1", spareSubscriptionId: undefined });
   });
 
   test("past_due and incomplete never lift a free crew to the team plan", function () {

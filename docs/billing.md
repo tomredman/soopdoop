@@ -7,7 +7,7 @@ How a crew pays for the team plan, and what Mr. Tom sets up in Stripe and on the
 - The plan is per crew, and the leader pays: $10 a member a month, or $100 a member a year (ten months). The leader counts as a member.
 - **Upgrade** (Settings → Crew, leader only) opens Stripe Checkout for as many members as the crew has now. Checkout fills in the leader's Superset sign-in email.
 - When the payment goes through, Stripe calls the webhook and the crew moves to the team plan until the end of the period it paid for.
-- When someone joins or leaves the crew, soopdoop sets the subscription's quantity to the new member count. Stripe prorates the difference on the next invoice (its default).
+- When someone joins or leaves the crew, soopdoop sets the subscription's quantity to the new member count. Stripe prorates the difference on the next invoice (its default). It does the same whenever Stripe bills for another number of people than the crew has: someone joined while the Checkout page was open, or a quantity was changed in the Dashboard.
 - **Manage billing** (leader only) opens Stripe's billing portal: the card, invoices, monthly or yearly, cancel. A crew that already pays and presses Upgrade gets the portal too, so nobody pays twice.
 - A canceled plan runs to the end of its paid period. Then Stripe ends the subscription and the crew goes back to the free plan.
 - A renewal that fails: Stripe retries on its own schedule. The crew keeps the team plan for 3 days after the end of its last paid period, then a daily job moves it to free. Paying brings the team plan back.
@@ -56,9 +56,9 @@ Until the key and both prices are set, Upgrade answers "Billing is not set up on
 
 ## Things to know
 
-- Stripe can send events in any order and more than once. soopdoop reads the subscription from Stripe again for each event, so the crew always ends up as Stripe has it now, and a repeated event changes nothing.
+- Stripe can send events in any order and more than once. soopdoop reads the subscription from Stripe again for each event, and once more a minute after an event changed the crew, so the crew ends up as Stripe has it now and a repeated event changes nothing. A crew remembers the subscriptions it had that ended (Stripe never brings one back), so late news about them changes nothing.
 - The crew's id is in the Checkout session (`client_reference_id` and `metadata.crewId`) and in the subscription's metadata (`crewId`). Do not edit it in the Dashboard.
-- If a leader pays twice (two Checkout tabs), the crew follows the newer subscription and the Convex logs say which older one still bills. Cancel it in the Dashboard.
+- If a leader pays twice (two Checkout tabs), the crew follows the checkout whose event arrived last, and the Convex logs name the other subscription: "Cancel sub_... in the Stripe Dashboard". Cancel that one. Until then, if the one the crew follows ends first, the crew falls back to the other while it still bills.
 - If the last member leaves a crew that still pays, the subscription keeps billing and the Convex logs say so. Cancel it in the Dashboard.
 - Handing the lead to someone else hands over billing too: the new leader's Manage billing opens the same Stripe customer, with the old leader's card and invoices. The old leader may want to change the card first.
 - A crew can be put on the team plan by hand (`plan: "team"` in the dashboard, with no `planUntil`). Nothing ends it, and its Upgrade button says it is on the team plan already.
@@ -80,6 +80,6 @@ Not checked: any call to real Stripe. There were no Stripe keys, prices or accou
 
 Checked (18 Oct 2026):
 
-- Tests against a stand-in Stripe (`STRIPE_FAKE=1`): Checkout and the portal for the leader only, the webhook setting and clearing the plan, repeats and late events changing nothing, bad signatures refused, seat counts following members, and lapsed plans going to free.
+- Tests against a stand-in Stripe (`STRIPE_FAKE=1`): Checkout and the portal for the leader only, the webhook setting and clearing the plan, repeats and late events changing nothing, an older read landing last being put right, bad signatures refused, seat counts following members (also someone joining while Checkout is open), paying twice, and lapsed plans going to free.
 - The real client's requests (Checkout, the portal, reading a subscription, setting a quantity), sent by the `stripe` package to a local server standing in for api.stripe.com: the form fields, the key and the API version header.
-- In Convex's own runtime, on a local backend (`precompiled-2026-10-10`): the modules load with the `stripe` package without `"use node"`; the webhook accepts a correctly signed event and refuses a wrong secret, a changed body, a missing signature and a signature older than 5 minutes; Checkout and the portal answer the leader and refuse a member; a deleted subscription moves the crew to free, and the same event again changes nothing.
+- In Convex's own runtime, on a local backend (`precompiled-2026-10-10`): the modules load with the `stripe` package without `"use node"`; the webhook accepts a correctly signed event and refuses a wrong secret, a changed body, a missing signature and a signature older than 5 minutes; Checkout and the portal answer the leader and refuse a member; a deleted subscription moves the crew to free, the same event again changes nothing, and an older "active" written after it is ignored.

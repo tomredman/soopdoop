@@ -25,6 +25,9 @@ export const NOT_SET_UP = "Billing is not set up on this deployment yet.";
 // A seat count that Stripe did not take is tried again after 5 minutes, then 20.
 const SYNC_TRIES = 3;
 const SYNC_RETRY_MS = 5 * 60 * 1000;
+// After the webhook changes a crew, the subscription is read from Stripe once more this much later. Two events handled
+// at the same moment can finish in either order, so the older read could land last; this puts the crew right.
+export const RECHECK_MS = 60 * 1000;
 
 // A subscription (lib/stripe.ts) as an argument to the functions below. The crew is passed on its own.
 const subscriptionArg = v.object({
@@ -175,21 +178,52 @@ export const crewFor = internalQuery({
 });
 
 // Writes what a subscription, as Stripe has it now, means for a crew (lib/billing.ts afterSubscription). The same
-// subscription twice changes nothing the second time.
+// subscription twice changes nothing the second time. Then, when it bills for another number of people than the crew
+// has (someone joined while Checkout was open, a quantity changed in Stripe), the seat count is set again. `recheck`
+// (the webhook) reads the subscription from Stripe once more a minute after a change.
 export const applySubscription = internalMutation({
-  args: { crewId: v.id("crews"), subscription: subscriptionArg, fromCheckout: v.boolean() },
+  args: { crewId: v.id("crews"), subscription: subscriptionArg, fromCheckout: v.boolean(), recheck: v.optional(v.boolean()) },
   returns: v.object({ changed: v.boolean(), note: v.string() }),
   handler: async function (ctx, args) {
     const crew = await ctx.db.get("crews", args.crewId);
     if (crew === null) return { changed: false, note: "no such crew" };
-    const outcome = afterSubscription(crew, args.subscription, args.fromCheckout);
+    const sub = args.subscription;
+    const outcome = afterSubscription(crew, sub, args.fromCheckout);
     if (outcome.kind === "ignore") return { changed: false, note: outcome.why };
     if (outcome.replaces !== undefined) {
-      console.warn(`Crew ${crew._id} now pays through ${args.subscription.id}, and ${outcome.replaces} still bills too. Cancel one in the Stripe Dashboard.`);
+      console.warn(`Crew ${crew._id} paid twice: it now follows ${sub.id}. Cancel ${outcome.replaces} in the Stripe Dashboard; until then the crew falls back to it if ${sub.id} ends first.`);
     }
-    if (sameBilling(crew, outcome.billing)) return { changed: false, note: "no change" };
-    await ctx.db.patch("crews", crew._id, outcome.billing);
-    return { changed: true, note: `${outcome.billing.plan} plan, ${args.subscription.status}` };
+    const changed = !sameBilling(crew, outcome.billing);
+    if (changed) await ctx.db.patch("crews", crew._id, outcome.billing);
+    if (outcome.fallback !== undefined) {
+      await ctx.scheduler.runAfter(0, internal.billing.refresh, { crewId: crew._id, subscriptionId: outcome.fallback });
+    }
+    if (changed && args.recheck === true) await ctx.scheduler.runAfter(RECHECK_MS, internal.billing.refresh, { crewId: crew._id });
+    if (outcome.billing.stripeSubscriptionId === sub.id && isOpen(sub.status)) {
+      const members = (await memberIdsOf(ctx, crew._id)).length;
+      if (members > 0 && members !== sub.quantity) await ctx.scheduler.runAfter(0, internal.billing.syncQuantity, { crewId: crew._id });
+    }
+    return { changed, note: changed ? `${outcome.billing.plan} plan, ${sub.status}` : "no change" };
+  },
+});
+
+// Reads the crew's subscription (or the one named) from Stripe again and writes it. For the recheck after the webhook,
+// and for falling back to a spare subscription when the crew's own one ended. A failure only logs: it is a second look.
+export const refresh = internalAction({
+  args: { crewId: v.id("crews"), subscriptionId: v.optional(v.string()) },
+  returns: v.null(),
+  handler: async function (ctx, args) {
+    const stripe = stripeClient();
+    if (stripe === null) return null;
+    const subscriptionId = args.subscriptionId ?? (await ctx.runQuery(internal.billing.seats, { crewId: args.crewId }))?.subscriptionId;
+    if (subscriptionId === undefined) return null;
+    try {
+      const sub = await stripe.retrieveSubscription(subscriptionId);
+      await ctx.runMutation(internal.billing.applySubscription, { crewId: args.crewId, subscription: argOf(sub), fromCheckout: false });
+    } catch (e) {
+      console.warn(`Crew ${args.crewId}: could not read subscription ${subscriptionId} from Stripe again.`, e);
+    }
+    return null;
   },
 });
 
@@ -222,6 +256,7 @@ async function handleEvent(ctx: ActionCtx, stripe: StripeApi, event: StripeEvent
     crewId,
     subscription: argOf(sub),
     fromCheckout: event.type === "checkout.session.completed",
+    recheck: true,
   });
   return result.note;
 }
@@ -265,8 +300,22 @@ export const seats = internalQuery({
   },
 });
 
-// Someone joined or left a crew that pays: the subscription's quantity follows the member count (Stripe prorates the
-// difference). Tried 3 times. If the count moved again while Stripe was being updated, it runs once more.
+// The seat count Stripe now bills, on the crew's row. Only the count, and only while the crew still has that
+// subscription: everything else comes from the webhook, which reads the whole subscription fresh.
+export const setQuantity = internalMutation({
+  args: { crewId: v.id("crews"), subscriptionId: v.string(), quantity: v.number() },
+  returns: v.null(),
+  handler: async function (ctx, args) {
+    const crew = await ctx.db.get("crews", args.crewId);
+    if (crew === null || crew.stripeSubscriptionId !== args.subscriptionId || crew.subscriptionQuantity === args.quantity) return null;
+    await ctx.db.patch("crews", crew._id, { subscriptionQuantity: args.quantity });
+    return null;
+  },
+});
+
+// Someone joined or left a crew that pays, or the subscription bills for another number of people than the crew has:
+// the subscription's quantity is set to the member count (Stripe prorates the difference). Tried 3 times. If the count
+// moved again while Stripe was being updated, it runs once more.
 export const syncQuantity = internalAction({
   args: { crewId: v.id("crews"), attempt: v.optional(v.number()) },
   returns: v.null(),
@@ -285,14 +334,11 @@ export const syncQuantity = internalAction({
     const attempt = args.attempt ?? 0;
     try {
       const sub = await stripe.retrieveSubscription(seats.subscriptionId);
-      let quantity = sub.quantity;
-      if (isOpen(sub.status) && quantity !== seats.members) {
-        await stripe.updateQuantity(sub.itemId, seats.members);
-        quantity = seats.members;
-      }
-      await ctx.runMutation(internal.billing.applySubscription, { crewId: args.crewId, subscription: argOf({ ...sub, quantity }), fromCheckout: false });
+      if (!isOpen(sub.status)) return null;
+      if (sub.quantity !== seats.members) await stripe.updateQuantity(sub.itemId, seats.members);
+      await ctx.runMutation(internal.billing.setQuantity, { crewId: args.crewId, subscriptionId: sub.id, quantity: seats.members });
       const now = await ctx.runQuery(internal.billing.seats, { crewId: args.crewId });
-      if (now !== null && now.subscriptionId === sub.id && isOpen(sub.status) && now.members !== quantity && now.members > 0) {
+      if (now !== null && now.subscriptionId === sub.id && now.members > 0 && now.members !== seats.members) {
         await ctx.scheduler.runAfter(0, internal.billing.syncQuantity, { crewId: args.crewId });
       }
     } catch (e) {

@@ -37,9 +37,11 @@ export type CrewBilling = Pick<
   | "subscriptionYearly"
   | "subscriptionUntil"
   | "subscriptionRenews"
+  | "endedSubscriptions"
+  | "spareSubscriptionId"
 >;
 
-const BILLING_FIELDS: (keyof CrewBilling)[] = [
+const SINGLE_FIELDS: (keyof Omit<CrewBilling, "endedSubscriptions">)[] = [
   "plan",
   "planUntil",
   "stripeCustomerId",
@@ -49,11 +51,23 @@ const BILLING_FIELDS: (keyof CrewBilling)[] = [
   "subscriptionYearly",
   "subscriptionUntil",
   "subscriptionRenews",
+  "spareSubscriptionId",
 ];
+// How many ended subscriptions a crew remembers. Old news arrives within days, not years.
+const ENDED_KEPT = 20;
 
 export function sameBilling(a: CrewBilling, b: CrewBilling): boolean {
-  return BILLING_FIELDS.every(function (field) { return a[field] === b[field]; });
+  const endedA = a.endedSubscriptions ?? [];
+  const endedB = b.endedSubscriptions ?? [];
+  const sameEnded = endedA.length === endedB.length && endedA.every(function (id, i) { return id === endedB[i]; });
+  return sameEnded && SINGLE_FIELDS.every(function (field) { return a[field] === b[field]; });
 }
+
+export type Outcome =
+  | { kind: "ignore"; why: string }
+  // `replaces`: the crew's own subscription, still billing, that a new checkout took over from (the leader paid twice).
+  // `fallback`: when the crew's subscription ended, a spare one that may still be paid, to read from Stripe now.
+  | { kind: "set"; billing: CrewBilling; replaces?: string; fallback?: string };
 
 // What a subscription, as Stripe has it now, does to a crew: the crew's billing fields afterwards, or why it changes
 // nothing. The answer depends only on the crew and the subscription, never on which event brought it, so a replayed or
@@ -64,15 +78,15 @@ export function sameBilling(a: CrewBilling, b: CrewBilling): boolean {
 //   one), and the daily cron moves the crew to free 3 days after that unless Stripe gets paid.
 // - incomplete (the first payment is pending): the plan stays as it is.
 // - unpaid, paused: free, and the subscription stays on record so paying it brings the team plan back.
-// - canceled, incomplete_expired: free, and the subscription is forgotten. The Stripe customer is kept for next time.
+// - canceled, incomplete_expired: free, and the subscription is forgotten except for its id in endedSubscriptions, so
+//   older news about it changes nothing. The Stripe customer is kept for next time.
 //
 // A subscription that is not the crew's own changes nothing, unless it is paid and either comes from a checkout the leader
-// just finished or the crew's own one is no longer on the books. `replaces` names a crew subscription still billing then.
-export function afterSubscription(
-  crew: CrewBilling,
-  sub: Omit<Subscription, "crewId">,
-  fromCheckout: boolean,
-): { kind: "ignore"; why: string } | { kind: "set"; billing: CrewBilling; replaces?: string } {
+// just finished or the crew's own one is no longer on the books. When a checkout takes over from a subscription that
+// still bills, that one becomes the spare: if the new one ends first, the crew falls back to it.
+export function afterSubscription(crew: CrewBilling, sub: Omit<Subscription, "crewId">, fromCheckout: boolean): Outcome {
+  const ended = crew.endedSubscriptions ?? [];
+  if (ended.includes(sub.id) && !hasEnded(sub.status)) return { kind: "ignore", why: "it ended already; this is older news" };
   const own = crew.stripeSubscriptionId;
   let replaces: string | undefined;
   if (own !== undefined && own !== sub.id) {
@@ -83,8 +97,10 @@ export function afterSubscription(
     return { kind: "ignore", why: "it has ended, and the crew has no subscription to end" };
   }
   if (hasEnded(sub.status)) {
+    const spare = crew.spareSubscriptionId;
     return {
       kind: "set",
+      fallback: spare !== undefined && spare !== sub.id ? spare : undefined,
       billing: {
         plan: "free",
         planUntil: undefined,
@@ -95,6 +111,8 @@ export function afterSubscription(
         subscriptionYearly: undefined,
         subscriptionUntil: undefined,
         subscriptionRenews: undefined,
+        endedSubscriptions: [...ended.filter(function (id) { return id !== sub.id; }), sub.id].slice(-ENDED_KEPT),
+        spareSubscriptionId: undefined,
       },
     };
   }
@@ -104,6 +122,8 @@ export function afterSubscription(
   if (plan === "free") planUntil = undefined;
   else if (isPaid(sub.status)) planUntil = sub.periodEnd;
   else if (sub.status === "past_due") planUntil = sub.periodStart;
+  // The spare: the subscription this checkout took over from; else the one kept before, unless it is this one now.
+  const spare = replaces ?? (crew.spareSubscriptionId === sub.id ? undefined : crew.spareSubscriptionId);
   return {
     kind: "set",
     replaces,
@@ -117,6 +137,8 @@ export function afterSubscription(
       subscriptionYearly: sub.yearly,
       subscriptionUntil: sub.periodEnd,
       subscriptionRenews: sub.renews,
+      endedSubscriptions: crew.endedSubscriptions,
+      spareSubscriptionId: spare,
     },
   };
 }

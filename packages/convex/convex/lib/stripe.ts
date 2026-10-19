@@ -191,8 +191,11 @@ export function resetFakeStripe(): void {
   fakeStripe.down = false;
 }
 
+// Down, the stand-in throws the stripe package's own connection error, as real Stripe does: not a ConvexError.
 function fakeUp(): void {
-  if (fakeStripe.down) throw new ConvexError("Stripe is not answering (the stand-in is set to down).");
+  if (fakeStripe.down) {
+    throw new Stripe.errors.StripeConnectionError({ message: "An error occurred with our connection to Stripe (the stand-in is set to down)." });
+  }
 }
 
 const fake: StripeApi = {

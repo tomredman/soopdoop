@@ -305,6 +305,12 @@ export default defineSchema({
     subscriptionYearly: v.optional(v.boolean()),
     subscriptionUntil: v.optional(v.number()),
     subscriptionRenews: v.optional(v.boolean()),
+    // Subscriptions this crew had that ended. Stripe never brings one back, so later news about them that is not
+    // "ended" is old news and changes nothing.
+    endedSubscriptions: v.optional(v.array(v.string())),
+    // A second subscription the leader also paid for (two Checkout tabs). The crew follows the checkout whose event
+    // arrived last; if that one ends first, the crew falls back to this one while it is still paid.
+    spareSubscriptionId: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_leader", ["leaderId"])
