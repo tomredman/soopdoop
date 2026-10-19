@@ -31,6 +31,12 @@ export function repoRoot(cwd: string, git: Git = runGit): string | null {
   return path.basename(common) === ".git" ? path.dirname(common) : null;
 }
 
+// The branch a folder is on, or null outside git and on a detached HEAD. Crew notes can apply to a branch.
+export function branchOf(cwd: string, git: Git = runGit): string | null {
+  const branch = git(["-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"]);
+  return branch === null || branch === "HEAD" ? null : branch;
+}
+
 export function inside(folder: string, dir: string): boolean {
   return folder === dir || folder.startsWith(dir + "/");
 }
