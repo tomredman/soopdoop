@@ -3,7 +3,7 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { QueryCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { addToFeed } from "./feed";
 import { requireDaemon, requireHacker } from "./lib/auth";
@@ -200,7 +200,7 @@ export const mine = query({
   },
 });
 
-async function ownLine(ctx: QueryCtx, me: Doc<"hackers">, id: Id<"ledger">): Promise<Doc<"ledger">> {
+export async function ownLine(ctx: QueryCtx, me: Doc<"hackers">, id: Id<"ledger">): Promise<Doc<"ledger">> {
   const line = await ctx.db.get("ledger", id);
   if (line === null || line.hackerId !== me._id || line.forgotten === true) throw new ConvexError("Not your ledger line.");
   return line;
@@ -257,19 +257,29 @@ export const forget = mutation({
   },
 });
 
+// Puts a walkthrough link on one of my lines and on the wire. A line has one walkthrough event, which follows its newest
+// link; `dropId` is the drop that link serves, when soopdoop hosts the page (drops.ts). The same link sent again without
+// a drop (the app repeating what the drop already said) keeps the drop it came from.
+export async function recordWalkthrough(ctx: MutationCtx, me: Doc<"hackers">, ledgerId: Id<"ledger">, link: string, dropId?: Id<"drops">): Promise<void> {
+  const line = await ownLine(ctx, me, ledgerId);
+  const url = link.trim();
+  if (!/^https?:\/\/\S+$/i.test(url) || url.length > MAX_URL) throw new ConvexError("A walkthrough is a web link.");
+  await ctx.db.patch("ledger", line._id, { walkthrough: url, walkthroughAsked: true });
+  const shown = (await eventsOf(ctx, line)).find(function (e) { return e.kind === "walkthrough"; });
+  if (shown === undefined) {
+    await addToFeed(ctx, { kind: "walkthrough", hackerId: me._id, url, ledgerId: line._id, text: line.did, dropId, at: Date.now() });
+    return;
+  }
+  await ctx.db.patch("feed", shown._id, { url, dropId: dropId ?? (shown.url === url ? shown.dropId : undefined) });
+}
+
 // The owner's agent wrote a walkthrough page for the line: it goes on the line and on the wire.
 export const setWalkthrough = mutation({
   args: { ledgerId: v.id("ledger"), url: v.string() },
   returns: v.null(),
   handler: async function (ctx, args) {
     const me = await requireHacker(ctx);
-    const line = await ownLine(ctx, me, args.ledgerId);
-    const url = args.url.trim();
-    if (!/^https?:\/\/\S+$/i.test(url) || url.length > MAX_URL) throw new ConvexError("A walkthrough is a web link.");
-    await ctx.db.patch("ledger", line._id, { walkthrough: url, walkthroughAsked: true });
-    const shown = (await eventsOf(ctx, line)).find(function (e) { return e.kind === "walkthrough"; });
-    if (shown !== undefined) await ctx.db.patch("feed", shown._id, { url });
-    else await addToFeed(ctx, { kind: "walkthrough", hackerId: me._id, url, ledgerId: line._id, text: line.did, at: Date.now() });
+    await recordWalkthrough(ctx, me, args.ledgerId, args.url);
     return null;
   },
 });
