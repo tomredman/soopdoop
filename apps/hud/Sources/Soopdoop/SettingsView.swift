@@ -1,5 +1,5 @@
-// ABOUTME: The Settings window: how the HUD looks and when it shows, opening with Superset, notifications, what friends see,
-// ABOUTME: the Superset profile, the board, updates, and signing out. HUD choices stay in this app; the rest go to the agent.
+// ABOUTME: The Settings window: how the HUD looks and when it shows, your crew (CrewSettings.swift), what this Mac does for
+// ABOUTME: the crew, what friends see, the Superset profile, updates, and signing out. HUD choices stay in this app; the rest go to the agent.
 import AppKit
 import SwiftUI
 
@@ -7,11 +7,72 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             LookSettings().tabItem { Label("HUD", systemImage: "rectangle.inset.filled") }
+            CrewSettings().tabItem { Label("Crew", systemImage: "person.3") }
+            MacSettings().tabItem { Label("This Mac", systemImage: "laptopcomputer") }
             AccountSettings().tabItem { Label("Account", systemImage: "person.crop.circle") }
             AboutSettings().tabItem { Label("Updates", systemImage: "arrow.down.circle") }
         }
-        .frame(width: 460, height: 420)
+        .frame(width: 460, height: 520)
         .onAppear { NSApp.activate(ignoringOtherApps: true) }
+    }
+}
+
+// What this Mac does for the crew, on its owner's own accounts: the Haiku ledger line, the scout, and what hand-offs from
+// crewmates may cost. The daemon reads these from ~/.soopdoop/settings.json, so they go through the agent.
+struct MacSettings: View {
+    @EnvironmentObject var client: AgentClient
+
+    // Dollars a day; the one set now is added when it is not among them (`soopdoop handoffs 15` in Terminal).
+    static let allowances: [Double] = [0, 1, 2, 5, 10, 20, 50, 100]
+
+    var body: some View {
+        Form {
+            if let local = client.state?.local {
+                Section {
+                    Toggle("Write ledger lines with Haiku on my account", isOn: Binding(get: { local.ledgerLines }, set: { on in
+                        client.run("setLedgerLines", ["on": on], done: on
+                            ? "Haiku writes this Mac's ledger lines from now on."
+                            : "Ledger lines come from the prompts and files from now on, with no model call.")
+                    }))
+                    CrewCaption("When an agent finishes a task, a short Haiku call on your own Claude account writes its line for the crew's ledger: about a fifth of a cent a line. Off, the line is made from the first and last prompts and the files. Either way you can edit or delete it.")
+                } header: {
+                    Text("Ledger")
+                }
+                Section {
+                    Toggle("The scout: props from customers from my Intercom", isOn: Binding(get: { local.scout }, set: { on in
+                        client.run("setScout", ["on": on], done: on
+                            ? "The scout looks at your Intercom once an hour."
+                            : "The scout is off.")
+                    }))
+                    CrewCaption("Once an hour, Claude on Haiku reads your newest Intercom replies for thanks and saves, and puts one line on the wire, with no customer names. A few cents a day on your own plan. Off until you turn it on. Sign in to Intercom once in Claude Code with /mcp first."
+                        + (client.state?.crewInfo?.plan == "team" ? "" : " The scout is part of the Team plan."))
+                } header: {
+                    Text("Scout")
+                }
+                Section {
+                    Picker("Hand-offs may cost my agents up to", selection: Binding(get: { local.handoffDailyUsd }, set: { usd in
+                        client.run("setHandoffAllowance", ["usd": usd], done: "Hand-offs may cost this Mac's agents up to \(Self.dollars(usd)) a day.")
+                    })) {
+                        ForEach(choices(local.handoffDailyUsd), id: \.self) { usd in Text("\(Self.dollars(usd)) a day").tag(usd) }
+                    }
+                    CrewCaption("What crewmates' hand-offs may cost on this Mac in any 24 hours, counted from what each finished one reports. This Mac checks it, so neither a crewmate nor the backend can go past it. Who may hand off to you is in Settings → Crew.")
+                } header: {
+                    Text("Hand-offs")
+                }
+            } else {
+                Text("soopdoop is not running on this Mac. Run `soopdoop setup` in Terminal.").foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func choices(_ now: Double) -> [Double] {
+        Self.allowances.contains(now) ? Self.allowances : (Self.allowances + [now]).sorted()
+    }
+
+    // "$10", or "$2.50" for a part of a dollar.
+    static func dollars(_ usd: Double) -> String {
+        usd == usd.rounded() ? "$\(Int(usd))" : String(format: "$%.2f", usd)
     }
 }
 
