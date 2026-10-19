@@ -1398,8 +1398,12 @@ h2 {
   margin-top: 52px;
 }
 
+/* Both boxes may be narrower than their content's own width (the input's built-in width, then the Ask button), and the
+   console's one column too, so the input gives way first and nothing pushes past a 320 px screen. */
 .op-console {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   align-content: start;
   gap: 14px;
   padding: 20px;
@@ -1541,6 +1545,7 @@ h2 {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  min-width: 0;
   gap: 8px;
   padding: 16px 18px;
   border-radius: var(--radius);
@@ -1991,6 +1996,15 @@ h2 {
   max-width: 60ch;
   color: var(--muted);
 }
+
+/* As on the other pages (pages.css .more a). */
+.faq details p a {
+  color: var(--text);
+  text-decoration-color: var(--line-2);
+  text-underline-offset: 3px;
+}
+
+.faq details p a:hover { text-decoration-color: var(--purple); }
 
 /* ---------- footer ---------- */
 
