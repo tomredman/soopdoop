@@ -1,9 +1,10 @@
-// ABOUTME: HTTP routes. POST /operator/answer: the daemon a relay waits on sends its agent's own answer, once. Older daemons
-// ABOUTME: send a slice of the conversation instead, which goes straight into an answer call and is never stored.
+// ABOUTME: HTTP routes. POST /operator/answer: the daemon a relay waits on sends its agent's own answer, once (older daemons
+// ABOUTME: send a slice instead, used for one answer call and never stored). POST /intercom/webhook: customers' ratings (intercom.ts).
 import { httpRouter } from "convex/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { httpAction } from "./_generated/server";
+import { webhook as intercomWebhook } from "./intercom";
 import { agentAnswer, answerFrom, describeError } from "./lib/claude";
 
 // About 60k tokens: older daemons send far less; anything bigger is not from our daemon.
@@ -92,5 +93,8 @@ http.route({
     return json(200, { ok: true });
   }),
 });
+
+// Intercom's conversation.rating.added, signed with the crew's client secret: POST /intercom/webhook?crew=<crewId>.
+http.route({ path: "/intercom/webhook", method: "POST", handler: intercomWebhook });
 
 export default http;
