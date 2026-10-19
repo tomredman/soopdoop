@@ -62,13 +62,13 @@ opens Stripe's Customer Portal.
 ## Testing
 
 Test mode, on the dev deployment. Card 4242 4242 4242 4242 with any future expiry, any CVC and any postal code pays;
-4000 0000 0000 0002 is declined. A paid Checkout has not run yet (docs/billing.md, "Checked so far").
+4000 0000 0000 0002 is declined. A test Checkout was paid on 19 Oct 2026 and the webhook moved the crew to the team plan (docs/billing.md, "Checked so far").
 
 ## Next steps
 
 1. Put the head office address in Stripe (Settings → Tax), set `automatic_tax: { enabled: true }` in lib/stripe.ts, then
    add registrations as they are needed.
-2. Pay a test Checkout on dev, then set the live keys, prices and webhook on production (docs/billing.md).
+2. Set the live keys, prices and webhook on production (docs/billing.md).
 3. Require the terms of service in Checkout once soopdoop.com/terms is live (`consent_collection`).
 
 Resources: https://support.stripe.com and https://docs.stripe.com/mcp
