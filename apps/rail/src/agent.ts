@@ -6,8 +6,8 @@ import { pathToFileURL } from "node:url";
 import { ConvexClient } from "convex/browser";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "@soopdoop/convex/convex/_generated/api";
-import { configPath, invitePath, readConfig, settingsPath, writeConfig, writeSettings, type Settings } from "@soopdoop/daemon/src/config";
-import { DAEMON_PORT, startNow, UPDATER_LABEL } from "@soopdoop/daemon/src/service";
+import { configPath, invitePath, readConfig, settingsPath, soopdoopHome, writeConfig, writeSettings, type Settings } from "@soopdoop/daemon/src/config";
+import { DAEMON_PORT, scoutSpec, setScoutService, startNow, UPDATER_LABEL } from "@soopdoop/daemon/src/service";
 import { requestUpdate } from "@soopdoop/daemon/src/update";
 import { RAIL_ORIGIN } from "./config";
 import { uploadFile } from "./drops";
@@ -22,6 +22,9 @@ type Relay = FunctionReturnType<typeof api.operator.log>[number];
 type LedgerLine = FunctionReturnType<typeof api.ledger.mine>[number];
 
 export type Phase = "signed-out" | "signing-in" | "connecting" | "needs-handle" | "ready";
+
+// The checkout this file lives in: apps/rail/src → the repo root. The scout's hourly job runs this checkout's CLI.
+const ROOT = path.resolve(import.meta.dir, "..", "..", "..");
 
 // Everything the app shows. The app decodes this JSON; add fields freely, but do not rename or remove them.
 export interface AppState {
@@ -713,8 +716,19 @@ export function createAgent(
       // Settings → This Mac. The daemon reads these from the settings file.
       case "setLedgerLines":
         return await changeSettings({ ledgerLines: flag(args, "on") });
-      case "setScout":
-        return await changeSettings({ scout: flag(args, "on") });
+      case "setScout": {
+        const on = flag(args, "on");
+        const changed = await changeSettings({ scout: on });
+        // The hourly job exists only where setup's background services run (canUpdate); `bun run rail` keeps the setting only.
+        if (server.canUpdate && process.platform === "darwin") {
+          try {
+            await setScoutService(on, scoutSpec(ROOT, process.execPath, soopdoopHome(), process.env.SOOPDOOP_HOME));
+          } catch (e) {
+            throw new Error(`The scout's hourly job could not be ${on ? "started" : "stopped"}: ${cleanError(e)}`);
+          }
+        }
+        return changed;
+      }
       case "setHandoffAllowance": {
         const usd = amount(args, "usd");
         if (usd < 0) throw new Error("The hand-off allowance is 0 dollars or more.");
