@@ -1,5 +1,87 @@
 # Changelog
 
+## v0.14.0 · 2026-10-19
+
+### New
+- Drops: your crew's shelf of walkthroughs, pages and links in the HUD, with a one-line box to share a link (hud)
+- the HUD's crew rows are the crew when you are in one, and the Settings note names hand-offs and heads-ups (convex)
+- the menu bar shows your crew: a light per crewmate (green working, blue idle, grey off, a ring in focus, a purple pulse while one answers you), a count of hand-offs waiting, a glance menu with what each is on and yesterday's digest, and Hand off… and Shout… composers under the menu bar (hud)
+- Settings → Crew to start or run your crew (members, the digest's hour, Slack, Intercom, who may hand work to your agents, notes from agents, the Operator's cost, Team billing) and Settings → This Mac (Haiku ledger lines, the scout, the hand-off allowance) (hud)
+- turning the scout on from Settings also starts its hourly job on a Mac set up by soopdoop (rail)
+- hand-offs and heads-ups as cards you answer, ships, shouts and props on the wire, yesterday's digest, crew notes, your ledger, and the crew's four numbers (hud)
+- the crew's shelf in the app's state, drops and billing actions, and a walkthrough that becomes a drop on the team plan (rail)
+- POST /walkthrough writes a page about a finished piece of work (daemon)
+- hand-offs run in the crewmate's agent and report back, with hand_off and report_back for agents (daemon)
+- the daemon knows each session's permission mode (daemon)
+- your sessions hear about the crew's work and notes, and your finished work goes to the ledger (daemon)
+- the scout: props from customers, read from Intercom every hour by Haiku on your own Claude plan (daemon)
+- agents can propose a crew note (crew_note), list the crew's notes (crew_notes) and send props (props) (daemon)
+- crew notes for every session: told at its start, a line when one changes, and crew.md for Codex and Grok (daemon)
+- a hand-off tells its Mac whether "run when idle" accepted it, and starting one can carry a delivery note (convex)
+- heads-ups scored on your Mac: a prompt about a crewmate's work names their agent before you build (daemon)
+- ledger lines made on your Mac: one line per finished piece of work, in Haiku's words on your own Claude account (daemon)
+- crew leaders pay for the team plan with Stripe, monthly or yearly, and the seat count follows the crew (billing)
+- soopdoop.com/teams for crews, and privacy and terms pages that say exactly what leaves your Mac (site)
+- uploadFile puts a file from this Mac on the crew's shelf (upload link, bytes, save), ready for the walkthrough action (rail)
+- a Cloudflare Worker that serves drop links at soopdoop.com/d/<token>, written and tried with wrangler dev, not deployed yet (drops)
+- drops: a crew's pages and files at an unguessable /d/ link (team plan, 5 GB a crew), links on any plan, walkthroughs on the ledger and the wire (convex)
+- the app reads your crew, its numbers and costs, your ledger, crew notes, hand-offs, consents, heads-ups, the digest and the wire's new kinds (hud)
+- the app follows your crew (members, settings, the four numbers, costs), your ledger, crew notes, hand-offs, heads-ups and the digest, and can act on each (rail)
+- the app's state shows This Mac's ledger line, scout and hand-off allowance settings (rail)
+- settings for the ledger's Haiku line, the scout and the hand-off allowance (on, off and $10 a day until changed) (daemon)
+- the Operator answers from the crew's ledger, offers work orders as hand-offs instead of refusing them, and chats with tools, on Sonnet 5.5 (operator)
+- the ledger, heads-ups and hand-offs: what each crewmate finished, a card before you repeat their work, and tasks you hand to a crewmate's agent (convex)
+- crewmates' questions reach Codex and Grok agents through a fork of their session, priced by the fund (daemon)
+- Codex and Grok sessions show up: hooks beside Superset's, replays by other tools dropped, and soopdoop's tools in both (daemon)
+- read Codex rollouts and Grok sessions into the same shape as Claude Code transcripts, with first prompts, PR links and merges (daemon)
+- props from customers through Intercom's rating webhook, credited to whoever's ledger line names the conversation (convex)
+- the room: shouts and props on the wire, customer props and saves from the scout, and a daily digest and weekly numbers posted to the crew's Slack (convex)
+- crew notes: live shared instructions that reach every crewmate's agent, with age nudges and agent proposals the owner approves (convex)
+- crews: a name, a leader, up to 8 members and settings; an invite link starts or joins one, and in a crew your crewmates are the crew (convex)
+- tables for crews, the ledger, crew notes, hand-offs, heads-ups, digests and drops, and new kinds on the wire (convex)
+
+### Fixes
+- a ledger line that ends with a quoted title keeps its closing quote (daemon)
+- a heads-up made with a crewmate's old agent key makes no card instead of a card about no agent (convex)
+- a hand-off the agent could not do is reported as not done, not as done (daemon)
+- a crewmate's hand-off arriving in your session no longer sets off a heads-up about that crewmate (daemon)
+- the scout skips its runs on the free plan, the wire's heads-up line names the area, and the add-friend, ledger-cost, boundary and site words match the code
+- /teams says exactly which of the three things that leave your Mac you see or can change (site)
+- the home page fits a 320 px phone, and its FAQ gives the plans and all three tools (site)
+- `soopdoop scout` no longer falls through into the hand-off allowance command, and the type check now refuses such fall-throughs (daemon)
+- a hand-off that finishes before its delivery command returns still gets reported back (daemon)
+- an idle Claude Code session no longer turns "waiting" a minute after its turn (daemon)
+- the seat count catches up after Checkout, old reads cannot bring back an ended plan, and a crew that paid twice falls back (billing)
+- a ledger line's log entry is written before the line counts as done, and the scout's plist is checked (daemon)
+- crew.md writes that start together each use their own temporary file, and heads-up areas leave out src (daemon)
+- the fund prices Claude Haiku 5.5 sessions at Haiku's rates, not the dearest model's (daemon)
+- the Operator acts only on what you said, consent changes take back what "run when idle" accepted, and private sessions keep their ledger lines (convex)
+- a forgotten ledger line stays forgotten, hand-offs carry the asker's own words, and private agents never hand off or run one (convex)
+
+### Docs
+- what the crews checks left on this Mac was cleaned up
+- crews end to end on one Mac: what ran on the dev deployment, what broke where the parts meet, and what was not checked (docs)
+- the README says what setup now writes on a Mac, and its Crews section says what the code does
+- hand-offs into a running session, checked on a real Mac and on the dev deployment
+- agents offer hand-offs to crewmates and report back on the ones they were given (skill)
+- the ledger, heads-ups and crew notes on the Mac: what ran against the dev deployment, and what did not
+- what agents do with a heads-up, with crew notes, and with props from customers (skill)
+- a forgotten drop can stay in a browser that loaded it in the last five minutes (drops)
+- crews in the README, and the ledger line as the second thing allowed to leave a Mac (docs)
+- what to set up in Stripe and on production before Upgrade works (billing)
+- every agent on the wire: Codex and Grok in setup, and what was and was not checked on a real Mac
+- the crews plan: how soopdoop becomes something a team pays for (docs/plan-crews.html)
+
+### Other
+- the serve test runs its daemon on a free port (daemon)
+- one `--snapshot <dir>` run draws the HUD, the menu bar icon, the composers and Settings (hud)
+- the hand-offs' backend adapter in serve() on readable lines (daemon)
+- the hand-off and walkthrough tests say what they cover at the top (daemon)
+- the billing portal action is called the way the app calls it (rail)
+- a copy of a session can be asked any prompt, with a longer wait and a longer reply (daemon)
+- the settings a fresh Mac starts with include the new ledger, scout and hand-off defaults (rail)
+- generated API types and the test harness for the crews modules (convex)
+
 ## v0.13.1 · 2026-10-07
 
 ### Fixes
